@@ -297,10 +297,10 @@ Our vendored build is at `wasm/swisseph/`. It compiles the official Swiss Epheme
 
 | Metric | Value |
 |--------|-------|
-| WASM binary size | ~342 KB |
+| WASM binary size | ~2.1 MB (incl. embedded ephemeris data) |
 | SE version | v2.10.03 |
-| Ephemeris mode | Moshier (built-in, no external files) |
-| Position agreement | < 0.001° vs fusionstrings and prolaxu |
+| Ephemeris mode | Swiss Ephemeris (embedded `sepl_18.se1` + `semo_18.se1`) |
+| Position agreement | Exact match with prolaxu (both use SE data) |
 | API surface | `swe_calc_ut`, `swe_julday`, `swe_revjul`, `swe_get_planet_name` |
 | Build command | `wasm-pack build --target nodejs --release` |
 | Update mechanism | Scheduled CI workflow checks `aloistr/swisseph` weekly |

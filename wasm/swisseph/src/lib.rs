@@ -290,18 +290,143 @@ mod shims {
     #[no_mangle] pub extern "C" fn tolower(c: i32) -> i32 { (c as u8).to_ascii_lowercase() as i32 }
     #[no_mangle] pub extern "C" fn toupper(c: i32) -> i32 { (c as u8).to_ascii_uppercase() as i32 }
 
-    // I/O stubs (return NULL/0 → Moshier fallback)
-    #[no_mangle] pub extern "C" fn fopen(_: *const i8, _: *const i8) -> *mut u8 { std::ptr::null_mut() }
-    #[no_mangle] pub extern "C" fn fclose(_: *mut u8) -> i32 { 0 }
-    #[no_mangle] pub extern "C" fn fseek(_: *mut u8, _: i64, _: i32) -> i32 { 0 }
-    #[no_mangle] pub extern "C" fn ftell(_: *mut u8) -> i64 { 0 }
-    #[no_mangle] pub extern "C" fn fread(_: *mut u8, _: usize, _: usize, _: *mut u8) -> usize { 0 }
+    // ── In-memory filesystem for embedded Swiss Ephemeris data ──
+    // Embeds .se1 files at compile time. The C code's fopen/fread/fseek/ftell
+    // operate on these in-memory buffers, enabling Swiss Ephemeris mode (SEFLG_SWIEPH)
+    // instead of falling back to Moshier.
+
+    static SEPL_18: &[u8] = include_bytes!("../ephe/sepl_18.se1");
+    static SEMO_18: &[u8] = include_bytes!("../ephe/semo_18.se1");
+
+    struct MemFile {
+        data: &'static [u8],
+        pos: usize,
+    }
+
+    const MAX_OPEN_FILES: usize = 8;
+    static mut OPEN_FILES: [Option<MemFile>; MAX_OPEN_FILES] = [
+        None, None, None, None, None, None, None, None,
+    ];
+
+    fn match_embedded_file(path: *const i8) -> Option<&'static [u8]> {
+        let path_str = unsafe {
+            let mut len = 0;
+            while *path.add(len) != 0 { len += 1; }
+            core::str::from_utf8_unchecked(core::slice::from_raw_parts(path as *const u8, len))
+        };
+        if path_str.contains("sepl_18.se1") { return Some(SEPL_18); }
+        if path_str.contains("semo_18.se1") { return Some(SEMO_18); }
+        None
+    }
+
+    #[no_mangle]
+    pub unsafe extern "C" fn fopen(path: *const i8, _mode: *const i8) -> *mut u8 {
+        if let Some(data) = match_embedded_file(path) {
+            for i in 0..MAX_OPEN_FILES {
+                if OPEN_FILES[i].is_none() {
+                    OPEN_FILES[i] = Some(MemFile { data, pos: 0 });
+                    // Return a fake FILE* pointer: encode slot index as pointer
+                    // Use (i+1)*8 to avoid NULL and keep alignment
+                    return ((i + 1) * 8) as *mut u8;
+                }
+            }
+        }
+        std::ptr::null_mut()
+    }
+
+    #[no_mangle]
+    pub unsafe extern "C" fn fclose(stream: *mut u8) -> i32 {
+        let idx = (stream as usize) / 8 - 1;
+        if idx < MAX_OPEN_FILES { OPEN_FILES[idx] = None; }
+        0
+    }
+
+    #[no_mangle]
+    pub unsafe extern "C" fn fread(ptr: *mut u8, size: usize, nmemb: usize, stream: *mut u8) -> usize {
+        let idx = (stream as usize) / 8 - 1;
+        if idx >= MAX_OPEN_FILES { return 0; }
+        if let Some(ref mut f) = OPEN_FILES[idx] {
+            let total = size * nmemb;
+            let avail = if f.pos < f.data.len() { f.data.len() - f.pos } else { 0 };
+            let to_read = if total < avail { total } else { avail };
+            if to_read == 0 { return 0; }
+            std::ptr::copy_nonoverlapping(f.data.as_ptr().add(f.pos), ptr, to_read);
+            f.pos += to_read;
+            to_read / size
+        } else { 0 }
+    }
+
+    // fseek: long offset (i32 on wasm32)
+    #[no_mangle]
+    pub unsafe extern "C" fn fseek(stream: *mut u8, offset: i32, whence: i32) -> i32 {
+        fseek_impl(stream, offset as i64, whence)
+    }
+
+    // fseeko: off_t offset (i64)
+    #[no_mangle]
+    pub unsafe extern "C" fn fseeko(stream: *mut u8, offset: i64, whence: i32) -> i32 {
+        fseek_impl(stream, offset, whence)
+    }
+
+    unsafe fn fseek_impl(stream: *mut u8, offset: i64, whence: i32) -> i32 {
+        let idx = (stream as usize) / 8 - 1;
+        if idx >= MAX_OPEN_FILES { return -1; }
+        if let Some(ref mut f) = OPEN_FILES[idx] {
+            let new_pos = match whence {
+                0 => offset as isize,                         // SEEK_SET
+                1 => f.pos as isize + offset as isize,        // SEEK_CUR
+                2 => f.data.len() as isize + offset as isize, // SEEK_END
+                _ => return -1,
+            };
+            if new_pos < 0 { return -1; }
+            f.pos = new_pos as usize;
+            0
+        } else { -1 }
+    }
+
+    // ftell: returns long (i32 on wasm32)
+    #[no_mangle]
+    pub unsafe extern "C" fn ftell(stream: *mut u8) -> i32 {
+        let idx = (stream as usize) / 8 - 1;
+        if idx >= MAX_OPEN_FILES { return -1; }
+        if let Some(ref f) = OPEN_FILES[idx] { f.pos as i32 } else { -1 }
+    }
+
+    // ftello: returns off_t (i64)
+    #[no_mangle]
+    pub unsafe extern "C" fn ftello(stream: *mut u8) -> i64 {
+        let idx = (stream as usize) / 8 - 1;
+        if idx >= MAX_OPEN_FILES { return -1; }
+        if let Some(ref f) = OPEN_FILES[idx] { f.pos as i64 } else { -1 }
+    }
+
+    #[no_mangle]
+    pub unsafe extern "C" fn fgets(buf: *mut i8, n: i32, stream: *mut u8) -> *mut i8 {
+        let idx = (stream as usize) / 8 - 1;
+        if idx >= MAX_OPEN_FILES || n <= 0 { return std::ptr::null_mut(); }
+        if let Some(ref mut f) = OPEN_FILES[idx] {
+            let max = (n - 1) as usize; // leave room for null terminator
+            let mut i = 0;
+            while i < max && f.pos < f.data.len() {
+                let c = f.data[f.pos];
+                *buf.add(i) = c as i8;
+                f.pos += 1;
+                i += 1;
+                if c == b'\n' { break; }
+            }
+            if i == 0 { return std::ptr::null_mut(); } // EOF
+            *buf.add(i) = 0; // null terminate
+            buf
+        } else { std::ptr::null_mut() }
+    }
+
     #[no_mangle] pub extern "C" fn fwrite(_: *const u8, _: usize, n: usize, _: *mut u8) -> usize { n }
-    #[no_mangle] pub extern "C" fn fgets(_: *mut i8, _: i32, _: *mut u8) -> *mut i8 { std::ptr::null_mut() }
     #[no_mangle] pub extern "C" fn fflush(_: *mut u8) -> i32 { 0 }
-    #[no_mangle] pub extern "C" fn fseeko(_: *mut u8, _: i64, _: i32) -> i32 { 0 }
-    #[no_mangle] pub extern "C" fn ftello(_: *mut u8) -> i64 { 0 }
-    #[no_mangle] pub extern "C" fn rewind(_: *mut u8) {}
+
+    #[no_mangle]
+    pub unsafe extern "C" fn rewind(stream: *mut u8) {
+        fseek(stream, 0, 0);
+    }
 
     // time stub
     #[no_mangle] pub extern "C" fn time(_: *mut i64) -> i64 { 0 }

@@ -131,7 +131,7 @@ async function main() {
   log('|---------|------------|----------------|---------------|');
   log(`| @fusionstrings/swisseph-wasm | ${fileSize(fusionWasmPath)} | Built-in (Moshier) | ~1.4 MB |`);
   log(`| swisseph-wasm (prolaxu) | ${fileSize(prolaxuWasmPath)} | ${fileSize(prolaxuDataPath)} | ~13 MB |`);
-  log(`| swisseph (ours) | ${fileSize(oursWasmPath)} | Built-in (Moshier) | — |`);
+  log(`| swisseph (ours) | ${fileSize(oursWasmPath)} | Embedded (Swiss Eph .se1) | — |`);
   log();
 
   // ── 2. Initialize all implementations ──────────────────────────────────
@@ -317,7 +317,7 @@ async function main() {
   log('| Criteria | @fusionstrings/swisseph-wasm | swisseph-wasm (prolaxu) | swisseph (ours) |');
   log('|----------|:---------------------------:|:-----------------------:|:---------------:|');
   log(`| Binary size | ✅ ${fileSize(fusionWasmPath)} (no ext data) | ⚠️ ${fileSize(prolaxuWasmPath)} + ${fileSize(prolaxuDataPath)} | ✅ ${fileSize(oursWasmPath)} |`);
-  log(`| Precision | ✅ Sufficient (Moshier) | ✅ Higher (JPL data) | ✅ Sufficient (Moshier) |`);
+  log(`| Precision | ✅ Sufficient (Moshier) | ✅ Higher (JPL data) | ✅ High (Swiss Eph .se1 data) |`);
   log(`| Speed | See benchmarks above | See benchmarks above | See benchmarks above |`);
   log('| JS interop | ✅ wasm-bindgen (typed) | ⚠️ Emscripten Module API | ✅ wasm-bindgen (typed) |');
   log('| Init model | Sync (import loads WASM) | Async (initSwissEph()) | Sync |');
