@@ -186,7 +186,7 @@ async function main() {
       // Verify with a timeout — swe_julday may hang if C code wasn't linked
       const testJd = await Promise.race([
         new Promise((resolve) => { resolve(libswe.swe_julday(2025, 1, 1, 12.0, 1)); }),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout (C code not linked)')), 3000)),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout (C code not linked)')), 1000)),
       ]);
       if (typeof testJd !== 'number' || testJd === 0) throw new Error('julday returned invalid result');
       const libsweInitTime = now() - libsweInitStart;

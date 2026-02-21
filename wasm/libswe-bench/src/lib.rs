@@ -102,7 +102,7 @@ mod shims {
     // ── memory allocator ───────────────────────────────────────────────
     use std::alloc::{alloc, dealloc, Layout};
 
-    const HEADER: usize = 8; // two usize fields on wasm32 (4+4)
+    const HEADER: usize = 8; // magic (4 bytes) + total size (4 bytes) on wasm32
     const MAGIC: usize = 0xDEAD_BEEF;
 
     #[no_mangle]
@@ -204,7 +204,15 @@ mod shims {
     #[no_mangle]
     pub unsafe extern "C" fn strncpy(d: *mut u8, s: *const u8, n: usize) -> *mut u8 {
         let mut i = 0;
-        while i < n { let c = *s.add(i); *d.add(i) = c; if c == 0 { while i < n { *d.add(i) = 0; i += 1; } break; } i += 1; }
+        // Copy bytes from src until null terminator or n bytes copied
+        while i < n {
+            let c = *s.add(i);
+            *d.add(i) = c;
+            if c == 0 { break; }
+            i += 1;
+        }
+        // Pad remaining bytes with null
+        while i < n { *d.add(i) = 0; i += 1; }
         d
     }
     #[no_mangle]
@@ -257,6 +265,7 @@ mod shims {
     #[no_mangle] pub extern "C" fn isalnum(c: i32) -> i32 { if (c as u8 as char).is_ascii_alphanumeric() { 1 } else { 0 } }
     #[no_mangle] pub extern "C" fn isupper(c: i32) -> i32 { if (c as u8 as char).is_ascii_uppercase() { 1 } else { 0 } }
     #[no_mangle] pub extern "C" fn tolower(c: i32) -> i32 { (c as u8).to_ascii_lowercase() as i32 }
+    #[no_mangle] pub extern "C" fn toupper(c: i32) -> i32 { (c as u8).to_ascii_uppercase() as i32 }
     #[no_mangle] pub extern "C" fn abs(j: i32) -> i32 { j.abs() }
     #[no_mangle] pub extern "C" fn labs(j: i64) -> i64 { j.abs() }
 

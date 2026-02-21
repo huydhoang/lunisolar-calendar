@@ -33,7 +33,8 @@ jobs:
           targets: wasm32-unknown-unknown
 
       - name: Install wasm-pack
-        run: cargo install wasm-pack
+        run: |
+          curl -sSL https://rustwasm.github.io/wasm-pack/installer/init.sh | sh
 
       # ── 3. Install npm swisseph-wasm packages ─────────────────────────────
       - name: Install npm dependencies
