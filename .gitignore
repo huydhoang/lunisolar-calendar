@@ -229,3 +229,6 @@ tests/swisseph-wasm/benchmark-report.md
 wasm/*/target/
 wasm/*/pkg/
 wasm/*/Cargo.lock
+
+# CodeQL
+_codeql_detected_source_root
