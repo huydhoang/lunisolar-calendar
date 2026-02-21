@@ -35,7 +35,9 @@ TEST_YEAR, TEST_MONTH, TEST_DAY = 2025, 1, 1
 TEST_HOUR, TEST_MINUTE, TEST_SECOND = 12, 0, 0
 
 # ── Load ephemeris ───────────────────────────────────────────────────────────
-# Loader('.') searches the current working directory for de440s.bsp
+# Loader('.') uses the current working directory as the cache.
+# If de440s.bsp is not found, skyfield automatically downloads it from:
+#   https://ssd.jpl.nasa.gov/ftp/eph/planets/bsp/de440s.bsp
 loader = Loader(".")
 try:
     eph = loader("de440s.bsp")
