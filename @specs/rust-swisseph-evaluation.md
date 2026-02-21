@@ -305,6 +305,71 @@ Our vendored build is at `wasm/swisseph/`. It compiles the official Swiss Epheme
 | Build command | `wasm-pack build --target nodejs --release` |
 | Update mechanism | Scheduled CI workflow checks `aloistr/swisseph` weekly |
 
+### 5.5 Using JPL ephemeris data instead of Moshier
+
+Swiss Ephemeris supports three computation modes, selected by the `iflag` parameter passed to `swe_calc_ut`:
+
+| Flag | Value | Data source | Precision | Data files |
+|------|------:|-------------|-----------|------------|
+| `SEFLG_JPLEPH` | 1 | JPL Development Ephemeris (DE431/441) | Highest (~0.001 arcsec) | `jpl*.eph` (~100+ MB) |
+| `SEFLG_SWIEPH` | 2 | Swiss Ephemeris compressed files | High (~0.001 arcsec) | `sepl*.se1`, `semo*.se1` (~2 MB total) |
+| `SEFLG_MOSEPH` | 4 | Moshier analytical model | Good (~1 arcsec for Moon) | None (built-in) |
+
+The C code has an automatic **fallback chain**: JPL → Swiss Eph → Moshier. When a data file can't be opened, it falls back silently and appends a notice to `serr`.
+
+#### Why our WASM build uses Moshier
+
+Our `fopen` shim returns `NULL`, so the C code can never open `.se1` or `.eph` files. This triggers the automatic fallback to Moshier, which is entirely self-contained (the Moshier coefficients are compiled into the `swemplan.c` / `swemmoon.c` tables).
+
+#### How to enable Swiss Ephemeris or JPL mode in WASM
+
+To use actual ephemeris data files, the `fopen`/`fread`/`fseek`/`ftell`/`fclose` shims would need real implementations. There are two approaches:
+
+**Approach A: Embed data files in the WASM binary**
+
+Compile the `.se1` files directly into the WASM binary as byte arrays using `include_bytes!()` in Rust, then implement `fopen` to return a handle to an in-memory buffer, and `fread`/`fseek`/`ftell` to read from it.
+
+| Pros | Cons |
+|------|------|
+| No async loading, no external files | WASM binary grows by ~2 MB (Swiss Eph) or ~100 MB (JPL) |
+| Works in all environments | Increased download/init time |
+| Simplest implementation | Only practical for Swiss Eph `.se1` files, not JPL |
+
+**Approach B: Fetch data files from JS and pass to WASM**
+
+Use `wasm-bindgen` to import a JS function that reads file data (from `fetch()` in browser, or `fs.readFileSync` in Node). Implement `fopen` to call the JS function and store the returned bytes in a WASM-side buffer.
+
+| Pros | Cons |
+|------|------|
+| WASM binary stays small (~342 KB) | Requires async file loading before `swe_calc_ut` |
+| Can use any data files | Complex: must implement C FILE* semantics over byte buffers |
+| Works for both `.se1` and JPL | JS/WASM boundary overhead on each `fread` call |
+
+This is the approach used by the prolaxu Emscripten build — Emscripten's virtual filesystem pre-loads the `.data` file (containing `sepl_18.se1` + `semo_18.se1` + `seas_18.se1`) into memory before the WASM module runs. Their `.data` file is 11.5 MB.
+
+**Approach C: Use WASI (wasm32-wasip1 target)**
+
+Target `wasm32-wasip1` instead of `wasm32-unknown-unknown`. WASI provides real `fopen`/`fread`/`fseek` implementations via the host runtime (Node.js, Wasmtime, etc.). The ephemeris files can be placed in a directory and accessed normally.
+
+| Pros | Cons |
+|------|------|
+| No custom file I/O shims needed | WASI not supported in all browsers yet |
+| Standard filesystem semantics | Requires WASI-compatible runtime |
+| Cleanest implementation | wasm-bindgen doesn't support WASI target well |
+
+#### Recommendation for lunisolar-ts
+
+**Moshier is sufficient.** For lunisolar calendar calculations (detecting new moons and solar terms), the position accuracy we need is:
+- New moon: Moon longitude = Sun longitude ± ~0.01° tolerance → Moshier accuracy (~0.0002° = 0.7 arcsec) is >10× better than needed
+- Solar terms: Sun at 0°, 15°, 30°... ± ~0.01° → Moshier accuracy (~0.000001°) is >10,000× better than needed
+
+Swiss Eph or JPL data would only matter for:
+- High-precision asteroid calculations
+- Occultation/eclipse timing (sub-arcsecond)
+- Historical calculations before 3000 BCE or after 3000 CE (Moshier range is limited)
+
+If JPL precision is ever needed, **Approach A** (embed `.se1` files) is the cleanest path — it adds ~2 MB to the binary but requires no async loading or FILE* emulation.
+
 ---
 
 ## 6. References
@@ -315,3 +380,4 @@ Our vendored build is at `wasm/swisseph/`. It compiles the official Swiss Epheme
 - [libswe-sys (GitHub)](https://github.com/stephaneworkspace/libswe-sys)
 - [Swiss Ephemeris (Astrodienst)](https://www.astro.com/swisseph/)
 - [prolaxu/swisseph-wasm (npm)](https://github.com/prolaxu/swisseph-wasm)
+- [Swiss Ephemeris documentation — Ephemeris file format](https://www.astro.com/swisseph/swephprg.htm)
