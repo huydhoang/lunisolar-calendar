@@ -1,6 +1,6 @@
 # WASM Specification — Lunisolar-TS
 
-> Replace the legacy Python → JSON → DataLoader pipeline with real-time astronomical calculations using `swisseph-wasm` (Swiss Ephemeris compiled to WebAssembly), coordinated by a Rust WASM module for lunisolar calendar logic. Deploy as a self-contained set of files in a web app's `/public` directory for client-side, offline, multi-threaded computation.
+> Replace the legacy Python → JSON → DataLoader pipeline with real-time astronomical calculations using our vendored Swiss Ephemeris WASM module. The ephemeris engine is the Swiss Ephemeris C source (v2.10.03) compiled to WebAssembly via Rust + wasm-bindgen and lives at `wasm/swisseph/`. A second Rust WASM module handles lunisolar calendar logic. Both modules deploy as a self-contained set of files in a web app's `/public` directory for client-side, offline, multi-threaded computation.
 
 ---
 
@@ -8,31 +8,35 @@
 
 | Goal | Description |
 |------|-------------|
-| **Eliminate the data pipeline** | Replace the Python pre-computation step and static JSON data files with on-demand planetary position calculations via `swisseph-wasm`. No more `output/json/`, no CDN, no `DataLoader`. |
-| **Single deployment** | Ship a small set of files (Rust WASM + swisseph-wasm WASM + JS glue) into `/public`. No server-side code required. |
-| **Offline operation** | `swisseph-wasm` embeds its own ephemeris data inside the WASM binary. The module works without any network access. |
+| **Eliminate the data pipeline** | Replace the Python pre-computation step and static JSON data files with on-demand planetary position calculations via our vendored swisseph WASM. No more `output/json/`, no CDN, no `DataLoader`. |
+| **Single deployment** | Ship a small set of files (vendored swisseph WASM + calendar logic WASM + JS glue) into `/public`. No server-side code required. |
+| **Offline operation** | The vendored swisseph WASM embeds its own ephemeris data inside the WASM binary. The module works without any network access. |
 | **Multi-threaded performance** | Leverage WebAssembly threads, `SharedArrayBuffer`, and Web Workers so batch calculations (e.g. an entire month of auspicious days) use multiple CPU cores. |
 | **API parity** | Expose the same public surface as the current TypeScript package: `fromSolarDate`, `ConstructionStars.calculateMonth`, `GreatYellowPath.getSpirit`. |
 
 ---
 
-## 2. Why `swisseph-wasm`
+## 2. Why our vendored swisseph WASM
 
-The [swisseph-wasm](https://github.com/prolaxu/swisseph-wasm) package wraps the Swiss Ephemeris C library (compiled to WASM via Emscripten). It provides professional-grade astronomical calculations with:
+We compile the Swiss Ephemeris C library directly to WebAssembly using the Rust `cc` crate and wasm-bindgen, vendoring the C source at `wasm/swisseph/`. This replaces any dependency on external npm packages for ephemeris calculations.
 
-- **High precision** — based on the Swiss Ephemeris, used by professional astronomers and astrologers worldwide.
-- **Self-contained** — the WASM binary and ephemeris data files are embedded; zero network dependencies.
+- **High precision** — uses the full Swiss Ephemeris with embedded `.se1` data files (same precision as Emscripten-based alternatives).
+- **Self-contained** — the WASM binary embeds the ephemeris data; zero network dependencies at runtime.
 - **Cross-platform** — works in browsers (Chrome 61+, Firefox 60+, Safari 11+, Edge 16+) and Node.js.
-- **Rich API** — `calc_ut()` for planetary positions, `julday()` for Julian Day conversion, `revjul()` for reverse, sidereal time, eclipse calculations, and more.
+- **Typed API via wasm-bindgen** — `swe_calc_ut()`, `swe_julday()`, `swe_revjul()`, `swe_get_planet_name()` with full TypeScript types.
+- **Synchronous init** — standard ES module import; no async `initSwissEph()` call required.
+- **Fastest initialization** — 13 ms vs ~38–41 ms for Emscripten-based alternatives (see benchmark at `tests/swisseph-wasm/benchmark.mjs`).
+
+See [`@specs/rust-swisseph-evaluation.md`](./rust-swisseph-evaluation.md) for the full evaluation and benchmark data.
 
 ### Key Functions for Lunisolar Calculations
 
 | Swiss Ephemeris function | Purpose in lunisolar context |
 |--------------------------|------------------------------|
-| `swe.calc_ut(jd, SE_SUN, SEFLG_SWIEPH)` | Sun ecliptic longitude → derive solar terms (every 15° of solar longitude) |
-| `swe.calc_ut(jd, SE_MOON, SEFLG_SWIEPH)` | Moon ecliptic longitude → detect new/full moons (Sun–Moon angle 0°/180°) |
-| `swe.julday(y, m, d, h)` | Gregorian → Julian Day Number |
-| `swe.revjul(jd, SE_GREG_CAL)` | Julian Day → Gregorian date components |
+| `swe_calc_ut(jd, SE_SUN, SEFLG_SWIEPH)` | Sun ecliptic longitude → derive solar terms (every 15° of solar longitude) |
+| `swe_calc_ut(jd, SE_MOON, SEFLG_SWIEPH)` | Moon ecliptic longitude → detect new/full moons (Sun–Moon angle 0°/180°) |
+| `swe_julday(y, m, d, h, gregflag)` | Gregorian → Julian Day Number |
+| `swe_revjul(jd, gregflag)` | Julian Day → Gregorian date components |
 
 ### How It Replaces the Python Pipeline
 
@@ -44,8 +48,8 @@ graph LR
         C --> D[DataLoader<br/>fetch / import / fs]
     end
 
-    subgraph "New: swisseph-wasm"
-        E[Swiss Ephemeris<br/>WASM binary] --> F["calc_ut(jd, planet)"]
+    subgraph "New: wasm/swisseph (vendored)"
+        E[Swiss Ephemeris C source<br/>+ embedded .se1 data<br/>compiled to WASM] --> F["swe_calc_ut(jd, planet)"]
         F --> G[Sun/Moon longitude<br/>at any instant]
     end
 
@@ -58,13 +62,13 @@ graph LR
     style G fill:#efe,stroke:#0a0
 ```
 
-Instead of pre-computing moon phases and solar terms for 201 years and shipping ~2.4 MB of JSON, we call `swisseph-wasm` at runtime to calculate the exact Sun and Moon longitudes for any date on demand.
+Instead of pre-computing moon phases and solar terms for 201 years and shipping ~2.4 MB of JSON, we call our vendored swisseph WASM at runtime to calculate the exact Sun and Moon longitudes for any date on demand.
 
 ---
 
-## 3. Integration Strategy: Integrate vs Fork
+## 3. Integration Strategy: Build Our Own
 
-### Option A — Integrate as a JS-level Dependency (Recommended)
+### Option A — Integrate as a JS-level Dependency ~~(Recommended)~~ (Not chosen)
 
 | Aspect | Details |
 |--------|---------|
@@ -74,25 +78,25 @@ Instead of pre-computing moon phases and solar terms for 201 years and shipping 
 | Upstream updates | Free via `npm update`; bug fixes and ephemeris improvements come automatically |
 | Maintenance | Low — only maintain the lunisolar calendar logic and the thin JS coordination layer |
 
-### Option B — Fork / Extract Code
+### Option B — Build Our Own Vendored WASM ✅ (Chosen)
 
 | Aspect | Details |
 |--------|---------|
-| Method | Fork the `swisseph-wasm` repo, or use a Rust FFI crate like [`libswe-sys`](https://github.com/stephaneworkspace/libswe-sys) (11 ★) to call the Swiss Ephemeris C library directly from Rust |
-| WASM modules | Could merge into a single binary by compiling Swiss Ephemeris C source alongside Rust via `cc` crate and `libswe-sys` FFI bindings |
-| Separation | Tightly coupled — must maintain C FFI bindings and keep ephemeris data (~12 MB) in sync |
-| Upstream updates | Manual — must cherry-pick or rebase from upstream for every Swiss Ephemeris update |
-| Maintenance | High — own the full C→WASM compilation pipeline plus Rust FFI |
+| Method | Vendor Swiss Ephemeris C source in `wasm/swisseph/`; compile via Rust `cc` crate + wasm-pack |
+| WASM modules | Two: `wasm/swisseph/pkg/` (ephemeris engine) + `wasm/pkg/` (calendar logic) — both wasm-bindgen |
+| Separation | Same clear boundary — our ephemeris WASM owns calculations; Rust WASM owns calendar logic |
+| Upstream updates | Manual — update vendored C source from `aloistr/swisseph`; CI workflow checks weekly for new tags |
+| Maintenance | We own the full build pipeline; no external npm runtime dependency |
 
-### Recommendation
+### Why we chose Option B
 
-**Option A (integrate)** is strongly recommended:
+1. **Synchronous init** — our build loads as a standard ES module; no `await initSwissEph()` required. Init is 13 ms vs 38–41 ms for the Emscripten-based npm package.
+2. **Typed wasm-bindgen API** — consistent with the calendar logic WASM; no Emscripten Module boilerplate.
+3. **Full control** — we embed our own `.se1` ephemeris data, can patch the SE version, and are not subject to upstream npm API changes.
+4. **No Emscripten SDK in CI** — wasm-pack + rustup are sufficient; the build is reproducible and fast.
+5. **Smaller toolchain** — `wasm-pack` is ~5 MB; Emscripten SDK is ~1 GB.
 
-1. `swisseph-wasm` already solves the hard problem (compiling Swiss Ephemeris C to WASM with embedded data).
-2. The lunisolar calendar logic (~350 LOC) is a thin layer on top of ephemeris queries — it doesn't need to live in the same binary.
-3. Forking creates a maintenance burden for keeping the C ephemeris code in sync with upstream bug fixes.
-4. Both WASM modules load in parallel and the total size is comparable to a single merged binary.
-5. The GPL-3.0 license of `swisseph-wasm` is compatible with using it as a dependency.
+See [`@specs/rust-swisseph-evaluation.md`](./rust-swisseph-evaluation.md) §6 for a detailed comparison of wasm-bindgen vs Emscripten.
 
 ---
 
@@ -103,16 +107,16 @@ Instead of pre-computing moon phases and solar terms for 201 years and shipping 
 ```mermaid
 graph TD
     subgraph "/public directory"
-        SW_WASM["swisseph.wasm<br/>+ swisseph.js<br/>(Swiss Ephemeris)"]
+        SW_WASM["swisseph_wasm_bg.wasm<br/>+ swisseph_wasm.js<br/>(vendored Swiss Eph — wasm-bindgen)"]
         LW_WASM["lunisolar_wasm_bg.wasm<br/>+ lunisolar_wasm.js<br/>(Calendar Logic)"]
         COORD["lunisolar-coordinator.js<br/>(JS orchestration layer)"]
     end
 
     subgraph "Browser Runtime"
         APP[Web App] -->|"import { initLunisolar }"| COORD
-        COORD -->|"await swe.initSwissEph()"| SW_WASM
+        COORD -->|"import * as swe (sync)"| SW_WASM
         COORD -->|"await init()"| LW_WASM
-        SW_WASM -->|"calc_ut(jd, SE_SUN)"| EPH_DATA[Sun/Moon Longitudes]
+        SW_WASM -->|"swe_calc_ut(jd, SE_SUN)"| EPH_DATA[Sun/Moon Longitudes]
         EPH_DATA --> LW_WASM
         LW_WASM -->|"from_solar_date()"| RESULT[LunisolarDate<br/>+ Ganzhi + Stars + Spirits]
         RESULT --> APP
@@ -125,19 +129,19 @@ graph TD
 sequenceDiagram
     participant App as Web App
     participant Coord as Coordinator (JS)
-    participant SWE as swisseph-wasm
+    participant SWE as swisseph (our WASM)
     participant LW as lunisolar-wasm (Rust)
 
     App->>Coord: fromSolarDate("2025-06-15", "Asia/Shanghai")
     Coord->>Coord: resolve tz_offset_minutes = 480
 
     Note over Coord: Step 1: Find new moons around target date
-    Coord->>SWE: julday(2025, 5, 1, 0)
+    Coord->>SWE: swe_julday(2025, 5, 1, 0, SE_GREG_CAL)
     SWE-->>Coord: jd_start
     loop Binary search for each new moon
-        Coord->>SWE: calc_ut(jd, SE_SUN, SEFLG_SWIEPH)
+        Coord->>SWE: swe_calc_ut(jd, SE_SUN, SEFLG_SWIEPH)
         SWE-->>Coord: sun_longitude
-        Coord->>SWE: calc_ut(jd, SE_MOON, SEFLG_SWIEPH)
+        Coord->>SWE: swe_calc_ut(jd, SE_MOON, SEFLG_SWIEPH)
         SWE-->>Coord: moon_longitude
         Note over Coord: New moon when<br/>moon_lon == sun_lon (±tolerance)
     end
@@ -145,7 +149,7 @@ sequenceDiagram
 
     Note over Coord: Step 2: Find solar terms (principal zhongqi)
     loop For each 30° boundary of solar longitude
-        Coord->>SWE: calc_ut(jd, SE_SUN, SEFLG_SWIEPH)
+        Coord->>SWE: swe_calc_ut(jd, SE_SUN, SEFLG_SWIEPH)
         SWE-->>Coord: sun_longitude
         Note over Coord: Solar term when sun_lon<br/>crosses 0°, 30°, 60°, ..., 330°
     end
@@ -187,8 +191,10 @@ async function findNewMoon(swe, jdStart) {
 }
 
 function sunMoonDiff(swe, jd) {
-  const sunPos = swe.calc_ut(jd, swe.SE_SUN, swe.SEFLG_SWIEPH);
-  const moonPos = swe.calc_ut(jd, swe.SE_MOON, swe.SEFLG_SWIEPH);
+  // wasm-bindgen exports SE_SUN, SE_MOON, SEFLG_SWIEPH as functions returning i32 constants.
+  // swe_calc_ut(jd, body, iflag) returns a Float64Array([lon, lat, dist, ...]).
+  const sunPos = swe.swe_calc_ut(jd, swe.SE_SUN(), swe.SEFLG_SWIEPH());
+  const moonPos = swe.swe_calc_ut(jd, swe.SE_MOON(), swe.SEFLG_SWIEPH());
   let diff = moonPos[0] - sunPos[0];
   if (diff < 0) diff += 360;
   return diff;
@@ -214,14 +220,16 @@ A **solar term** occurs every time the Sun's ecliptic longitude crosses a multip
 // coordinator: find_solar_terms.js
 async function findSolarTerms(swe, year) {
   const terms = [];
+  // SE_GREG_CAL = 1 (wasm-bindgen exports this as a function returning an i32 constant)
+  const SE_GREG_CAL = swe.SE_GREG_CAL();
   // Start from winter solstice of previous year (sun_lon ≈ 270°)
-  let jd = swe.julday(year - 1, 12, 15, 0);
+  let jd = swe.swe_julday(year - 1, 12, 15, 0, SE_GREG_CAL);
 
   for (let targetDeg = 270; terms.length < 30; targetDeg = (targetDeg + 15) % 360) {
     jd = bisectSolarLongitude(swe, jd, targetDeg);
     const termIndex = Math.round(targetDeg / 15); // 0..23
     const isPrincipal = (targetDeg % 30 === 0);
-    const date = swe.revjul(jd, swe.SE_GREG_CAL);
+    const date = swe.swe_revjul(jd, SE_GREG_CAL);
     terms.push({ jd, termIndex, isPrincipal, date });
     jd += 14; // advance ~half a term for next search
   }
@@ -236,7 +244,7 @@ function bisectSolarLongitude(swe, jdStart, targetDeg) {
   // 50 bisection iterations on a ~40 day interval → sub-millisecond precision
   for (let i = 0; i < 50; i++) {
     const jdMid = (jdLo + jdHi) / 2;
-    const sunPos = swe.calc_ut(jdMid, swe.SE_SUN, swe.SEFLG_SWIEPH);
+    const sunPos = swe.swe_calc_ut(jdMid, swe.SE_SUN(), swe.SEFLG_SWIEPH());
     const sunLon = sunPos[0];
 
     // Handle 360°→0° wraparound
@@ -296,7 +304,7 @@ pub struct LunisolarDate {
 
 /// Convert a Gregorian date to a lunisolar date.
 ///
-/// `new_moon_jds` — Julian Day numbers of new moons (from swisseph-wasm).
+/// `new_moon_jds` — Julian Day numbers of new moons (from our vendored swisseph WASM).
 /// `principal_term_jds` — Julian Day numbers of principal solar terms.
 /// `principal_term_indices` — corresponding term indices (0..11 for Z1..Z12).
 /// `target_jd` — Julian Day of the target date.
@@ -344,11 +352,11 @@ pub fn batch_from_solar_date(
 
 ### 4.7 JavaScript Coordinator
 
-The coordinator is the glue layer that wires `swisseph-wasm` and `lunisolar-wasm` together:
+The coordinator is the glue layer that wires our vendored `wasm/swisseph/` WASM module and `lunisolar-wasm` together:
 
 ```typescript
 // lunisolar-coordinator.ts
-import SwissEph from 'swisseph-wasm';
+import * as swe from './swisseph_wasm.js';   // our vendored build (wasm-bindgen, sync init)
 import init, {
   init_thread_pool,
   from_solar_date as _from_solar_date,
@@ -357,34 +365,34 @@ import init, {
   batch_from_solar_date as _batch_from_solar_date,
 } from './lunisolar_wasm.js';
 
-let swe: SwissEph | null = null;
+let initialized = false;
 
 export async function initLunisolar(): Promise<void> {
-  // Initialize both WASM modules in parallel
-  swe = new SwissEph();
-  await Promise.all([
-    swe.initSwissEph(),
-    init(),
-  ]);
+  // swisseph is a wasm-bindgen module: it is initialized automatically when the
+  // ES module is imported (no async initSwissEph() call needed, unlike Emscripten).
+  // Only the calendar logic WASM needs an explicit async init().
+  await init();
 
   // Optional: initialize thread pool for batch operations
   if (typeof SharedArrayBuffer !== 'undefined') {
     await init_thread_pool(navigator.hardwareConcurrency);
   }
+  initialized = true;
 }
 
 export async function fromSolarDate(
   date: Date,
   timezone: string = 'Asia/Shanghai',
 ): Promise<LunisolarDate> {
-  if (!swe) throw new Error('Call initLunisolar() first');
+  if (!initialized) throw new Error('Call initLunisolar() first');
 
   const tzOffset = getOffsetMinutes(date, timezone);
-  const jd = swe.julday(
+  const jd = swe.swe_julday(
     date.getUTCFullYear(),
     date.getUTCMonth() + 1,
     date.getUTCDate(),
     date.getUTCHours() + date.getUTCMinutes() / 60,
+    1, // SE_GREG_CAL
   );
 
   // Gather astronomical data around the target date
@@ -411,7 +419,7 @@ export async function calculateMonthStars(
   month: number,
   timezone: string = 'Asia/Shanghai',
 ): Promise<DayInfo[]> {
-  if (!swe) throw new Error('Call initLunisolar() first');
+  if (!initialized) throw new Error('Call initLunisolar() first');
 
   const tzOffset = getOffsetMinutes(new Date(year, month - 1, 15), timezone);
   const newMoonJDs = await findNewMoonsForRange(swe, year);
@@ -430,10 +438,6 @@ export async function calculateMonthStars(
     tzOffset,
   );
   return JSON.parse(json);
-}
-
-export function destroy(): void {
-  if (swe) { swe.close(); swe = null; }
 }
 ```
 
@@ -466,10 +470,10 @@ destroy();
 ```mermaid
 sequenceDiagram
     participant Main as Main Thread (JS)
-    participant SWE as swisseph-wasm
+    participant SWE as swisseph (our WASM — sync)
     participant Pool as Worker Pool (Rust WASM)
 
-    Main->>SWE: initSwissEph()
+    Main->>SWE: loaded via ES module import (sync)
     Main->>Pool: init() + initThreadPool(N)
     Note over Pool: N Web Workers created,<br/>each loads lunisolar_wasm_bg.wasm<br/>with shared WebAssembly.Memory
 
@@ -549,17 +553,17 @@ cargo install wasm-pack
 # wasm-opt (optional, for size optimization — install Binaryen)
 # See https://github.com/WebAssembly/binaryen/releases
 # e.g. apt install binaryen, brew install binaryen, or download from GitHub
-
-# swisseph-wasm (JS dependency)
-npm install swisseph-wasm
 ```
 
 ### 6.2 Build Commands
 
 ```bash
-cd wasm/
+# Build the vendored swisseph WASM (ephemeris engine)
+cd wasm/swisseph/
+wasm-pack build --target nodejs --release   # or --target web for browser
 
 # Build the Rust calendar logic WASM (multi-threaded, release)
+cd wasm/
 RUSTFLAGS='-C target-feature=+atomics,+bulk-memory,+mutable-globals' \
   wasm-pack build --target web --release -- --features parallel
 
@@ -570,8 +574,14 @@ wasm-opt -Oz -o pkg/lunisolar_wasm_bg.wasm pkg/lunisolar_wasm_bg.wasm
 ### 6.3 Output Artifacts
 
 ```
+wasm/swisseph/pkg/
+├── swisseph_wasm_bg.wasm        # Swiss Ephemeris engine (~2.1 MB; includes .se1 data)
+├── swisseph_wasm_bg.wasm.d.ts   # TS types for raw WASM bindings
+├── swisseph_wasm.js             # JS glue (wasm-bindgen, ~10 KB)
+└── swisseph_wasm.d.ts           # TS types: swe_calc_ut, swe_julday, swe_revjul, ...
+
 wasm/pkg/
-├── lunisolar_wasm_bg.wasm       # Calendar logic WASM (~200 KB without embedded data)
+├── lunisolar_wasm_bg.wasm       # Calendar logic WASM (~200 KB)
 ├── lunisolar_wasm_bg.wasm.d.ts  # TS types for raw WASM bindings
 ├── lunisolar_wasm.js            # JS glue (init, thread pool bootstrap)
 ├── lunisolar_wasm.d.ts          # TS types for public API
@@ -582,16 +592,14 @@ wasm/pkg/
 ### 6.4 Deployment to a Web App
 
 ```bash
-# 1. Copy Rust WASM output
+# 1. Copy vendored swisseph WASM output (ephemeris engine)
+cp wasm/swisseph/pkg/swisseph_wasm_bg.wasm  my-app/public/
+cp wasm/swisseph/pkg/swisseph_wasm.js       my-app/public/
+
+# 2. Copy Rust calendar logic WASM output
 cp wasm/pkg/lunisolar_wasm_bg.wasm  my-app/public/
 cp wasm/pkg/lunisolar_wasm.js       my-app/public/
 cp -r wasm/pkg/snippets/            my-app/public/snippets/
-
-# 2. Copy swisseph-wasm files
-cp node_modules/swisseph-wasm/src/swisseph.js     my-app/public/
-cp node_modules/swisseph-wasm/wsam/swisseph.js    my-app/public/wsam/
-cp node_modules/swisseph-wasm/wsam/swisseph.wasm  my-app/public/wsam/
-cp node_modules/swisseph-wasm/wsam/swisseph.data  my-app/public/wsam/
 
 # 3. Copy the coordinator
 cp lunisolar-coordinator.js  my-app/public/
@@ -601,18 +609,15 @@ cp lunisolar-coordinator.js  my-app/public/
 
 ```
 my-app/public/
+├── swisseph_wasm_bg.wasm        # Swiss Ephemeris engine (~2.1 MB, self-contained)
+├── swisseph_wasm.js             # wasm-bindgen glue (~10 KB)
 ├── lunisolar_wasm_bg.wasm       # Rust calendar logic (~200 KB)
 ├── lunisolar_wasm.js            # Rust WASM JS glue
 ├── lunisolar-coordinator.js     # Orchestration layer
-├── swisseph.js                  # SwissEph JS wrapper
-├── wsam/
-│   ├── swisseph.js              # Emscripten WASM module loader
-│   ├── swisseph.wasm            # Swiss Ephemeris WASM binary (~1 MB)
-│   └── swisseph.data            # Ephemeris data file (~11 MB; ~3 MB gzipped)
 └── snippets/                    # Rayon worker snippets (if parallel)
 ```
 
-> **Size note:** The `swisseph-wasm` npm package is ~12.4 MB unpacked (v0.0.4). The bulk is `swisseph.data` (embedded ephemeris tables). With gzip/brotli compression on the web server, the total transfer size is ~3–4 MB.
+> **Size note:** Total transfer is ~2.3 MB (~700 KB gzipped). The `swisseph_wasm_bg.wasm` binary embeds the Swiss Ephemeris `.se1` data files directly, so no separate data download is needed.
 
 For frameworks with bundlers (Vite, Next.js), place files in the static/public directory so they are served as-is.
 
@@ -622,8 +627,7 @@ For frameworks with bundlers (Vite, Next.js), place files in the static/public d
 // vite.config.js
 export default defineConfig({
   server: { fs: { allow: ['..'] } },
-  assetsInclude: ['**/*.wasm', '**/*.data'],
-  optimizeDeps: { exclude: ['swisseph-wasm'] },
+  assetsInclude: ['**/*.wasm'],
 });
 ```
 
@@ -701,7 +705,7 @@ function getOffsetMinutes(date, iana) {
 
 ### 9.1 Parity Tests
 
-Generate a golden dataset from the existing TypeScript package for a set of reference dates, then assert that the new swisseph-wasm + Rust WASM pipeline produces identical results.
+Generate a golden dataset from the existing TypeScript package for a set of reference dates, then assert that the new vendored swisseph WASM + Rust WASM pipeline produces identical results.
 
 ```
 Reference dates (minimum set):
@@ -716,10 +720,10 @@ Reference dates (minimum set):
 
 ### 9.2 Ephemeris Accuracy Tests
 
-Verify that `swisseph-wasm` produces moon/sun positions consistent with the pre-computed Python pipeline data:
+Verify that our vendored swisseph WASM produces moon/sun positions consistent with the pre-computed Python pipeline data:
 
 ```javascript
-// Compare swisseph-wasm new moon detection with legacy JSON data
+// Compare our swe_calc_ut new moon detection with legacy JSON data
 const legacyNewMoons2025 = [1738154158, 1740703489, ...]; // from output/json/new_moons/2025.json
 const sweNewMoons2025 = await findNewMoonsForYear(swe, 2025);
 
@@ -770,12 +774,12 @@ Use Playwright or similar to:
 - Validate parity between the new swisseph-based calculations and legacy pre-computed data.
 
 ### Phase 2 — Unified package (future)
-- Publish `lunisolar-wasm` + coordinator as an npm package with swisseph-wasm bundled.
+- Publish `lunisolar-wasm` + coordinator as an npm package with our vendored swisseph WASM bundled.
 - Add a `configure({ strategy: 'wasm' })` option to the existing TypeScript package that delegates to the WASM modules.
 
 ### Phase 3 — Deprecate the Python pipeline (future)
-- Once the swisseph-wasm approach is validated, deprecate `data/main.py` and the JSON output pipeline.
-- The Rust WASM + swisseph-wasm becomes the primary implementation.
+- Once the vendored swisseph approach is validated, deprecate `data/main.py` and the JSON output pipeline.
+- The Rust WASM + vendored swisseph becomes the primary implementation.
 - Keep the TS package as a thin wrapper that either uses the WASM backend or falls back to legacy JSON data.
 
 ---
@@ -786,9 +790,8 @@ Use Playwright or similar to:
 |------|--------|------------|
 | COOP/COEP headers not set by hosting provider | Multi-threading fails | Graceful fallback to single-threaded; document header requirements |
 | Rust nightly required for WASM threads | Build reproducibility | Pin exact nightly in `rust-toolchain.toml`; consider stable once `target-feature` stabilizes |
-| Two WASM modules to load | Slightly longer init | Load both in parallel via `Promise.all`; total transfer ~3–4 MB gzipped |
-| swisseph-wasm upstream changes | API breakage | Pin npm version; integration tests catch regressions |
-| GPL-3.0 license of swisseph-wasm | Copyleft for derivative works | Evaluate if commercial license from Astrodienst AG is needed; lunisolar-wasm is a separate work that calls swisseph-wasm via JS API (not a derivative) |
+| Two WASM modules to load | Slightly longer init | swisseph is sync; calendar logic async; total transfer ~2.3 MB (~700 KB gzipped) |
+| Swiss Ephemeris upstream update needed | New SE version not automatically picked up | Scheduled CI workflow (`.github/workflows/check-swisseph-update.yml`) checks `aloistr/swisseph` weekly and opens an issue when a new version is available |
 | Runtime ephemeris calculation is slower than pre-computed lookup | Higher per-call latency | Cache computed new moons/solar terms per year in the coordinator; first call ~20 ms, subsequent calls instant |
 | IANA timezone resolution in JS | Slight API difference vs current TS package | Thin JS coordinator wraps timezone resolution transparently |
 
@@ -796,13 +799,12 @@ Use Playwright or similar to:
 
 ## 13. References
 
-### Swiss Ephemeris / swisseph-wasm
+### Swiss Ephemeris / Our Vendored Build
 
-- [swisseph-wasm — GitHub](https://github.com/prolaxu/swisseph-wasm) — JavaScript wrapper for Swiss Ephemeris WASM
-- [swisseph-wasm — Documentation](https://github.com/prolaxu/swisseph-wasm/blob/main/DOCUMENTATION.md) — Full API reference
-- [swisseph-wasm — Quick Reference](https://github.com/prolaxu/swisseph-wasm/blob/main/QUICK_REFERENCE.md) — Developer cheat sheet
-- [Swiss Ephemeris — Astrodienst](https://www.astro.com/swisseph/) — Original C library and commercial licensing
-- [swisseph-wasm — Live Demo](https://prolaxu.github.io/swisseph-wasm/examples/demo.html) — Interactive browser demo
+- [aloistr/swisseph — Official Swiss Ephemeris (GitHub)](https://github.com/aloistr/swisseph) — C source maintained by Alois Treindl
+- [Swiss Ephemeris — Astrodienst](https://www.astro.com/swisseph/) — Original C library, documentation, and commercial licensing
+- [wasm/swisseph/ — Our vendored WASM build](../wasm/swisseph/) — Rust `cc` crate + wasm-bindgen wrapping SE v2.10.03
+- [`@specs/rust-swisseph-evaluation.md`](./rust-swisseph-evaluation.md) — Crate evaluation, benchmark data, and why wasm-bindgen instead of Emscripten
 
 ### WebAssembly & Rust
 

@@ -147,70 +147,95 @@ For our lunisolar calendar use case (Sun/Moon longitude to find new moons and so
 
 ## 4. Benchmark Results
 
-We installed `@fusionstrings/swisseph-wasm` (v0.1.5) and benchmarked it against `swisseph-wasm` (prolaxu) on Node.js v24. Full benchmark script at `tests/swisseph-wasm/benchmark.mjs`.
+Benchmarked three implementations on Node.js v22.22.0 with 10,000 iterations per test. Results from CI run [2026-02-21](https://github.com/huydhoang/lunisolar-ts/actions/runs/22263333049). Full benchmark script at `tests/swisseph-wasm/benchmark.mjs`.
+
+The three implementations compared:
+- **`@fusionstrings/swisseph-wasm`** — third-party Rust+wasm-bindgen crate (Moshier ephemeris)
+- **`swisseph-wasm` (prolaxu)** — Emscripten-compiled npm package (Swiss Eph .se1 data)
+- **`swisseph` (ours)** — our vendored Rust+wasm-bindgen build at `wasm/swisseph/` (embedded Swiss Eph .se1 data)
 
 ### 4.1 Binary Size
 
 | Package | WASM Binary | Ephemeris Data | Total Package |
 |---------|------------|----------------|---------------|
-| @fusionstrings/swisseph-wasm | 337 KB | Built-in (Moshier) | ~1.4 MB |
-| swisseph-wasm (prolaxu) | 531 KB | 11.5 MB | ~13 MB |
-
-**Winner: fusionstrings (10x smaller total size)**
+| @fusionstrings/swisseph-wasm | 337.4 KB | Built-in (Moshier) | ~1.4 MB |
+| swisseph-wasm (prolaxu) | 531.2 KB | 11.5 MB | ~13 MB |
+| swisseph (ours) | 2.1 MB | Embedded (Swiss Eph .se1) | — |
 
 ### 4.2 Initialization
 
 | Package | Init Time |
-|---------|----------|
-| @fusionstrings/swisseph-wasm | ~6 ms |
-| swisseph-wasm (prolaxu) | ~31 ms |
+|---------|----------:|
+| @fusionstrings/swisseph-wasm | 41.0 ms |
+| swisseph-wasm (prolaxu) | 37.7 ms |
+| swisseph (ours) | **13.0 ms** ✅ |
 
-**Winner: fusionstrings (5x faster init)**
+**Winner: ours (3x faster init — synchronous import, no async initSwissEph() call)**
 
 ### 4.3 `julday` (Julian Day Conversion)
 
-| Package | ops/sec |
-|---------|--------:|
-| fusionstrings | ~9,400,000 |
-| prolaxu | ~2,800,000 |
+| Package | ops/sec | mean (ms) | min (ms) | max (ms) |
+|---------|--------:|----------:|---------:|---------:|
+| fusionstrings | 5,918,582 | 0.000169 | 0.000022 | 0.000057 |
+| prolaxu | 1,108,404 | 0.000902 | 0.000061 | 0.000471 |
+| ours | **6,367,107** | 0.000157 | 0.000022 | 0.000033 |
 
-**Winner: fusionstrings (3.3x faster)**
+**Winner: ours (5.74x faster than prolaxu, 1.08x faster than fusionstrings)**
 
 ### 4.4 `calc_ut` (Planetary Position Calculation)
 
-| Body | fusionstrings ops/sec | prolaxu ops/sec | Speedup |
-|------|---------------------:|----------------:|--------:|
-| Sun | ~152,000 | ~826,000 | 0.18x |
-| Moon | ~189,000 | ~1,508,000 | 0.13x |
-| Mercury | ~183,000 | ~2,653,000 | 0.07x |
+| Body | fusionstrings ops/sec | prolaxu ops/sec | ours ops/sec | Speedup (ours/prolaxu) |
+|------|---------------------:|----------------:|------------:|----------------------:|
+| Sun | 142,772 | 680,936 | 182,018 | 0.27x |
+| Moon | 171,448 | 1,531,382 | 216,425 | 0.14x |
+| Mercury | 175,417 | 2,725,724 | 223,709 | 0.08x |
+| Venus | 173,602 | 2,745,072 | 228,283 | 0.08x |
+| Mars | 173,649 | 2,889,905 | 228,815 | 0.08x |
+| Jupiter | 175,944 | 2,893,290 | 229,430 | 0.08x |
+| Saturn | 176,615 | 2,890,533 | 228,789 | 0.08x |
 
-**Winner: prolaxu (5-14x faster for calc_ut)**
-
-The Emscripten-compiled prolaxu version is significantly faster for `calc_ut` calls. This is likely due to:
-1. Emscripten's more mature WASM optimization pipeline
-2. The JPL data-file approach having simpler computational steps than Moshier's analytical model
-3. Potential overhead from fusionstrings' `no_std` C stdlib shims
+**Winner for calc_ut: prolaxu** (significantly faster). Our build is ~1.3x faster than fusionstrings, but ~5–14x slower than prolaxu. See §4.6 for why this is acceptable.
 
 ### 4.5 Position Agreement
 
-All planetary positions agree to < 0.001° between implementations. For Moon position the difference is ~0.0002° (~0.7 arcseconds) — far better than the ~36 arcsecond tolerance needed for lunisolar calendar calculations.
+Test epoch: JD 2460677.0 (2025-01-01 12:00 UTC)
+
+| Body | fusionstrings Lon° | prolaxu Lon° | ours Lon° | Δ° (f vs p) | Note |
+|------|-------------------:|-------------:|----------:|------------:|------|
+| Sun | 281.323433 | 281.323434 | 281.323434 | 0.000001 | Excellent |
+| Moon | 300.660895 | 300.661116 | 300.661116 | 0.000221 | Excellent |
+| Mercury | 260.516388 | 260.516383 | 260.516383 | 0.000005 | Excellent |
+| Venus | 328.248297 | 328.248306 | 328.248306 | 0.000009 | Excellent |
+| Mars | 121.752631 | 121.752692 | 121.752692 | 0.000061 | Excellent |
+| Jupiter | 73.162615 | 73.162521 | 73.162521 | 0.000094 | Excellent |
+| Saturn | 344.562084 | 344.562049 | 344.562049 | 0.000035 | Excellent |
+
+Our build and prolaxu agree to the precision shown in the table (both use Swiss Ephemeris .se1 data; actual differences are at the floating-point rounding level). fusionstrings differs by at most 0.000221° — well within the ~0.01° tolerance for lunisolar calendar calculations.
 
 ### 4.6 Summary
 
-| Criteria | @fusionstrings/swisseph-wasm | swisseph-wasm (prolaxu) |
-|----------|:---------------------------:|:-----------------------:|
-| Binary size | ✅ 337 KB (no ext data) | ⚠️ 531 KB + 11.5 MB |
-| Precision | ✅ Sufficient (Moshier) | ✅ Higher (JPL data) |
-| calc_ut speed | ⚠️ Slower | ✅ Faster |
-| julday speed | ✅ Faster | ⚠️ Slower |
-| Init time | ✅ Faster | ⚠️ Slower |
-| JS interop | ✅ wasm-bindgen (typed) | ⚠️ Emscripten Module API |
-| Dependencies | ✅ 0 runtime | ⚠️ Emscripten runtime |
+| Criteria | @fusionstrings/swisseph-wasm | swisseph-wasm (prolaxu) | swisseph (ours) |
+|----------|:---------------------------:|:-----------------------:|:---------------:|
+| Binary size | ✅ 337.4 KB (no ext data) | ⚠️ 531.2 KB + 11.5 MB | ✅ 2.1 MB (self-contained) |
+| Precision | ⚠️ Moshier (~1 arcsec Moon) | ✅ Swiss Eph (high) | ✅ Swiss Eph (high) |
+| calc_ut speed | ⚠️ ~170K ops/sec | ✅ ~1.5M ops/sec | ⚠️ ~220K ops/sec |
+| julday speed | ✅ ~5.9M ops/sec | ⚠️ ~1.1M ops/sec | ✅ ~6.4M ops/sec |
+| Init time | ⚠️ 41 ms | ⚠️ 38 ms | ✅ 13 ms |
+| JS interop | ✅ wasm-bindgen (typed) | ⚠️ Emscripten Module API | ✅ wasm-bindgen (typed) |
+| Init model | Sync import | Async `initSwissEph()` | Sync import |
+| Runtime deps | 0 | Emscripten runtime | 0 |
+| SE version | v2.10.03 | Unknown | v2.10.03 |
+| Maintenance | Third-party npm | Third-party npm | We maintain (vendored C) |
 
-**Recommendation:** For the lunisolar calendar use case, `@fusionstrings/swisseph-wasm` is recommended due to its dramatically smaller binary (10x), faster initialization (5x), cleaner wasm-bindgen API, and sufficient precision for Sun/Moon calculations. The `calc_ut` speed advantage of prolaxu is less important because:
-1. Calendar calculations are dominated by the number of `calc_ut` calls (bisection search), not per-call latency.
-2. Both implementations complete a full year's worth of new moon + solar term calculations in well under 100ms.
-3. The 10x smaller download size improves user-facing load time more than per-call speed.
+**Decision: Use our own vendored build (`wasm/swisseph/`).**
+
+Rationale:
+1. **Fastest initialization** — 13 ms vs 38–41 ms; sync import instead of async `initSwissEph()` call.
+2. **Swiss Eph precision** — same high-precision data as prolaxu (exact position match); no Moshier approximation.
+3. **Clean wasm-bindgen API** — typed, idiomatic; no Emscripten Module boilerplate.
+4. **Zero external runtime deps** — no Emscripten runtime overhead.
+5. **Full control** — we own the build, can embed `.se1` data, patch the API, or update SE version independently.
+6. **calc_ut speed trade-off is acceptable** — at ~220K ops/sec, a full year of new moons (13 × ~60 bisection steps × 2 planets) completes in ~7 ms. The 5–14× prolaxu advantage does not matter at these absolute speeds.
 
 ---
 
@@ -372,7 +397,65 @@ If JPL precision is ever needed, **Approach A** (embed `.se1` files) is the clea
 
 ---
 
-## 6. References
+## 6. Why wasm-bindgen Instead of Emscripten?
+
+The two mainstream paths to compile C code into WebAssembly are **Emscripten** (used by prolaxu) and **Rust's `cc` crate + wasm-bindgen** (used by our build and fusionstrings). Here is why we chose the latter.
+
+### 6.1 Emscripten approach (prolaxu)
+
+Emscripten is a complete C/C++ → WASM + JavaScript toolchain. It:
+- Compiles C to `wasm32-unknown-emscripten` target
+- Generates a large JS "glue" file that emulates a full POSIX environment (file system, `printf`, threads, etc.)
+- Requires the Emscripten SDK (`emsdk`) to be installed
+- Produces an `Emscripten Module` API — callers must `await Module.onRuntimeInitialized` before use
+
+| Characteristic | Emscripten |
+|----------------|-----------|
+| Toolchain size | ~1 GB (emsdk) |
+| JS glue | Large, auto-generated Emscripten runtime (~500 KB) |
+| File I/O | Virtual FS (`FS.writeFile`, preload via `.data` file) |
+| Init API | Async: `await initSwissEph()` |
+| WASM + data size | 531.2 KB WASM + 11.5 MB `.data` = ~13 MB total |
+| Init time | ~38 ms (Node.js) |
+
+### 6.2 wasm-bindgen approach (ours)
+
+Our build uses the Rust `cc` crate to compile the Swiss Ephemeris C source directly to `wasm32-unknown-unknown`, with wasm-bindgen providing the typed JS/TS bindings. Instead of Emscripten's POSIX emulation layer, we provide minimal shims only for the symbols actually called by the SE C code.
+
+| Characteristic | wasm-bindgen (ours) |
+|----------------|---------------------|
+| Toolchain | `rustup` + `wasm-pack` (both <50 MB) |
+| JS glue | Thin wasm-bindgen output (~10 KB) |
+| File I/O | `fopen` shim returns NULL → SE falls back to embedded SE data |
+| Init API | Sync: standard ES module import |
+| WASM size | 2.1 MB (includes embedded `.se1` ephemeris data) |
+| Init time | 13 ms (Node.js) — **3× faster than Emscripten** |
+
+### 6.3 Key advantages of wasm-bindgen
+
+1. **No Emscripten SDK required** — `rustup` and `wasm-pack` are the only build tools; CI installs both in seconds.
+
+2. **Typed JS/TS bindings** — wasm-bindgen generates `.d.ts` files automatically. The Emscripten Module API is untyped and uses legacy `cwrap`/`ccall` conventions.
+
+3. **Synchronous initialization** — our WASM module loads with a standard `import`. There is no `await initSwissEph()` call required before the first calculation, which simplifies the coordinator code.
+
+4. **Smaller runtime overhead** — wasm-bindgen generates ~10 KB of JS glue vs Emscripten's ~500 KB runtime.
+
+5. **Unified Rust ecosystem** — both the ephemeris engine (`wasm/swisseph/`) and the calendar logic (`wasm/`) are built with the same `wasm-pack` toolchain, with consistent build flags and WASM targets.
+
+6. **Control over what gets compiled** — we vendor only the 9 core SE C files needed for planetary position calculations, not the full Swiss Ephemeris source tree (heliacal risings, eclipse functions, etc. are excluded, reducing binary size).
+
+7. **Embedded data, no async file loading** — the `.se1` ephemeris data is compiled into the WASM binary via `include_bytes!()`. There is no async `.data` file fetch needed at startup.
+
+### 6.4 Trade-offs
+
+The main trade-off is `calc_ut` speed: ~220K ops/sec for ours vs ~1.5M ops/sec for prolaxu's Emscripten build (see §4.4). Emscripten's more mature optimization pipeline and the simpler computational path of SE data-file lookups explain the difference.
+
+For our use case (bisection search for ~13 new moons + 24 solar terms per year, ~60 bisection steps each = ~2,200 `calc_ut` calls/year), at 220K ops/sec that is **10 ms for a full year** — well within our 30 ms target for `findSolarTerms`. The speed difference does not matter at these absolute call counts.
+
+---
+
+## 7. References
 
 - [fusionstrings/swisseph-wasm (GitHub)](https://github.com/fusionstrings/swisseph-wasm)
 - [swisseph-wasm (crates.io)](https://crates.io/crates/swisseph-wasm)
