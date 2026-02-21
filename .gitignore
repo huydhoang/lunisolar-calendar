@@ -214,3 +214,11 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# JavaScript / Bun (tests/swisseph-wasm runtime artifacts)
+node_modules/
+bun.lock
+tests/swisseph-wasm/package.json
+tests/swisseph-wasm/DOCUMENTATION.md
+tests/swisseph-wasm/USAGE_GUIDE.md
+tests/swisseph-wasm/report.md

@@ -1,0 +1,84 @@
+name: Test swisseph-wasm Accuracy
+
+# Trigger on push (only when workflow or test files change) and on manual dispatch.
+on:
+  push:
+    paths:
+      - '.github/workflows/test-swisseph-wasm.yml'
+      - 'tests/swisseph-wasm/**'
+  workflow_dispatch:
+
+jobs:
+  test-accuracy:
+    name: Accuracy comparison against JPL Horizons
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      # ── 1. Source code ────────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── 2. Runtime ────────────────────────────────────────────────────────
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      # ── 3. Fetch package documentation ───────────────────────────────────
+      - name: Fetch swisseph-wasm documentation
+        run: |
+          curl -fsSL \
+            https://raw.githubusercontent.com/prolaxu/swisseph-wasm/refs/heads/main/DOCUMENTATION.md \
+            -o tests/swisseph-wasm/DOCUMENTATION.md
+          echo "=== DOCUMENTATION.md (first 30 lines) ==="
+          head -30 tests/swisseph-wasm/DOCUMENTATION.md
+
+          curl -fsSL \
+            https://raw.githubusercontent.com/prolaxu/swisseph-wasm/refs/heads/main/USAGE_GUIDE.md \
+            -o tests/swisseph-wasm/USAGE_GUIDE.md
+          echo "=== USAGE_GUIDE.md (first 30 lines) ==="
+          head -30 tests/swisseph-wasm/USAGE_GUIDE.md
+
+      # ── 4. Install swisseph-wasm (includes the WASM binary) ───────────────
+      - name: Install swisseph-wasm with Bun
+        working-directory: tests/swisseph-wasm
+        run: |
+          # Initialise a minimal ESM package manifest so Bun can manage deps
+          echo '{"type":"module","name":"swisseph-wasm-accuracy-test"}' > package.json
+          bun add swisseph-wasm
+
+      # ── 5. Verify the required WASM file was downloaded ───────────────────
+      - name: Verify WASM file
+        working-directory: tests/swisseph-wasm
+        run: |
+          WASM="node_modules/swisseph-wasm/wsam/swisseph.wasm"
+          if [ -f "$WASM" ]; then
+            echo "✅ WASM file present: $WASM"
+            ls -lh "$WASM"
+          else
+            echo "❌ WASM file not found at expected path: $WASM"
+            echo "--- Contents of node_modules/swisseph-wasm/ ---"
+            ls -la node_modules/swisseph-wasm/ || true
+            exit 1
+          fi
+
+      # ── 6. Run accuracy tests ─────────────────────────────────────────────
+      - name: Run accuracy tests
+        working-directory: tests/swisseph-wasm
+        run: bun accuracy-test.mjs
+
+      # ── 7. Write results to the workflow step summary ─────────────────────
+      - name: Write step summary
+        if: always()
+        run: cat tests/swisseph-wasm/report.md >> "$GITHUB_STEP_SUMMARY"
+
+      # ── 8. Upload the report as a workflow artifact ───────────────────────
+      - name: Upload accuracy report artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: swisseph-wasm-accuracy-report
+          path: tests/swisseph-wasm/report.md
+          retention-days: 30
