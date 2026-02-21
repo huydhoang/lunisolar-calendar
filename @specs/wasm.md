@@ -68,7 +68,7 @@ All calculations are deterministic, CPU-bound, and operate on integer/date arith
 | Data embedding | Import JSON as static arrays in AS source |
 | Threading | No built-in threading story; manual Web Worker sharding needed |
 | Pros | Familiar syntax for TS developers; fast ramp-up |
-| Cons | Weaker optimiser vs Rust; no rayon-like parallelism; smaller ecosystem |
+| Cons | Weaker optimizer vs Rust; no rayon-like parallelism; smaller ecosystem |
 
 ### Recommendation
 
@@ -315,8 +315,9 @@ rustup target add wasm32-unknown-unknown --toolchain nightly
 # wasm-pack
 cargo install wasm-pack
 
-# wasm-opt (optional, for size optimisation)
-cargo install wasm-opt     # or install binaryen
+# wasm-opt (optional, for size optimization — install Binaryen)
+# See https://github.com/WebAssembly/binaryen/releases
+# e.g. apt install binaryen, brew install binaryen, or download from GitHub
 ```
 
 ### 6.2 Build Commands
@@ -388,7 +389,7 @@ default = []
 parallel = ["rayon", "wasm-bindgen-rayon"]
 
 [profile.release]
-opt-level = "z"      # optimise for size
+opt-level = "z"      # optimize for size
 lto = true
 codegen-units = 1
 strip = "symbols"
@@ -406,14 +407,21 @@ The current TypeScript package uses the browser's `Intl.DateTimeFormat` API for 
 2. **For arbitrary timezones:** Accept a `tz_offset_minutes` parameter from JavaScript. The JS caller resolves the IANA timezone to a UTC offset before calling WASM functions. This keeps the WASM module dependency-free and still supports any timezone.
 
 ```javascript
-// JS side: resolve timezone offset
+// JS side: resolve timezone offset for a given instant
 function getOffsetMinutes(date, iana) {
-  const utc = Date.UTC(date.getFullYear(), date.getMonth(), date.getDate());
-  const local = new Date(new Intl.DateTimeFormat('en-US', {
-    timeZone: iana, year: 'numeric', month: 'numeric', day: 'numeric',
+  // Format the same instant in UTC and in the target timezone,
+  // then compare the wall-clock components to derive the offset.
+  const fmt = (tz) => new Intl.DateTimeFormat('en-US', {
+    timeZone: tz, year: 'numeric', month: 'numeric', day: 'numeric',
     hour: 'numeric', minute: 'numeric', second: 'numeric', hour12: false
-  }).format(date));
-  return (local.getTime() - utc) / 60000;
+  });
+  const toParts = (tz) => {
+    const p = Object.fromEntries(
+      fmt(tz).formatToParts(date).map(({ type, value }) => [type, Number(value)])
+    );
+    return Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second);
+  };
+  return (toParts(iana) - toParts('UTC')) / 60000;
 }
 ```
 
