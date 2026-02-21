@@ -172,6 +172,7 @@ async function findNewMoon(swe, jdStart) {
   let jd = jdStart;
 
   // Coarse search: step by 1 day until Sun–Moon angle crosses 0°
+  // 35 iterations covers more than one synodic month (~29.53 days)
   let prevDiff = sunMoonDiff(swe, jd);
   for (let i = 0; i < 35; i++) {
     jd += 1.0;
@@ -194,7 +195,7 @@ function sunMoonDiff(swe, jd) {
 }
 
 function bisectNewMoon(swe, jdLo, jdHi) {
-  // Binary search to ~1 second precision
+  // 30 bisection iterations on a ~1 day interval → precision of ~0.08 seconds
   for (let i = 0; i < 30; i++) {
     const jdMid = (jdLo + jdHi) / 2;
     const diff = sunMoonDiff(swe, jdMid);
@@ -230,8 +231,9 @@ async function findSolarTerms(swe, year) {
 function bisectSolarLongitude(swe, jdStart, targetDeg) {
   // Find when sun longitude crosses targetDeg
   let jdLo = jdStart;
-  let jdHi = jdStart + 40; // max ~40 days between terms
+  let jdHi = jdStart + 40; // max ~40 days between successive solar terms
 
+  // 50 bisection iterations on a ~40 day interval → sub-millisecond precision
   for (let i = 0; i < 50; i++) {
     const jdMid = (jdLo + jdHi) / 2;
     const sunPos = swe.calc_ut(jdMid, swe.SE_SUN, swe.SEFLG_SWIEPH);
@@ -360,7 +362,7 @@ let swe: SwissEph | null = null;
 export async function initLunisolar(): Promise<void> {
   // Initialize both WASM modules in parallel
   swe = new SwissEph();
-  const [_, __] = await Promise.all([
+  await Promise.all([
     swe.initSwissEph(),
     init(),
   ]);
