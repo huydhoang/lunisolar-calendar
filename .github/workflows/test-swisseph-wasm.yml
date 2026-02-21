@@ -64,17 +64,44 @@ jobs:
             exit 1
           fi
 
-      # ── 6. Run accuracy tests ─────────────────────────────────────────────
+      # ── 6. Fetch Skyfield documentation ──────────────────────────────────
+      - name: Fetch Skyfield documentation
+        run: |
+          curl -fsSL \
+            https://raw.githubusercontent.com/skyfielders/python-skyfield/master/README.rst \
+            -o tests/swisseph-wasm/SKYFIELD_README.rst
+          echo "=== SKYFIELD_README.rst (first 30 lines) ==="
+          head -30 tests/swisseph-wasm/SKYFIELD_README.rst
+
+      # ── 7. Install Skyfield ───────────────────────────────────────────────
+      - name: Install Skyfield
+        run: pip install skyfield
+
+      # ── 8. Download DE440s ephemeris from NASA ────────────────────────────
+      - name: Download DE440s ephemeris
+        working-directory: tests/swisseph-wasm
+        run: |
+          curl -fsSL \
+            https://ssd.jpl.nasa.gov/ftp/eph/planets/bsp/de440s.bsp \
+            -o de440s.bsp
+          echo "DE440s file size: $(du -sh de440s.bsp)"
+
+      # ── 9. Calculate Skyfield reference positions ─────────────────────────
+      - name: Run Skyfield reference calculations
+        working-directory: tests/swisseph-wasm
+        run: python3 skyfield-positions.py
+
+      # ── 10. Run accuracy tests ────────────────────────────────────────────
       - name: Run accuracy tests
         working-directory: tests/swisseph-wasm
         run: bun accuracy-test.mjs
 
-      # ── 7. Write results to the workflow step summary ─────────────────────
+      # ── 11. Write results to the workflow step summary ────────────────────
       - name: Write step summary
         if: always()
         run: cat tests/swisseph-wasm/report.md >> "$GITHUB_STEP_SUMMARY"
 
-      # ── 8. Upload the report as a workflow artifact ───────────────────────
+      # ── 12. Upload the report as a workflow artifact ──────────────────────
       - name: Upload accuracy report artifact
         if: always()
         uses: actions/upload-artifact@v4

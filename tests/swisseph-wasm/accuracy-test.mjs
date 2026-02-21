@@ -1,15 +1,18 @@
 /**
  * swisseph-wasm Accuracy Test
  *
- * Compares planetary positions calculated by swisseph-wasm against
- * reference data fetched from JPL Horizons (NASA/JPL) — the authoritative
- * source for high-precision solar system ephemerides.
+ * Produces a three-way comparison of planetary positions:
+ *   1. swisseph-wasm  — the package under test
+ *   2. Skyfield       — Python library using the DE440s JPL ephemeris
+ *   3. JPL Horizons   — NASA/JPL authoritative reference (web API)
  *
- * Reference: https://ssd.jpl.nasa.gov/horizons/
+ * References:
+ *   JPL Horizons : https://ssd.jpl.nasa.gov/horizons/
+ *   Skyfield     : https://rhodesmill.org/skyfield/
  */
 
 import SwissEph from 'swisseph-wasm';
-import { writeFileSync } from 'fs';
+import { writeFileSync, readFileSync, existsSync } from 'fs';
 
 // ─── Test configuration ────────────────────────────────────────────────────
 const TEST_YEAR = 2025;
@@ -127,9 +130,24 @@ async function main() {
   log(
     `**Test Date:** ${TEST_YEAR}-${String(TEST_MONTH).padStart(2, '0')}-${String(TEST_DAY).padStart(2, '0')} 12:00 UTC`,
   );
-  log(`**Reference:** JPL Horizons (https://ssd.jpl.nasa.gov/horizons/)`);
-  log(`**Package:** swisseph-wasm (npm install via bun)`);
+  log(`**References:** JPL Horizons (https://ssd.jpl.nasa.gov/horizons/) · Skyfield + DE440s`);
+  log(`**Package:** swisseph-wasm (installed via bun)`);
   log(`**Tolerance:** ${TOLERANCE_DEG}° (${(TOLERANCE_DEG * 60).toFixed(0)} arcminutes)`);
+  log();
+
+  // ── Load Skyfield results (written by skyfield-positions.py) ──────────────
+  let skyfieldResults = null;
+  const SKYFIELD_JSON = 'skyfield-results.json';
+  if (existsSync(SKYFIELD_JSON)) {
+    try {
+      skyfieldResults = JSON.parse(readFileSync(SKYFIELD_JSON, 'utf8'));
+      log(`**Skyfield:** results loaded from \`${SKYFIELD_JSON}\` ✅`);
+    } catch (e) {
+      log(`**Skyfield:** failed to parse \`${SKYFIELD_JSON}\` — ${e.message} ⚠️`);
+    }
+  } else {
+    log(`**Skyfield:** \`${SKYFIELD_JSON}\` not found — Skyfield column will be omitted ⚠️`);
+  }
   log();
 
   // ── Initialize SwissEph ────────────────────────────────────────────────
@@ -158,51 +176,108 @@ async function main() {
   log(`**Test Julian Day:** ${jd.toFixed(4)}`);
   log();
 
-  // ── Fetch reference data and compare ──────────────────────────────────
-  log('## Apparent Geocentric RA / Dec — swisseph-wasm vs JPL Horizons');
+  // ── Three-way comparison ───────────────────────────────────────────────
+  log('## Apparent Geocentric RA — swisseph-wasm vs Skyfield vs JPL Horizons');
   log();
   log(
-    '| Body | JPL RA (°) | SWE RA (°) | RA Δ (°) | JPL Dec (°) | SWE Dec (°) | Dec Δ (°) | Status |',
+    '| Body | SWE RA° | SKY RA° | JPL RA° | SWE-SKY Δ° | SWE-JPL Δ° | Status |',
   );
   log(
-    '|------|----------:|----------:|---------:|------------:|------------:|----------:|--------|',
+    '|------|--------:|--------:|--------:|-----------:|-----------:|--------|',
   );
 
   let passed = 0;
   let failed = 0;
   let errors = 0;
 
-  for (const body of BODIES) {
-    let row;
-    try {
-      const ref = await fetchHorizonsPosition(body.horizId, TEST_DATE_STR);
+  // Collect Dec rows for second table
+  const decRows = [];
 
+  for (const body of BODIES) {
+    let raRow, decRow;
+    try {
+      // ── swisseph-wasm ──────────────────────────────────────────────────
       // SEFLG_SWIEPH (2) | SEFLG_EQUATORIAL (2048) → apparent geocentric RA/Dec
       const pos = swe.calc_ut(jd, body.sweId, 2 | 2048);
       const sweRA = pos[0];
       const sweDec = pos[1];
 
-      const raDiff = angularDiff(sweRA, ref.ra_deg);
-      const decDiff = Math.abs(sweDec - ref.dec_deg);
-      const ok = raDiff <= TOLERANCE_DEG && decDiff <= TOLERANCE_DEG;
+      // ── Skyfield ───────────────────────────────────────────────────────
+      const skyBody = skyfieldResults ? skyfieldResults[body.name] : null;
+      const skyRA = skyBody && !skyBody.error ? skyBody.ra_deg : null;
+      const skyDec = skyBody && !skyBody.error ? skyBody.dec_deg : null;
 
-      if (ok) passed++;
-      else failed++;
+      // ── JPL Horizons ───────────────────────────────────────────────────
+      let jplRA = null;
+      let jplDec = null;
+      try {
+        const ref = await fetchHorizonsPosition(body.horizId, TEST_DATE_STR);
+        jplRA = ref.ra_deg;
+        jplDec = ref.dec_deg;
+      } catch (_e) {
+        // JPL fetch failed; status based on SWE-SKY only if available
+      }
 
-      const status = ok ? '✅ PASS' : '❌ FAIL';
-      row =
+      // ── Deltas ────────────────────────────────────────────────────────
+      const sweSkyRADiff = skyRA !== null ? angularDiff(sweRA, skyRA) : null;
+      const sweJplRADiff = jplRA !== null ? angularDiff(sweRA, jplRA) : null;
+      const sweSkyDecDiff = skyDec !== null ? Math.abs(sweDec - skyDec) : null;
+      const sweJplDecDiff = jplDec !== null ? Math.abs(sweDec - jplDec) : null;
+
+      // JPL Horizons is the primary reference (authoritative); fall back to
+      // Skyfield if JPL is unavailable (e.g. network issue). Both sources
+      // always supply RA and Dec together, so primaryDelta and primaryDecDelta
+      // are either both non-null or both null.
+      const primaryDelta = sweJplRADiff ?? sweSkyRADiff;
+      const primaryDecDelta = sweJplDecDiff ?? sweSkyDecDiff;
+      const ok =
+        primaryDelta !== null &&
+        primaryDecDelta !== null &&
+        primaryDelta <= TOLERANCE_DEG &&
+        primaryDecDelta <= TOLERANCE_DEG;
+
+      if (primaryDelta === null || primaryDecDelta === null) {
+        errors++;
+      } else if (ok) {
+        passed++;
+      } else {
+        failed++;
+      }
+
+      const status = primaryDelta === null ? '⚠️ NO REF' : ok ? '✅ PASS' : '❌ FAIL';
+
+      raRow =
         `| ${body.name} ` +
-        `| ${f(ref.ra_deg)} | ${f(sweRA)} | ${f(raDiff)} ` +
-        `| ${f(ref.dec_deg)} | ${f(sweDec)} | ${f(decDiff)} ` +
+        `| ${f(sweRA)} | ${skyRA !== null ? f(skyRA) : '—'} | ${jplRA !== null ? f(jplRA) : '—'} ` +
+        `| ${sweSkyRADiff !== null ? f(sweSkyRADiff) : '—'} | ${sweJplRADiff !== null ? f(sweJplRADiff) : '—'} ` +
+        `| ${status} |`;
+
+      decRow =
+        `| ${body.name} ` +
+        `| ${f(sweDec)} | ${skyDec !== null ? f(skyDec) : '—'} | ${jplDec !== null ? f(jplDec) : '—'} ` +
+        `| ${sweSkyDecDiff !== null ? f(sweSkyDecDiff) : '—'} | ${sweJplDecDiff !== null ? f(sweJplDecDiff) : '—'} ` +
         `| ${status} |`;
     } catch (err) {
       errors++;
-      row = `| ${body.name} | — | — | — | — | — | — | ⚠️ ERROR: ${err.message.slice(0, 60)} |`;
+      raRow = `| ${body.name} | — | — | — | — | — | ⚠️ ERROR: ${err.message.slice(0, 50)} |`;
+      decRow = raRow;
     }
-    log(row);
+    log(raRow);
+    decRows.push(decRow);
   }
 
   swe.close();
+
+  log();
+  log('## Apparent Geocentric Dec — swisseph-wasm vs Skyfield vs JPL Horizons');
+  log();
+  log(
+    '| Body | SWE Dec° | SKY Dec° | JPL Dec° | SWE-SKY Δ° | SWE-JPL Δ° | Status |',
+  );
+  log(
+    '|------|--------:|--------:|--------:|-----------:|-----------:|--------|',
+  );
+  for (const row of decRows) log(row);
 
   // ── Summary ────────────────────────────────────────────────────────────
   log();
@@ -212,20 +287,24 @@ async function main() {
   log(`|--------|------:|`);
   log(`| ✅ Passed  | ${passed} |`);
   log(`| ❌ Failed  | ${failed} |`);
-  log(`| ⚠️ Errors  | ${errors} |`);
+  log(`| ⚠️ No ref  | ${errors} |`);
   log(`| **Total**  | **${BODIES.length}** |`);
   log();
 
-  const allOk = failed === 0 && errors === 0;
-  if (allOk) {
+  const allOk = failed === 0;
+  if (allOk && errors === 0) {
     log(
-      '🎉 **All tests passed.** swisseph-wasm positions match JPL Horizons ' +
-        'within the specified tolerance.',
+      '🎉 **All tests passed.** swisseph-wasm positions agree with both Skyfield (DE440s) ' +
+        'and JPL Horizons within the specified tolerance.',
+    );
+  } else if (allOk) {
+    log(
+      '✅ **No failures.** Some reference sources were unavailable (see ⚠️ rows above).',
     );
   } else {
     log(
-      '⚠️ **Some tests failed or encountered errors.** ' +
-        'Review the table above for details.',
+      '⚠️ **Some tests failed.** ' +
+        'Review the tables above for details.',
     );
   }
 

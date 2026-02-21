@@ -222,4 +222,7 @@ tests/swisseph-wasm/package.json
 tests/swisseph-wasm/package-lock.json
 tests/swisseph-wasm/DOCUMENTATION.md
 tests/swisseph-wasm/USAGE_GUIDE.md
+tests/swisseph-wasm/SKYFIELD_README.rst
+tests/swisseph-wasm/de440s.bsp
+tests/swisseph-wasm/skyfield-results.json
 tests/swisseph-wasm/report.md
