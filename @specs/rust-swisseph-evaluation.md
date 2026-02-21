@@ -218,7 +218,7 @@ All planetary positions agree to < 0.001° between implementations. For Moon pos
 
 ### 5.1 Why `libswe-sys` is not viable for WASM
 
-We attempted to wrap `libswe-sys` (stephaneworkspace) as a crate dependency and build to WASM. The attempt is preserved in `wasm/libswe-bench/` as a reference. Key issues:
+We attempted to wrap `libswe-sys` (stephaneworkspace) as a crate dependency and build to WASM. Key issues:
 
 | Problem | Detail |
 |---------|--------|
@@ -230,11 +230,11 @@ We attempted to wrap `libswe-sys` (stephaneworkspace) as a crate dependency and 
 | **Heavy dependencies** | `serde`, `serde_json`, `strum`, `num-derive` — adds bloat, no value for WASM |
 | **Dead code elimination** | Even with `#[link(name = "swe")]`, the WASM linker treats C code as unreachable |
 
-These are fundamental design issues, not configuration problems. Fixing them would require forking `libswe-sys` and rewriting its build system — at which point you'd just be recreating what fusionstrings already did.
+These are fundamental design issues, not configuration problems. Instead, we implemented the vendored-source approach (§5.2) in `wasm/swisseph/`.
 
-### 5.2 The proven architecture (fusionstrings approach)
+### 5.2 The proven architecture (implemented in `wasm/swisseph/`)
 
-The `fusionstrings/swisseph-wasm` crate is the cleanest Rust-to-WASM architecture for Swiss Ephemeris. Here's how it works:
+Following the `fusionstrings/swisseph-wasm` architecture, we implemented our own vendored WASM package at `wasm/swisseph/`. Here's how it works:
 
 ```
 swisseph-wasm/
@@ -285,29 +285,25 @@ The official Swiss Ephemeris source is maintained at **[aloistr/swisseph](https:
 **Recommended approach: Vendored copy + CI version check.**
 
 1. Vendor the C source from `aloistr/swisseph` at a specific tag (currently `v2.10.03`).
-2. Add a scheduled CI workflow that:
+2. A scheduled CI workflow (`.github/workflows/check-swisseph-update.yml`) runs weekly and:
    - Fetches the latest tag from `aloistr/swisseph`
-   - Compares with the vendored version
-   - Opens an issue if a newer version is available
+   - Compares with the vendored version in `wasm/swisseph/vendor/swisseph/sweph.h`
+   - Opens a GitHub issue if a newer version is available
 3. Only the 9 core C files + headers need to be vendored (not tests, docs, etc.).
 
-### 5.4 Recommendation for lunisolar-ts
+### 5.4 Implementation status
 
-**Don't build our own WASM package. Use `@fusionstrings/swisseph-wasm` from npm.**
+Our vendored build is at `wasm/swisseph/`. It compiles the official Swiss Ephemeris C source (v2.10.03 from [aloistr/swisseph](https://github.com/aloistr/swisseph)) to WASM via the `cc` crate, with Rust shims for C stdlib and wasm-bindgen exports.
 
-Rationale:
-
-| Factor | Build our own | Use fusionstrings |
-|--------|:------------:|:-----------------:|
-| WASM binary | ~338 KB (same) | ~338 KB |
-| SE version | v2.10.03 (same) | v2.10.03 |
-| Maintenance | We maintain shims, vendor, build.rs | fusionstrings maintains |
-| API surface | Custom (minimal) | 11 functions (superset of our needs) |
-| Updates | Manual | Track npm/crates.io releases |
-| Risk | C stub bugs, WASM linker issues | Dependency on third party |
-| Time to production | Days | Already done |
-
-If we later need custom behavior (e.g., stripped-down binary with only `calc_ut` + `julday`, or integration with our own Rust calendar logic), we can fork the fusionstrings approach. But for benchmarking and initial implementation, the npm package is the right choice.
+| Metric | Value |
+|--------|-------|
+| WASM binary size | ~342 KB |
+| SE version | v2.10.03 |
+| Ephemeris mode | Moshier (built-in, no external files) |
+| Position agreement | < 0.001° vs fusionstrings and prolaxu |
+| API surface | `swe_calc_ut`, `swe_julday`, `swe_revjul`, `swe_get_planet_name` |
+| Build command | `wasm-pack build --target nodejs --release` |
+| Update mechanism | Scheduled CI workflow checks `aloistr/swisseph` weekly |
 
 ---
 

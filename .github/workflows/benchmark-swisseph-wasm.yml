@@ -6,7 +6,7 @@ on:
     paths:
       - '.github/workflows/benchmark-swisseph-wasm.yml'
       - 'tests/swisseph-wasm/benchmark.mjs'
-      - 'wasm/libswe-bench/**'
+      - 'wasm/swisseph/**'
   workflow_dispatch:
 
 jobs:
@@ -43,12 +43,10 @@ jobs:
           echo '{"type":"module","name":"swisseph-wasm-benchmark"}' > package.json
           npm install swisseph-wasm @fusionstrings/swisseph-wasm
 
-      # ── 4. Build libswe-bench (Rust + libswe-sys → WASM) ──────────────────
-      - name: Build libswe-bench WASM package
-        working-directory: wasm/libswe-bench
-        run: |
-          CFLAGS_wasm32_unknown_unknown="-I$(pwd)/wasm-includes -DTLSOFF" \
-            wasm-pack build --target nodejs --release 2>&1 || echo "⚠️  libswe-bench build failed (see §5.1 of evaluation)"
+      # ── 4. Build our vendored swisseph WASM package ────────────────────────
+      - name: Build swisseph WASM (vendored C source)
+        working-directory: wasm/swisseph
+        run: wasm-pack build --target nodejs --release
 
       # ── 5. Verify WASM files ───────────────────────────────────────────────
       - name: Verify WASM files
@@ -76,13 +74,14 @@ jobs:
           fi
 
           echo ""
-          echo "=== libswe-bench (Rust + libswe-sys) ==="
-          LIBSWE_WASM="../../wasm/libswe-bench/pkg/libswe_bench_bg.wasm"
-          if [ -f "$LIBSWE_WASM" ]; then
-            echo "✅ WASM file present: $LIBSWE_WASM"
-            ls -lh "$LIBSWE_WASM"
+          echo "=== swisseph (ours — vendored build) ==="
+          OURS_WASM="../../wasm/swisseph/pkg/swisseph_wasm_bg.wasm"
+          if [ -f "$OURS_WASM" ]; then
+            echo "✅ WASM file present: $OURS_WASM"
+            ls -lh "$OURS_WASM"
           else
-            echo "⚠️  libswe-bench WASM not available (build failed — see evaluation §5.1)"
+            echo "❌ WASM file not found: $OURS_WASM"
+            exit 1
           fi
 
       # ── 6. Run benchmark ───────────────────────────────────────────────────
