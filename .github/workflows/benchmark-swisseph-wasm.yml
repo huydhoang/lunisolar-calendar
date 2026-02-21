@@ -6,11 +6,12 @@ on:
     paths:
       - '.github/workflows/benchmark-swisseph-wasm.yml'
       - 'tests/swisseph-wasm/benchmark.mjs'
+      - 'wasm/libswe-bench/**'
   workflow_dispatch:
 
 jobs:
   benchmark:
-    name: Rust (fusionstrings) vs Emscripten (prolaxu)
+    name: Rust vs Emscripten swisseph-wasm
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -20,20 +21,35 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # ── 2. Runtime ────────────────────────────────────────────────────────
+      # ── 2. Runtimes ───────────────────────────────────────────────────────
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '22'
 
-      # ── 3. Install both swisseph-wasm packages ───────────────────────────
-      - name: Install dependencies
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install wasm-pack
+        run: cargo install wasm-pack
+
+      # ── 3. Install npm swisseph-wasm packages ─────────────────────────────
+      - name: Install npm dependencies
         working-directory: tests/swisseph-wasm
         run: |
           echo '{"type":"module","name":"swisseph-wasm-benchmark"}' > package.json
           npm install swisseph-wasm @fusionstrings/swisseph-wasm
 
-      # ── 4. Verify WASM files ─────────────────────────────────────────────
+      # ── 4. Build libswe-bench (Rust + libswe-sys → WASM) ──────────────────
+      - name: Build libswe-bench WASM package
+        working-directory: wasm/libswe-bench
+        run: |
+          CFLAGS_wasm32_unknown_unknown="-I$(pwd)/wasm-includes -DTLSOFF" \
+            wasm-pack build --target nodejs --release 2>&1 || echo "⚠️  libswe-bench build failed (see §5.1 of evaluation)"
+
+      # ── 5. Verify WASM files ───────────────────────────────────────────────
       - name: Verify WASM files
         working-directory: tests/swisseph-wasm
         run: |
@@ -58,12 +74,22 @@ jobs:
             exit 1
           fi
 
-      # ── 5. Run benchmark ─────────────────────────────────────────────────
+          echo ""
+          echo "=== libswe-bench (Rust + libswe-sys) ==="
+          LIBSWE_WASM="../../wasm/libswe-bench/pkg/libswe_bench_bg.wasm"
+          if [ -f "$LIBSWE_WASM" ]; then
+            echo "✅ WASM file present: $LIBSWE_WASM"
+            ls -lh "$LIBSWE_WASM"
+          else
+            echo "⚠️  libswe-bench WASM not available (build failed — see evaluation §5.1)"
+          fi
+
+      # ── 6. Run benchmark ───────────────────────────────────────────────────
       - name: Run benchmark
         working-directory: tests/swisseph-wasm
         run: node benchmark.mjs
 
-      # ── 6. Write results to workflow step summary ─────────────────────────
+      # ── 7. Write results to workflow step summary ──────────────────────────
       - name: Write step summary
         if: always()
         run: |
@@ -71,7 +97,7 @@ jobs:
             cat tests/swisseph-wasm/benchmark-report.md >> "$GITHUB_STEP_SUMMARY"
           fi
 
-      # ── 7. Upload report as artifact ──────────────────────────────────────
+      # ── 8. Upload report as artifact ───────────────────────────────────────
       - name: Upload benchmark report artifact
         if: always()
         uses: actions/upload-artifact@v4

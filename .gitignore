@@ -224,3 +224,8 @@ tests/swisseph-wasm/de440s.bsp
 tests/swisseph-wasm/skyfield-results.json
 tests/swisseph-wasm/report.md
 tests/swisseph-wasm/benchmark-report.md
+
+# Rust / WASM build artifacts
+wasm/*/target/
+wasm/*/pkg/
+wasm/*/Cargo.lock

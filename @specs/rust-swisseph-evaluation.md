@@ -214,10 +214,108 @@ All planetary positions agree to < 0.001° between implementations. For Moon pos
 
 ---
 
-## 5. References
+## 5. Architecture: Cleanest Rust-to-WASM Approach
+
+### 5.1 Why `libswe-sys` is not viable for WASM
+
+We attempted to wrap `libswe-sys` (stephaneworkspace) as a crate dependency and build to WASM. The attempt is preserved in `wasm/libswe-bench/` as a reference. Key issues:
+
+| Problem | Detail |
+|---------|--------|
+| **Outdated SE version** | v2.08 (latest is v2.10.03, released on [aloistr/swisseph](https://github.com/aloistr/swisseph)) |
+| **Private FFI module** | `mod raw;` is not `pub` — cannot import `swe_calc_ut` etc. from downstream |
+| **No WASM support** | `build.rs` compiles C with `-g` flag, no WASM-specific configuration |
+| **TLS incompatibility** | `sweodef.h` uses `__thread` (TLS), which is unsupported on `wasm32-unknown-unknown` |
+| **Missing C headers** | `#include <math.h>`, `<string.h>` etc. — no sysroot for bare WASM target |
+| **Heavy dependencies** | `serde`, `serde_json`, `strum`, `num-derive` — adds bloat, no value for WASM |
+| **Dead code elimination** | Even with `#[link(name = "swe")]`, the WASM linker treats C code as unreachable |
+
+These are fundamental design issues, not configuration problems. Fixing them would require forking `libswe-sys` and rewriting its build system — at which point you'd just be recreating what fusionstrings already did.
+
+### 5.2 The proven architecture (fusionstrings approach)
+
+The `fusionstrings/swisseph-wasm` crate is the cleanest Rust-to-WASM architecture for Swiss Ephemeris. Here's how it works:
+
+```
+swisseph-wasm/
+├── Cargo.toml            # cdylib + rlib, minimal deps
+├── build.rs              # cc crate compiles C source, adds wasm-includes
+├── vendor/
+│   └── swisseph/         # Vendored SE C source (v2.10.03 from aloistr/swisseph)
+│       ├── swecl.c
+│       ├── swedate.c
+│       ├── sweph.c       # ... 9 core C files
+│       └── *.h
+├── wasm-includes/        # Stub C headers for wasm32 target
+│   ├── math.h            # Declares sin/cos/etc. (implemented in Rust via libm)
+│   ├── string.h          # Declares memcpy/strlen/etc. (implemented in Rust)
+│   ├── stdio.h           # Stub FILE* / fopen (returns NULL → Moshier fallback)
+│   └── ...
+└── src/
+    ├── lib.rs            # wasm-bindgen exports + Rust shims for all C stdlib
+    └── wrapper/
+        └── stub.c        # C stubs for variadic functions (sprintf, fprintf)
+```
+
+**Key design decisions:**
+
+1. **Vendor C source directly** — not via a `-sys` crate. This gives full control over the `build.rs`, C flags, and WASM-specific patches.
+
+2. **Symbol renaming via `#define`** — The `build.rs` renames C functions (e.g. `swe_calc_ut` → `impl_swe_calc_ut`) to avoid collisions between the C symbols and the wasm-bindgen exports.
+
+3. **Minimal WASM-specific headers** — Only declare function signatures that the C code needs. The actual implementations are provided by Rust shims (`libm` for math, `std::alloc` for malloc/free, etc.).
+
+4. **Variadic functions in C** — `sprintf`, `fprintf`, `sscanf` can't be defined in Rust (C-variadic definitions are unstable). A small `stub.c` provides no-op implementations.
+
+5. **`-DTLSOFF`** — Disables thread-local storage in `sweodef.h`, which is unsupported in WASM.
+
+6. **No external data files** — With `fopen` returning NULL, Swiss Ephemeris falls back to the built-in Moshier analytical ephemeris. This eliminates the need for external `.se1` data files and keeps the WASM binary self-contained (~338 KB).
+
+### 5.3 Staying up to date with Swiss Ephemeris
+
+The official Swiss Ephemeris source is maintained at **[aloistr/swisseph](https://github.com/aloistr/swisseph)** (585 ★, actively maintained by Alois Treindl, co-author of Swiss Ephemeris).
+
+| Approach | Mechanism | Pros | Cons |
+|----------|-----------|------|------|
+| **Git submodule** | `git submodule add https://github.com/aloistr/swisseph vendor/swisseph` | Easy updates via `git submodule update`, exact version tracking | Complicates CI, breaks shallow clones |
+| **Vendored copy** (fusionstrings approach) | Copy C files from a tagged release into `vendor/` | Simple, no external dependencies during build | Manual update process |
+| **CI version check** | Scheduled workflow polls `aloistr/swisseph` tags and creates a PR | Automated notification of new releases | Still requires manual merge/testing |
+| **crates.io `-sys` crate** | Depend on a maintained `-sys` crate | Standard Rust pattern | No existing crate is WASM-ready (see §5.1) |
+
+**Recommended approach: Vendored copy + CI version check.**
+
+1. Vendor the C source from `aloistr/swisseph` at a specific tag (currently `v2.10.03`).
+2. Add a scheduled CI workflow that:
+   - Fetches the latest tag from `aloistr/swisseph`
+   - Compares with the vendored version
+   - Opens an issue if a newer version is available
+3. Only the 9 core C files + headers need to be vendored (not tests, docs, etc.).
+
+### 5.4 Recommendation for lunisolar-ts
+
+**Don't build our own WASM package. Use `@fusionstrings/swisseph-wasm` from npm.**
+
+Rationale:
+
+| Factor | Build our own | Use fusionstrings |
+|--------|:------------:|:-----------------:|
+| WASM binary | ~338 KB (same) | ~338 KB |
+| SE version | v2.10.03 (same) | v2.10.03 |
+| Maintenance | We maintain shims, vendor, build.rs | fusionstrings maintains |
+| API surface | Custom (minimal) | 11 functions (superset of our needs) |
+| Updates | Manual | Track npm/crates.io releases |
+| Risk | C stub bugs, WASM linker issues | Dependency on third party |
+| Time to production | Days | Already done |
+
+If we later need custom behavior (e.g., stripped-down binary with only `calc_ut` + `julday`, or integration with our own Rust calendar logic), we can fork the fusionstrings approach. But for benchmarking and initial implementation, the npm package is the right choice.
+
+---
+
+## 6. References
 
 - [fusionstrings/swisseph-wasm (GitHub)](https://github.com/fusionstrings/swisseph-wasm)
 - [swisseph-wasm (crates.io)](https://crates.io/crates/swisseph-wasm)
+- [aloistr/swisseph — Official Swiss Ephemeris (GitHub)](https://github.com/aloistr/swisseph)
 - [libswe-sys (GitHub)](https://github.com/stephaneworkspace/libswe-sys)
 - [Swiss Ephemeris (Astrodienst)](https://www.astro.com/swisseph/)
 - [prolaxu/swisseph-wasm (npm)](https://github.com/prolaxu/swisseph-wasm)

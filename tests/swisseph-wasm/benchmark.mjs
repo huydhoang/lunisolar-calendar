@@ -1,9 +1,10 @@
 /**
- * swisseph-wasm Benchmark: Rust (fusionstrings) vs Emscripten (prolaxu)
+ * swisseph-wasm Benchmark
  *
- * Compares two WASM implementations of the Swiss Ephemeris:
+ * Compares WASM implementations of the Swiss Ephemeris:
  *   1. @fusionstrings/swisseph-wasm — Rust FFI + wasm-bindgen (Moshier mode)
  *   2. swisseph-wasm (prolaxu)      — Emscripten C→WASM (Swiss Ephemeris with embedded data)
+ *   3. libswe-bench                 — Rust wrapper around libswe-sys crate (experimental)
  *
  * Measures:
  *   - Initialization time
@@ -111,7 +112,7 @@ async function main() {
 
   log('# swisseph-wasm Benchmark Report');
   log();
-  log('**Comparison:** `@fusionstrings/swisseph-wasm` (Rust+wasm-bindgen) vs `swisseph-wasm` (Emscripten)');
+  log('**Comparison:** `@fusionstrings/swisseph-wasm` (Rust+wasm-bindgen) vs `swisseph-wasm` (Emscripten) vs `libswe-bench` (Rust+libswe-sys)');
   log(`**Date:** ${new Date().toISOString().slice(0, 10)}`);
   log(`**Node.js:** ${process.version}`);
   log(`**Iterations:** ${BENCH_ITERATIONS.toLocaleString()} per test`);
@@ -124,16 +125,20 @@ async function main() {
   const fusionWasmPath = join(__dirname, 'node_modules/@fusionstrings/swisseph-wasm/esm/lib/swisseph_wasm.wasm');
   const prolaxuWasmPath = join(__dirname, 'node_modules/swisseph-wasm/wsam/swisseph.wasm');
   const prolaxuDataPath = join(__dirname, 'node_modules/swisseph-wasm/wsam/swisseph.data');
+  const libswePath = join(__dirname, '../../wasm/libswe-bench/pkg/libswe_bench_bg.wasm');
 
   log('| Package | WASM Binary | Ephemeris Data | Total Package |');
   log('|---------|------------|----------------|---------------|');
   log(`| @fusionstrings/swisseph-wasm | ${fileSize(fusionWasmPath)} | Built-in (Moshier) | ~1.4 MB |`);
   log(`| swisseph-wasm (prolaxu) | ${fileSize(prolaxuWasmPath)} | ${fileSize(prolaxuDataPath)} | ~13 MB |`);
+  log(`| libswe-bench (Rust+libswe-sys) | ${fileSize(libswePath)} | Built-in (Moshier) | — |`);
   log();
 
-  // ── 2. Initialize both ────────────────────────────────────────────────────
+  // ── 2. Initialize all implementations ──────────────────────────────────
   log('## 2. Initialization Time');
   log();
+  log(`| Package | Init Time |`);
+  log(`|---------|----------|`);
 
   // fusionstrings — synchronous init (WASM loaded at import)
   let fusion;
@@ -141,11 +146,9 @@ async function main() {
   try {
     fusion = await import('@fusionstrings/swisseph-wasm');
     const fusionInitTime = now() - fusionInitStart;
-    log(`| Package | Init Time |`);
-    log(`|---------|----------|`);
     log(`| @fusionstrings/swisseph-wasm | ${f(fusionInitTime, 1)} ms |`);
   } catch (err) {
-    log(`❌ Failed to load @fusionstrings/swisseph-wasm: ${err.message}`);
+    log(`| @fusionstrings/swisseph-wasm | ❌ Failed: ${err.message} |`);
     writeFileSync(join(__dirname, 'benchmark-report.md'), reportLines.join('\n') + '\n');
     process.exit(1);
   }
@@ -160,9 +163,43 @@ async function main() {
     const prolaxuInitTime = now() - prolaxuInitStart;
     log(`| swisseph-wasm (prolaxu) | ${f(prolaxuInitTime, 1)} ms |`);
   } catch (err) {
-    log(`❌ Failed to load swisseph-wasm: ${err.message}`);
+    log(`| swisseph-wasm (prolaxu) | ❌ Failed: ${err.message} |`);
     writeFileSync(join(__dirname, 'benchmark-report.md'), reportLines.join('\n') + '\n');
     process.exit(1);
+  }
+
+  // libswe-bench — Rust wrapper around libswe-sys (experimental)
+  // Note: Due to fundamental libswe-sys WASM incompatibilities (see evaluation §5.1),
+  // the WASM binary may not be functional.  We detect this by checking file size
+  // (a working SE binary is >200 KB; a stub is <100 KB) and using a timeout on init.
+  let libswe = null;
+  const libsweMinSize = 200 * 1024; // A functional WASM with SE code is >200 KB
+  const libsweExists = existsSync(libswePath);
+  let libsweSize = 0;
+  if (libsweExists) {
+    try { libsweSize = statSync(libswePath).size; } catch {}
+  }
+  if (libsweExists && libsweSize >= libsweMinSize) {
+    const libsweInitStart = now();
+    try {
+      libswe = await import('../../wasm/libswe-bench/pkg/libswe_bench.js');
+      // Verify with a timeout — swe_julday may hang if C code wasn't linked
+      const testJd = await Promise.race([
+        new Promise((resolve) => { resolve(libswe.swe_julday(2025, 1, 1, 12.0, 1)); }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout (C code not linked)')), 3000)),
+      ]);
+      if (typeof testJd !== 'number' || testJd === 0) throw new Error('julday returned invalid result');
+      const libsweInitTime = now() - libsweInitStart;
+      log(`| libswe-bench (Rust+libswe-sys) | ${f(libsweInitTime, 1)} ms |`);
+    } catch (err) {
+      log(`| libswe-bench (Rust+libswe-sys) | ⚠️ Not functional: ${err.message} |`);
+      libswe = null;
+    }
+  } else {
+    const reason = !libsweExists
+      ? 'WASM not built'
+      : `WASM too small (${fileSize(libswePath)}) — C code not linked (see evaluation §5.1)`;
+    log(`| libswe-bench (Rust+libswe-sys) | ⚠️ ${reason} |`);
   }
   log();
 
@@ -181,6 +218,12 @@ async function main() {
   log(`| fusionstrings | ${fusionJD.ops_per_sec.toLocaleString()} | ${f(fusionJD.mean_ms, 6)} | ${f(fusionJD.min_ms, 6)} | ${f(fusionJD.max_ms, 6)} | ${f(jdFusion, 6)} |`);
   log(`| prolaxu | ${prolaxuJD.ops_per_sec.toLocaleString()} | ${f(prolaxuJD.mean_ms, 6)} | ${f(prolaxuJD.min_ms, 6)} | ${f(prolaxuJD.max_ms, 6)} | ${f(jdProlaxu, 6)} |`);
 
+  if (libswe) {
+    const libsweJD = bench(() => libswe.swe_julday(2025, 6, 15, 12.0, 1));
+    const jdLibswe = libswe.swe_julday(2025, 6, 15, 12.0, 1);
+    log(`| libswe-bench | ${libsweJD.ops_per_sec.toLocaleString()} | ${f(libsweJD.mean_ms, 6)} | ${f(libsweJD.min_ms, 6)} | ${f(libsweJD.max_ms, 6)} | ${f(jdLibswe, 6)} |`);
+  }
+
   const jdRatio = fusionJD.ops_per_sec / prolaxuJD.ops_per_sec;
   log();
   log(`**julday speedup:** fusionstrings is **${f(jdRatio, 2)}x** ${jdRatio >= 1 ? 'faster' : 'slower'} than prolaxu`);
@@ -192,8 +235,8 @@ async function main() {
 
   const jd = fusion.swe_julday(2025, 1, 1, 12.0, fusion.SE_GREG_CAL);
 
-  log('| Body | fusionstrings ops/sec | prolaxu ops/sec | Speedup | Lon Δ° | Agreement |');
-  log('|------|---------------------:|----------------:|--------:|-------:|-----------|');
+  log('| Body | fusionstrings ops/sec | prolaxu ops/sec | libswe-bench ops/sec | Speedup (f/p) | Lon Δ° | Agreement |');
+  log('|------|---------------------:|----------------:|--------------------:|--------------:|-------:|-----------|');
 
   const calcResults = [];
 
@@ -203,6 +246,17 @@ async function main() {
 
     // Benchmark prolaxu
     const prolaxuCalc = bench(() => prolaxu.calc_ut(jd, body.id, prolaxu.SEFLG_SWIEPH));
+
+    // Benchmark libswe-bench (if available)
+    let libsweCalc = null;
+    let libsweLon = null;
+    if (libswe) {
+      try {
+        libsweCalc = bench(() => libswe.swe_calc_ut(jd, body.id, 2));
+        const libswePos = libswe.swe_calc_ut(jd, body.id, 2);
+        libsweLon = libswePos.longitude;
+      } catch { libsweCalc = null; }
+    }
 
     // Get actual positions for comparison
     const fusionPos = fusion.swe_calc_ut(jd, body.id, fusion.SEFLG_SWIEPH);
@@ -214,19 +268,22 @@ async function main() {
     const agree = lonDiff <= TOLERANCE_DEG ? '✅' : '❌';
 
     const ratio = fusionCalc.ops_per_sec / prolaxuCalc.ops_per_sec;
+    const libsweOpsStr = libsweCalc ? libsweCalc.ops_per_sec.toLocaleString() : '—';
 
     log(
-      `| ${body.name} | ${fusionCalc.ops_per_sec.toLocaleString()} | ${prolaxuCalc.ops_per_sec.toLocaleString()} | ${f(ratio, 2)}x | ${f(lonDiff, 6)} | ${agree} |`,
+      `| ${body.name} | ${fusionCalc.ops_per_sec.toLocaleString()} | ${prolaxuCalc.ops_per_sec.toLocaleString()} | ${libsweOpsStr} | ${f(ratio, 2)}x | ${f(lonDiff, 6)} | ${agree} |`,
     );
 
     calcResults.push({
       body: body.name,
       fusionOps: fusionCalc.ops_per_sec,
       prolaxuOps: prolaxuCalc.ops_per_sec,
+      libsweOps: libsweCalc ? libsweCalc.ops_per_sec : null,
       ratio,
       lonDiff,
       fusionLon,
       prolaxuLon,
+      libsweLon,
     });
   }
 
@@ -247,6 +304,8 @@ async function main() {
   log(`| All positions agree (< ${TOLERANCE_DEG}°) | ${allAgree ? '✅ Yes' : '❌ No'} |`);
   log(`| fusionstrings WASM size | ${fileSize(fusionWasmPath)} |`);
   log(`| prolaxu WASM + data size | ${fileSize(prolaxuWasmPath)} + ${fileSize(prolaxuDataPath)} |`);
+  log(`| libswe-bench WASM size | ${fileSize(libswePath)} |`);
+  log(`| libswe-bench available | ${libswe ? '✅ Yes' : '⚠️ No (build failed — see evaluation §5.1)'} |`);
   log();
 
   // ── 6. Detailed position comparison ───────────────────────────────────────
@@ -254,12 +313,13 @@ async function main() {
   log();
   log(`**Test epoch:** JD ${f(jd, 1)} (2025-01-01 12:00 UTC)`);
   log();
-  log('| Body | fusionstrings Lon° | prolaxu Lon° | Δ° | Note |');
-  log('|------|-------------------:|-------------:|---:|------|');
+  log('| Body | fusionstrings Lon° | prolaxu Lon° | libswe-bench Lon° | Δ° | Note |');
+  log('|------|-------------------:|-------------:|------------------:|---:|------|');
 
   for (const r of calcResults) {
     const note = r.lonDiff < 0.001 ? 'Excellent' : r.lonDiff < 0.01 ? 'Good' : r.lonDiff < 0.1 ? 'Acceptable' : 'Poor';
-    log(`| ${r.body} | ${f(r.fusionLon, 6)} | ${f(r.prolaxuLon, 6)} | ${f(r.lonDiff, 6)} | ${note} |`);
+    const libsweLonStr = r.libsweLon !== null ? f(r.libsweLon, 6) : '—';
+    log(`| ${r.body} | ${f(r.fusionLon, 6)} | ${f(r.prolaxuLon, 6)} | ${libsweLonStr} | ${f(r.lonDiff, 6)} | ${note} |`);
   }
 
   log();
@@ -273,15 +333,16 @@ async function main() {
   // ── 7. Recommendations ────────────────────────────────────────────────────
   log('## 7. Recommendation for Lunisolar-TS');
   log();
-  log('| Criteria | @fusionstrings/swisseph-wasm | swisseph-wasm (prolaxu) |');
-  log('|----------|:---------------------------:|:-----------------------:|');
-  log(`| Binary size | ✅ ${fileSize(fusionWasmPath)} (no ext data) | ⚠️ ${fileSize(prolaxuWasmPath)} + ${fileSize(prolaxuDataPath)} |`);
-  log(`| Precision | ✅ Sufficient (Moshier) | ✅ Higher (JPL data) |`);
-  log(`| Speed | See benchmarks above | See benchmarks above |`);
-  log('| JS interop | ✅ wasm-bindgen (typed) | ⚠️ Emscripten Module API |');
-  log('| Init model | Sync (import loads WASM) | Async (initSwissEph()) |');
-  log('| Dependencies | 0 runtime | Emscripten runtime |');
-  log('| Maintenance | Rust crate ecosystem | Custom Emscripten build |');
+  log('| Criteria | @fusionstrings/swisseph-wasm | swisseph-wasm (prolaxu) | libswe-bench |');
+  log('|----------|:---------------------------:|:-----------------------:|:------------:|');
+  log(`| Binary size | ✅ ${fileSize(fusionWasmPath)} (no ext data) | ⚠️ ${fileSize(prolaxuWasmPath)} + ${fileSize(prolaxuDataPath)} | ${existsSync(libswePath) ? fileSize(libswePath) : '—'} |`);
+  log(`| Precision | ✅ Sufficient (Moshier) | ✅ Higher (JPL data) | ${libswe ? '✅ Moshier' : '—'} |`);
+  log(`| Speed | See benchmarks above | See benchmarks above | See benchmarks above |`);
+  log('| JS interop | ✅ wasm-bindgen (typed) | ⚠️ Emscripten Module API | ✅ wasm-bindgen |');
+  log('| Init model | Sync (import loads WASM) | Async (initSwissEph()) | Sync |');
+  log('| Dependencies | 0 runtime | Emscripten runtime | libswe-sys (outdated) |');
+  log('| SE version | v2.10.03 | Unknown | v2.08 |');
+  log('| Maintenance | Rust crate ecosystem | Custom Emscripten build | Experimental |');
   log();
   log('For the lunisolar calendar use case, `@fusionstrings/swisseph-wasm` is **recommended**:');
   log('- 10x smaller binary (no external ephemeris data files needed)');
