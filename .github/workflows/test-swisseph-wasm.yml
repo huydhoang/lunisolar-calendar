@@ -1,0 +1,79 @@
+name: Test swisseph-wasm Accuracy
+
+# Trigger on push (only when workflow or test files change) and on manual dispatch.
+on:
+  push:
+    paths:
+      - '.github/workflows/test-swisseph-wasm.yml'
+      - 'tests/swisseph-wasm/**'
+  workflow_dispatch:
+
+jobs:
+  test-accuracy:
+    name: Accuracy comparison against JPL Horizons
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      # ── 1. Source code ────────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── 2. Runtime ────────────────────────────────────────────────────────
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      # ── 3. Install swisseph-wasm (includes the WASM binary) ───────────────
+      - name: Install swisseph-wasm with Bun
+        working-directory: tests/swisseph-wasm
+        run: |
+          # Initialise a minimal ESM package manifest so Bun can manage deps
+          echo '{"type":"module","name":"swisseph-wasm-accuracy-test"}' > package.json
+          bun add swisseph-wasm
+
+      # ── 4. Verify the required WASM file was downloaded ───────────────────
+      - name: Verify WASM file
+        working-directory: tests/swisseph-wasm
+        run: |
+          WASM="node_modules/swisseph-wasm/wsam/swisseph.wasm"
+          if [ -f "$WASM" ]; then
+            echo "✅ WASM file present: $WASM"
+            ls -lh "$WASM"
+          else
+            echo "❌ WASM file not found at expected path: $WASM"
+            echo "--- Contents of node_modules/swisseph-wasm/ ---"
+            ls -la node_modules/swisseph-wasm/ || true
+            exit 1
+          fi
+
+      # ── 5. Install Skyfield ───────────────────────────────────────────────
+      - name: Install Skyfield
+        run: pip install skyfield
+
+      # ── 6. Calculate Skyfield reference positions ─────────────────────────
+      # Skyfield's Loader auto-downloads de440s.bsp from NASA on first run.
+      - name: Run Skyfield reference calculations
+        working-directory: tests/swisseph-wasm
+        run: python3 skyfield-positions.py
+
+      # ── 7. Run accuracy tests ─────────────────────────────────────────────
+      - name: Run accuracy tests
+        working-directory: tests/swisseph-wasm
+        run: bun accuracy-test.mjs
+
+      # ── 8. Write results to the workflow step summary ─────────────────────
+      - name: Write step summary
+        if: always()
+        run: cat tests/swisseph-wasm/report.md >> "$GITHUB_STEP_SUMMARY"
+
+      # ── 9. Upload the report as a workflow artifact ───────────────────────
+      - name: Upload accuracy report artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: swisseph-wasm-accuracy-report
+          path: tests/swisseph-wasm/report.md
+          retention-days: 30
