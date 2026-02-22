@@ -119,14 +119,13 @@ fn month_ganzhi(lunar_year: i32, lunar_month: u32) -> (&'static str, &'static st
     (stem_char, branch_char, month_cycle)
 }
 
-fn day_ganzhi(local_date_utc_ms: f64) -> (&'static str, &'static str, usize) {
+fn day_ganzhi(timestamp_ms: f64) -> (&'static str, &'static str, usize) {
     // Anchor: 4 AD-01-31 is Jiazi day (cycle 1)
-    // In JavaScript: new Date(Date.UTC(4, 0, 31, 0, 0, 0))
-    // JS months are 0-based, so month 0 = January
     let ref_days = days_from_civil(4, 1, 31);
 
-    // Extract UTC date from local_date_utc_ms (which has UTC fields matching local wall time)
-    let total_s = (local_date_utc_ms / 1000.0).floor() as i64;
+    // Use UTC date of the original moment (matching Python's ganzhi_day which
+    // converts local → UTC and uses target_utc.date() for day counting).
+    let total_s = (timestamp_ms / 1000.0).floor() as i64;
     let day_from_epoch = total_s.div_euclid(86400);
 
     let days = day_from_epoch - ref_days;
@@ -392,7 +391,7 @@ fn from_solar_date_core(
     // Sexagenary cycles
     let (y_stem, y_branch, y_cycle) = year_ganzhi(lunar_year);
     let (m_stem, m_branch, m_cycle) = month_ganzhi(lunar_year, target_period.month_number);
-    let (d_stem, d_branch, d_cycle) = day_ganzhi(local_wall_ms);
+    let (d_stem, d_branch, d_cycle) = day_ganzhi(timestamp_ms);
     let (h_stem, h_branch, h_cycle) = hour_ganzhi(local_wall_ms, d_stem);
 
     Ok(LunisolarResult {

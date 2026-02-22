@@ -76,13 +76,12 @@ function monthGanzhi(lunarYear: number, lunarMonth: number): [string, string, nu
   return [stemChar, branchChar, monthCycle];
 }
 
-function dayGanzhi(localDate: Date, tz: TimezoneHandler): [string, string, number] {
+function dayGanzhi(targetUtc: Date): [string, string, number] {
   // Anchor: 4 AD-01-31 is Jiazi day (UTC)
   const ref = new Date(Date.UTC(4, 0, 31, 0, 0, 0));
-  // Convert local to UTC instant using tz -> We already have an absolute Date (local instant is represented by Date?),
-  // but we want the UTC date of the local wall time. We'll transform wall time to a UTC date-only by reversing convertToTimezone.
-  // Strategy: get the UTC instant of 'localDate' itself since it's an absolute instant; compare UTC date to the reference.
-  const days = Math.floor((Date.UTC(localDate.getUTCFullYear(), localDate.getUTCMonth(), localDate.getUTCDate()) - ref.getTime()) / 86400000);
+  // Use the UTC date of the original moment (matching Python's ganzhi_day which
+  // converts local → UTC and uses target_utc.date() for day counting).
+  const days = Math.floor((Date.UTC(targetUtc.getUTCFullYear(), targetUtc.getUTCMonth(), targetUtc.getUTCDate()) - ref.getTime()) / 86400000);
   const dayCycle = ((days % 60) + 60) % 60 + 1;
   const stem = HEAVENLY_STEMS[(dayCycle - 1) % 10];
   const branch = EARTHLY_BRANCHES[(dayCycle - 1) % 12];
@@ -325,7 +324,7 @@ export class LunisolarCalendar {
     const localWall = userTz.convertToTimezone(targetUtc); // UTC fields reflect local wall time
     const [yStem, yBranch, yCycle] = yearGanzhi(lunarYear);
     const [mStem, mBranch, mCycle] = monthGanzhi(lunarYear, targetPeriod.monthNumber);
-    const [dStem, dBranch, dCycle] = dayGanzhi(localWall, userTz);
+    const [dStem, dBranch, dCycle] = dayGanzhi(targetUtc);
     const [hStem, hBranch, hCycle] = hourGanzhi(localWall, dStem);
 
     const result: TLunisolarDate = {
