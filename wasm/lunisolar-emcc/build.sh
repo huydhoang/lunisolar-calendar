@@ -11,7 +11,7 @@ cd "$SCRIPT_DIR"
 
 OUT_DIR="$ROOT_DIR/pkg"
 SWE_DIR="$ROOT_DIR/vendor/swisseph"
-EPHE_DIR="$ROOT_DIR/wasm/swisseph/ephe"
+EPHE_DIR="$ROOT_DIR/wasm/swisseph-rs/ephe"
 mkdir -p "$OUT_DIR"
 
 # Swiss Ephemeris core C files

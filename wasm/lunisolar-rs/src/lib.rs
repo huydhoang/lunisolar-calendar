@@ -1,6 +1,8 @@
 use wasm_bindgen::prelude::*;
 use serde::{Deserialize, Serialize};
 
+mod ephemeris;
+
 // ── Constants ────────────────────────────────────────────────────────────────
 
 const HEAVENLY_STEMS: [&str; 10] = ["甲", "乙", "丙", "丁", "戊", "己", "庚", "辛", "壬", "癸"];
@@ -486,6 +488,45 @@ pub fn from_solar_date(
 
     let solar_terms: Vec<(f64, u32)> = serde_json::from_str(solar_terms_json)
         .map_err(|e| JsError::new(&format!("Failed to parse solar_terms JSON: {}", e)))?;
+
+    let result = from_solar_date_core(timestamp_ms, tz_offset_seconds, &new_moons, &solar_terms)
+        .map_err(|e| JsError::new(&e))?;
+
+    serde_json::to_string(&result)
+        .map_err(|e| JsError::new(&format!("Failed to serialize result: {}", e)))
+}
+
+/// Standalone lunisolar date conversion using the Swiss Ephemeris.
+///
+/// Computes new moons and solar terms internally using embedded `.se1`
+/// ephemeris data — no pre-computed data needed from the caller.
+///
+/// # Arguments
+/// * `timestamp_ms` - UTC timestamp in milliseconds
+/// * `tz_offset_seconds` - Timezone offset from UTC in seconds (e.g., 28800 for CST/UTC+8)
+///
+/// # Returns
+/// JSON string with lunisolar date result
+#[wasm_bindgen(js_name = "fromSolarDateAuto")]
+pub fn from_solar_date_auto(
+    timestamp_ms: f64,
+    tz_offset_seconds: i32,
+) -> Result<String, JsError> {
+    // Determine which years of data we need
+    let (local_year, _, _, _, _, _) = utc_ms_to_date_parts(timestamp_ms, tz_offset_seconds);
+    let start_year = local_year - 1;
+    let end_year = local_year + 1;
+
+    // Compute new moons and solar terms via Swiss Ephemeris
+    let new_moons = ephemeris::compute_new_moons(start_year, end_year);
+    let solar_terms = ephemeris::compute_solar_terms(start_year, end_year);
+
+    if new_moons.len() < 2 {
+        return Err(JsError::new("Insufficient new moon data from Swiss Ephemeris"));
+    }
+    if solar_terms.is_empty() {
+        return Err(JsError::new("No solar terms computed from Swiss Ephemeris"));
+    }
 
     let result = from_solar_date_core(timestamp_ms, tz_offset_seconds, &new_moons, &solar_terms)
         .map_err(|e| JsError::new(&e))?;

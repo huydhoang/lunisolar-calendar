@@ -27,7 +27,7 @@ configure({ strategy: 'static' });
 
 // ── 2. Load the Rust WASM package ───────────────────────────────────────────
 
-const wasm = await import(resolve(ROOT, 'wasm', 'lunisolar', 'pkg', 'lunisolar_wasm.js'));
+const wasm = await import(resolve(ROOT, 'wasm', 'lunisolar-rs', 'pkg', 'lunisolar_wasm.js'));
 
 // ── 3. Load the Emscripten WASM package ─────────────────────────────────────
 

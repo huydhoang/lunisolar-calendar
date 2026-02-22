@@ -30,7 +30,7 @@ const { LunisolarCalendar, configure } = await import(
 );
 configure({ strategy: 'static' });
 
-const wasm = await import(resolve(ROOT, 'wasm', 'lunisolar', 'pkg', 'lunisolar_wasm.js'));
+const wasm = await import(resolve(ROOT, 'wasm', 'lunisolar-rs', 'pkg', 'lunisolar_wasm.js'));
 
 const createLunisolarEmcc = (await import(resolve(ROOT, 'pkg', 'lunisolar_emcc.mjs'))).default;
 const emccModule = await createLunisolarEmcc();
