@@ -186,50 +186,67 @@ The project has three WASM implementations, all using the vendored Swiss Ephemer
 | `wasm/lunisolar-emcc/` | C | Emscripten / emcc | Lunisolar calendar in C |
 | `wasm/swisseph-rs/` | Rust | wasm-pack / wasm-bindgen | Swiss Ephemeris bindings |
 
-### Swiss Ephemeris Integration
-
-Both lunisolar ports integrate with the Swiss Ephemeris for standalone operation:
+### `lunisolar-rs/` — Rust WASM Port
 
 ```mermaid
 graph TD
-    subgraph Shared
-        VENDOR[vendor/swisseph/<br/>SE C source v2.10]
-        EPHE[wasm/swisseph-rs/ephe/<br/>.se1 data files]
+    subgraph "lunisolar-rs (lib.rs)"
+        ENTRY_AUTO["#wasm_bindgen<br/>fromSolarDateAuto(tsMs, tzOffsetSec)"]
+        ENTRY_PRE["#wasm_bindgen<br/>fromSolarDate(tsMs, tzOffsetSec, newMoonsJson, solarTermsJson)"]
+
+        CORE["from_solar_date_core()"]
+
+        subgraph "Calendar Logic"
+            DATE["Date helpers<br/>civil_from_days / days_from_civil<br/>utc_ms_to_date_parts / cst_date_of"]
+            MONTH["Month Period Builder<br/>MonthPeriod[] from new moon pairs"]
+            TERMS["Term Indexer<br/>PrincipalTerm[] → tag periods"]
+            Z11["Z11 Anchor + Leap Rule<br/>Winter Solstice → Zi month<br/>no-zhongqi leap assignment"]
+            RESOLVE["Lunar Month Resolver<br/>target CST date → period"]
+            GZ["Sexagenary Engine<br/>year / month / day / hour ganzhi"]
+            HD["Huangdao<br/>Construction Stars + Great Yellow Path"]
+        end
+
+        RESULT["LunisolarResult → JSON"]
     end
 
-    subgraph lunisolar-rs
-        SRS[swisseph-rs crate<br/>FFI bindings + shims]
-        EPH_RS[ephemeris.rs<br/>New moons + solar terms]
-        LIB_RS[lib.rs<br/>Calendar logic]
-        AUTO_RS[fromSolarDateAuto<br/>Standalone entry point]
-
-        VENDOR --> SRS
-        EPHE --> SRS
-        SRS --> EPH_RS
-        EPH_RS --> LIB_RS
-        LIB_RS --> AUTO_RS
+    subgraph "ephemeris.rs"
+        NM["compute_new_moons(start, end)<br/>1-day elongation scan + bisection"]
+        ST["compute_solar_terms(start, end)<br/>1-day Sun longitude scan + bisection"]
     end
 
-    subgraph lunisolar-emcc
-        EPH_C[ephemeris.c<br/>New moons + solar terms]
-        LUN_C[lunisolar.c<br/>Calendar logic]
-        AUTO_C[from_solar_date_auto<br/>Standalone entry point]
-
-        VENDOR --> EPH_C
-        EPHE --> EPH_C
-        EPH_C --> LUN_C
-        LUN_C --> AUTO_C
+    subgraph "swisseph-rs crate (dependency)"
+        FFI["swe_bindings FFI<br/>swe_calc_ut · swe_julday"]
+        SE1["Embedded .se1 data<br/>sepl_18.se1 · semo_18.se1"]
+        SHIMS["C stdlib shims<br/>malloc · fopen · sin · …"]
     end
+
+    subgraph "vendor/swisseph/"
+        CSRC["SE C source (v2.10)<br/>sweph.c · swecl.c · …<br/>compiled via cc crate"]
+    end
+
+    ENTRY_AUTO --> NM
+    ENTRY_AUTO --> ST
+    NM --> FFI
+    ST --> FFI
+    FFI --> CSRC
+    FFI --> SE1
+    CSRC --> SHIMS
+
+    NM --> CORE
+    ST --> CORE
+    ENTRY_PRE --> CORE
+
+    CORE --> DATE
+    DATE --> MONTH
+    MONTH --> TERMS
+    TERMS --> Z11
+    Z11 --> RESOLVE
+    RESOLVE --> GZ
+    GZ --> HD
+    HD --> RESULT
 ```
 
-**Ephemeris computation** (identical algorithm in both ports):
-1. **New moons**: 1-day scan for Sun–Moon elongation zero-crossings, refined by bisection (~1 ms precision)
-2. **Solar terms**: 1-day scan for Sun ecliptic longitude crossings at 15° intervals, refined by bisection
-3. **SE flags**: `SEFLG_SWIEPH` for Swiss Ephemeris mode with embedded `.se1` data (not Moshier fallback)
-
-### `lunisolar-rs/` — Rust WASM Port
-
-The Rust port depends on `swisseph-rs` as a path dependency for SE access:
+The Rust port depends on `swisseph-rs` as a path dependency:
 
 ```toml
 [dependencies]
@@ -241,6 +258,62 @@ Exported JS functions:
 - `fromSolarDateAuto(tsMs, tzOffsetSec)` — **standalone**: computes everything internally via Swiss Ephemeris
 
 ### `lunisolar-emcc/` — Emscripten C Port
+
+```mermaid
+graph TD
+    subgraph "lunisolar-emcc (lunisolar.c)"
+        ENTRY_AUTO_C["EMSCRIPTEN_KEEPALIVE<br/>from_solar_date_auto(tsMs, tzOffsetSec,<br/>outBuf, outBufLen)"]
+        ENTRY_PRE_C["EMSCRIPTEN_KEEPALIVE<br/>from_solar_date(tsMs, tzOffsetSec,<br/>nmPtr, nmCount, stTsPtr, stIdxPtr, stCount,<br/>outBuf, outBufLen)"]
+
+        subgraph "Calendar Logic (C)"
+            DATE_C["Date helpers<br/>civil_from_days / days_from_civil<br/>utc_ms_to_date_parts / cst_date_of"]
+            MONTH_C["Month Period Builder<br/>MonthPeriod[] from new moon pairs"]
+            TERMS_C["Term Indexer<br/>PrincipalTerm[] → tag periods"]
+            Z11_C["Z11 Anchor + Leap Rule<br/>Winter Solstice → Zi month<br/>no-zhongqi leap assignment"]
+            RESOLVE_C["Lunar Month Resolver<br/>target CST date → period"]
+            GZ_C["Sexagenary Engine<br/>year / month / day / hour ganzhi"]
+            HD_C["Huangdao<br/>Construction Stars + Great Yellow Path"]
+        end
+
+        JSON_C["snprintf() → JSON string in outBuf"]
+    end
+
+    subgraph "ephemeris.c / ephemeris.h"
+        NM_C["compute_new_moons(start, end,<br/>outTs, maxCount)<br/>1-day elongation scan + bisection"]
+        ST_C["compute_solar_terms(start, end,<br/>outTs, outIdx, maxCount)<br/>1-day Sun longitude scan + bisection"]
+        INIT_C["ephe_init() → swe_set_ephe_path('/ephe')"]
+        CLOSE_C["ephe_close() → swe_close()"]
+    end
+
+    subgraph "vendor/swisseph/ (compiled by emcc)"
+        CSRC_C["SE C source (v2.10)<br/>sweph.c · swecl.c · …<br/>9 files linked by build.sh"]
+    end
+
+    subgraph "Embedded data (--embed-file)"
+        SE1_C["sepl_18.se1 → /ephe/sepl_18.se1<br/>semo_18.se1 → /ephe/semo_18.se1"]
+    end
+
+    ENTRY_AUTO_C --> INIT_C
+    ENTRY_AUTO_C --> NM_C
+    ENTRY_AUTO_C --> ST_C
+    ENTRY_AUTO_C --> CLOSE_C
+    NM_C --> CSRC_C
+    ST_C --> CSRC_C
+    CSRC_C --> SE1_C
+
+    NM_C --> ENTRY_PRE_C
+    ST_C --> ENTRY_PRE_C
+    ENTRY_AUTO_C --> ENTRY_PRE_C
+
+    ENTRY_PRE_C --> DATE_C
+    DATE_C --> MONTH_C
+    MONTH_C --> TERMS_C
+    TERMS_C --> Z11_C
+    Z11_C --> RESOLVE_C
+    RESOLVE_C --> GZ_C
+    GZ_C --> HD_C
+    HD_C --> JSON_C
+```
 
 Built by `build.sh`, which compiles the calendar C code plus all 9 SE C files from `vendor/swisseph/` and embeds `.se1` data via `--embed-file`:
 
@@ -257,6 +330,57 @@ Exported C functions:
 - `from_solar_date_auto(tsMs, tzOffsetSec, outBuf, outBufLen)` — **standalone**: computes everything internally
 
 ### `swisseph-rs/` — Swiss Ephemeris Bindings
+
+```mermaid
+graph TD
+    subgraph "swisseph-rs (lib.rs)"
+        subgraph "WASM Exports (#wasm_bindgen)"
+            JS_CALC["swe_calc_ut(jd, ipl, iflag)<br/>→ Vec&lt;f64&gt; [lon, lat, dist, ...]"]
+            JS_JUL["swe_julday(y, m, d, h, greg)<br/>→ f64"]
+            JS_REV["swe_revjul(jd, greg)<br/>→ {year, month, day, hour}"]
+            JS_NAME["swe_get_planet_name(ipl)<br/>→ String"]
+            JS_CONST["SE_SUN · SE_MOON · SE_GREG_CAL<br/>SEFLG_SWIEPH · SEFLG_SPEED"]
+        end
+
+        subgraph "FFI Layer (bindings.rs)"
+            BIND["#link(name = 'swe') extern 'C'<br/>impl_swe_calc_ut<br/>impl_swe_julday<br/>impl_swe_revjul<br/>impl_swe_get_planet_name"]
+        end
+
+        subgraph "C stdlib shims (mod shims)"
+            MATH["Math via libm<br/>sin · cos · atan2 · sqrt · …"]
+            MEM["Allocator<br/>malloc · free · calloc · realloc"]
+            STR["String ops<br/>strlen · strcmp · strcpy · strcat · …"]
+            FS["In-memory filesystem<br/>fopen · fread · fseek · ftell · fclose"]
+            MISC["Stubs<br/>time · getenv · exit · dlopen · stat · …"]
+        end
+
+        subgraph "Embedded data"
+            SE1_RS["include_bytes!<br/>sepl_18.se1 · semo_18.se1"]
+        end
+    end
+
+    subgraph "build.rs (cc crate)"
+        BUILD["Compiles 9 SE C files<br/>with symbol renaming<br/>(swe_calc_ut → impl_swe_calc_ut)<br/>and wasm32 target flags"]
+    end
+
+    subgraph "vendor/swisseph/"
+        VENDOR_C["SE C source (v2.10)<br/>sweph.c · swedate.c · swecl.c<br/>swehouse.c · swejpl.c · swehel.c<br/>swemmoon.c · swemplan.c · swephlib.c"]
+    end
+
+    JS_CALC --> BIND
+    JS_JUL --> BIND
+    JS_REV --> BIND
+    JS_NAME --> BIND
+
+    BIND --> BUILD
+    BUILD --> VENDOR_C
+    VENDOR_C --> MATH
+    VENDOR_C --> MEM
+    VENDOR_C --> STR
+    VENDOR_C --> FS
+    VENDOR_C --> MISC
+    FS --> SE1_RS
+```
 
 Provides low-level SE function access via Rust FFI with wasm-bindgen:
 - Compiles SE C source via `cc` crate (`build.rs`)
