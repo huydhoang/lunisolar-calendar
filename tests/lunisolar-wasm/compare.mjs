@@ -265,28 +265,33 @@ for (const tsMs of timestamps50) {
     emccResult = { error: e.message };
   }
 
-  // Compare TS vs Rust WASM (all four ganzhi — characters AND cycle indices)
-  if (tsResult && wasmResult && !tsResult.error && !wasmResult.error) {
-    match =
-      tsResult.lunarYear === wasmResult.lunarYear &&
-      tsResult.lunarMonth === wasmResult.lunarMonth &&
-      tsResult.lunarDay === wasmResult.lunarDay &&
-      tsResult.isLeapMonth === wasmResult.isLeapMonth &&
-      tsResult.yearCycle === wasmResult.yearCycle &&
-      tsResult.monthCycle === wasmResult.monthCycle &&
-      tsResult.dayCycle === wasmResult.dayCycle &&
-      tsResult.hourCycle === wasmResult.hourCycle &&
-      tsResult.yearStem === wasmResult.yearStem &&
-      tsResult.yearBranch === wasmResult.yearBranch &&
-      tsResult.monthStem === wasmResult.monthStem &&
-      tsResult.monthBranch === wasmResult.monthBranch &&
-      tsResult.dayStem === wasmResult.dayStem &&
-      tsResult.dayBranch === wasmResult.dayBranch &&
-      tsResult.hourStem === wasmResult.hourStem &&
-      tsResult.hourBranch === wasmResult.hourBranch;
+  // Helper: compare all ganzhi fields between TS pkg result and a WASM result
+  function ganzhiMatch(ts, w) {
+    if (!ts || !w || ts.error || w.error) return false;
+    return (
+      ts.lunarYear === w.lunarYear &&
+      ts.lunarMonth === w.lunarMonth &&
+      ts.lunarDay === w.lunarDay &&
+      ts.isLeapMonth === w.isLeapMonth &&
+      ts.yearCycle === w.yearCycle &&
+      ts.monthCycle === w.monthCycle &&
+      ts.dayCycle === w.dayCycle &&
+      ts.hourCycle === w.hourCycle &&
+      ts.yearStem === w.yearStem &&
+      ts.yearBranch === w.yearBranch &&
+      ts.monthStem === w.monthStem &&
+      ts.monthBranch === w.monthBranch &&
+      ts.dayStem === w.dayStem &&
+      ts.dayBranch === w.dayBranch &&
+      ts.hourStem === w.hourStem &&
+      ts.hourBranch === w.hourBranch
+    );
   }
 
-  results.push({ tsMs, date: date.toISOString(), tsResult, wasmResult, emccResult, match });
+  const rustMatch = ganzhiMatch(tsResult, wasmResult);
+  const emccMatch = ganzhiMatch(tsResult, emccResult);
+
+  results.push({ tsMs, date: date.toISOString(), tsResult, wasmResult, emccResult, rustMatch, emccMatch });
 }
 
 // ── 10. Run burst benchmark (500 requests) ──────────────────────────────────
@@ -432,32 +437,38 @@ if (prolaxuSweph && typeof prolaxuSweph.close === 'function') {
 
 // ── 12. Generate markdown report ────────────────────────────────────────────
 
-const matchCount = results.filter((r) => r.match).length;
+const rustMatchCount = results.filter((r) => r.rustMatch).length;
+const emccMatchCount = results.filter((r) => r.emccMatch).length;
 const errorCount = results.filter(
-  (r) => r.tsResult?.error || r.wasmResult?.error,
+  (r) => r.tsResult?.error || r.wasmResult?.error || r.emccResult?.error,
 ).length;
 
 let md = `# Lunisolar WASM vs TypeScript — Comparison Report\n\n`;
 md += `**Date**: ${new Date().toISOString()}\n\n`;
+md += `**Reference**: TypeScript package (\`pkg/\`) — the original pure-TS implementation.\n`;
+md += `Both WASM ports are compared against this reference.\n\n`;
 
 // Summary
 md += `## Summary\n\n`;
 md += `| Metric | Value |\n`;
 md += `|--------|-------|\n`;
 md += `| Total comparisons | ${results.length} |\n`;
-md += `| Matching results (TS vs Rust WASM) | ${matchCount} |\n`;
-md += `| Mismatches | ${results.length - matchCount - errorCount} |\n`;
+md += `| Rust WASM vs TS pkg — match | ${rustMatchCount}/${results.length} |\n`;
+md += `| Emscripten WASM vs TS pkg — match | ${emccMatchCount}/${results.length} |\n`;
 md += `| Errors | ${errorCount} |\n\n`;
 
-// Comparison table with all four ganzhi (characters + cycle indices)
+// Comparison table: TS pkg reference values with per-field match for both WASM ports
 md += `## Comparison Table (50 Random Timestamps)\n\n`;
-md += `| # | UTC Date | Lunar Date | Year Ganzhi | Month Ganzhi | Day Ganzhi | Hour Ganzhi | Match |\n`;
-md += `|---|----------|------------|-------------|--------------|------------|-------------|-------|\n`;
+md += `Reference values are from the TypeScript package (\`pkg/\`).\n`;
+md += `Each ganzhi shows characters + cycle index and per-field match icons for Rust WASM (R) and Emscripten WASM (E).\n\n`;
+md += `| # | UTC Date | Lunar Date (TS pkg) | Year Ganzhi (TS pkg) | Month Ganzhi (TS pkg) | Day Ganzhi (TS pkg) | Hour Ganzhi (TS pkg) | Rust | Emcc |\n`;
+md += `|---|----------|---------------------|----------------------|-----------------------|---------------------|----------------------|------|------|\n`;
 
 for (let i = 0; i < results.length; i++) {
   const r = results[i];
   const ts = r.tsResult;
   const w = r.wasmResult;
+  const e = r.emccResult;
 
   const lunarDate = ts?.error
     ? `ERROR`
@@ -471,26 +482,29 @@ for (let i = 0; i < results.length; i++) {
   const dayG = ts?.error ? '-' : fmtG(ts.dayStem, ts.dayBranch, ts.dayCycle);
   const hourG = ts?.error ? '-' : fmtG(ts.hourStem, ts.hourBranch, ts.hourCycle);
 
-  // Per-field match: compare BOTH characters AND cycle indices
-  const yCharMatch = !ts?.error && !w?.error && ts.yearStem === w.yearStem && ts.yearBranch === w.yearBranch;
-  const yIdxMatch = !ts?.error && !w?.error && ts.yearCycle === w.yearCycle;
-  const mCharMatch = !ts?.error && !w?.error && ts.monthStem === w.monthStem && ts.monthBranch === w.monthBranch;
-  const mIdxMatch = !ts?.error && !w?.error && ts.monthCycle === w.monthCycle;
-  const dCharMatch = !ts?.error && !w?.error && ts.dayStem === w.dayStem && ts.dayBranch === w.dayBranch;
-  const dIdxMatch = !ts?.error && !w?.error && ts.dayCycle === w.dayCycle;
-  const hCharMatch = !ts?.error && !w?.error && ts.hourStem === w.hourStem && ts.hourBranch === w.hourBranch;
-  const hIdxMatch = !ts?.error && !w?.error && ts.hourCycle === w.hourCycle;
+  // Per-field match icons for Rust WASM vs TS pkg
+  const fieldMatch = (ts, w, field) => {
+    if (ts?.error || w?.error) return '⚠️';
+    return ts[field] === w[field] ? '✅' : '❌';
+  };
+  const rustYM = !ts?.error && !w?.error && ts.yearCycle === w.yearCycle && ts.yearStem === w.yearStem && ts.yearBranch === w.yearBranch;
+  const rustMM = !ts?.error && !w?.error && ts.monthCycle === w.monthCycle && ts.monthStem === w.monthStem && ts.monthBranch === w.monthBranch;
+  const rustDM = !ts?.error && !w?.error && ts.dayCycle === w.dayCycle && ts.dayStem === w.dayStem && ts.dayBranch === w.dayBranch;
+  const rustHM = !ts?.error && !w?.error && ts.hourCycle === w.hourCycle && ts.hourStem === w.hourStem && ts.hourBranch === w.hourBranch;
 
-  // Show ✅ if both match, ⚠️ if only index matches (encoding issue), ❌ if neither
-  const matchIcon = (charOk, idxOk) => charOk && idxOk ? '✅' : idxOk ? '⚠️' : '❌';
-  const yIcon = matchIcon(yCharMatch, yIdxMatch);
-  const mIcon = matchIcon(mCharMatch, mIdxMatch);
-  const dIcon = matchIcon(dCharMatch, dIdxMatch);
-  const hIcon = matchIcon(hCharMatch, hIdxMatch);
+  // Per-field match icons for Emscripten WASM vs TS pkg
+  const emccYM = !ts?.error && !e?.error && ts.yearCycle === e.yearCycle && ts.yearStem === e.yearStem && ts.yearBranch === e.yearBranch;
+  const emccMM = !ts?.error && !e?.error && ts.monthCycle === e.monthCycle && ts.monthStem === e.monthStem && ts.monthBranch === e.monthBranch;
+  const emccDM = !ts?.error && !e?.error && ts.dayCycle === e.dayCycle && ts.dayStem === e.dayStem && ts.dayBranch === e.dayBranch;
+  const emccHM = !ts?.error && !e?.error && ts.hourCycle === e.hourCycle && ts.hourStem === e.hourStem && ts.hourBranch === e.hourBranch;
 
-  const icon = r.match ? '✅' : r.tsResult?.error || r.wasmResult?.error ? '⚠️' : '❌';
+  const rustIcon = r.rustMatch ? '✅' : (ts?.error || w?.error) ? '⚠️' : '❌';
+  const emccIcon = r.emccMatch ? '✅' : (ts?.error || e?.error) ? '⚠️' : '❌';
 
-  md += `| ${i + 1} | ${r.date.slice(0, 19)} | ${lunarDate} | ${yearG} ${yIcon} | ${monthG} ${mIcon} | ${dayG} ${dIcon} | ${hourG} ${hIcon} | ${icon} |\n`;
+  // Show per-field detail in ganzhi columns: R✅E✅ means Rust matches, Emcc matches
+  const fieldIcon = (rOk, eOk) => `R${rOk ? '✅' : '❌'}E${eOk ? '✅' : '❌'}`;
+
+  md += `| ${i + 1} | ${r.date.slice(0, 19)} | ${lunarDate} | ${yearG} ${fieldIcon(rustYM, emccYM)} | ${monthG} ${fieldIcon(rustMM, emccMM)} | ${dayG} ${fieldIcon(rustDM, emccDM)} | ${hourG} ${fieldIcon(rustHM, emccHM)} | ${rustIcon} | ${emccIcon} |\n`;
 }
 
 // Benchmark results
