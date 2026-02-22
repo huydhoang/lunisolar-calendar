@@ -107,13 +107,22 @@ jobs:
       - name: Write step summary
         if: always()
         run: |
+          echo "# WASM Implementations Benchmark" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Date:** $(date -u +%Y-%m-%d)" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+
+          # Part 1: Low-level — calc_ut throughput
           if [ -f tests/swisseph-wasm/benchmark-report.md ]; then
-            echo "---" >> "$GITHUB_STEP_SUMMARY"
             cat tests/swisseph-wasm/benchmark-report.md >> "$GITHUB_STEP_SUMMARY"
-          fi
-          if [ -f tests/lunisolar-wasm/lunisolar-benchmark-report.md ]; then
             echo "" >> "$GITHUB_STEP_SUMMARY"
-            echo "---" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          echo "---" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+
+          # Part 2: High-level — lunisolar pipeline throughput
+          if [ -f tests/lunisolar-wasm/lunisolar-benchmark-report.md ]; then
             cat tests/lunisolar-wasm/lunisolar-benchmark-report.md >> "$GITHUB_STEP_SUMMARY"
           fi
 

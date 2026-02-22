@@ -251,7 +251,7 @@ for (const tsMs of timestamps50) {
   const date = new Date(tsMs);
   const year = date.getUTCFullYear();
   const { newMoons, solarTerms } = loadDataForYears([year - 1, year, year + 1]);
-  const tzOffsetSec = CST_OFFSET_SEC;
+  const tzOffsetSec = getTzOffsetSeconds(tsMs, TZ);
 
   const pyRef = pyMap.get(tsMs) || { error: 'not found in Python output' };
 
@@ -360,8 +360,9 @@ for (let i = 0; i < results.length; i++) {
 
 md += `\n## Notes\n\n`;
 md += `- **Reference**: Python \`lunisolar_v2.py\` with JPL DE440s ephemeris.\n`;
+md += `- **Timezone offset** is computed dynamically per timestamp via \`Intl.DateTimeFormat\` (handles China DST 1986–1991).\n`;
 md += `- **Day ganzhi** uses UTC date for day counting (matching the Python implementation).\n`;
-md += `- **Hour ganzhi** uses local wall time (CST) for the hour branch/stem.\n`;
+md += `- **Hour ganzhi** uses local wall time from the dynamic timezone offset for the hour branch/stem.\n`;
 md += `- All four ganzhi (year, month, day, hour) with cycle indices are compared field-by-field.\n`;
 
 // Write report

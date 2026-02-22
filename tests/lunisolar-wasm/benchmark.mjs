@@ -161,20 +161,11 @@ const wasmSpeedup = tsTime / wasmTime;
 const emccSpeedup = tsTime / emccTime;
 const emccVsWasm = wasmTime / emccTime;
 
-let md = `# Lunisolar Burst Benchmark (500 Requests)\n\n`;
-md += `**Date**: ${new Date().toISOString()}\n`;
-md += `**Node.js**: ${process.version}\n\n`;
+let md = `# Lunisolar Calendar Conversion — Burst Benchmark (500 Requests)\n\n`;
+md += `Each call converts a Unix-epoch timestamp to a full lunisolar date\n`;
+md += `(lunar year/month/day, leap month flag, four ganzhi with cycle indices).\n\n`;
 
-md += `## Functions Under Test\n\n`;
-md += `Each implementation converts a Unix-epoch timestamp to a full lunisolar date\n`;
-md += `(lunar year/month/day, four ganzhi with cycle indices).\n\n`;
-md += `| Implementation | Function |\n`;
-md += `|----------------|----------|\n`;
-md += `| TypeScript pkg | \`LunisolarCalendar.fromSolarDate(date, timezone)\` |\n`;
-md += `| Rust WASM (wasm-pack) | \`wasm.fromSolarDate(tsMs, tzOffsetSec, newMoonsJson, solarTermsJson)\` |\n`;
-md += `| Emscripten WASM (emcc) | \`emccModule._from_solar_date(tsMs, tzOffsetSec, nmPtr, nmCount, stTsPtr, stIdxPtr, stCount, outPtr, outBufLen)\` |\n\n`;
-
-md += `## Results\n\n`;
+md += `## Throughput\n\n`;
 md += `| Implementation | Total (ms) | Avg/req (ms) | OK | Failed |\n`;
 md += `|----------------|----------:|-----------:|---:|-------:|\n`;
 md += `| TypeScript pkg | ${tsTime.toFixed(1)} | ${(tsTime / 500).toFixed(3)} | ${tsOK} | ${500 - tsOK} |\n`;
@@ -184,7 +175,14 @@ md += `| Emscripten WASM (emcc) | ${emccTime.toFixed(1)} | ${(emccTime / 500).to
 md += `**Speed ratios:**\n`;
 md += `- Rust WASM is **${wasmSpeedup.toFixed(2)}x** ${wasmSpeedup > 1 ? 'faster' : 'slower'} than TypeScript\n`;
 md += `- Emscripten WASM is **${emccSpeedup.toFixed(2)}x** ${emccSpeedup > 1 ? 'faster' : 'slower'} than TypeScript\n`;
-md += `- Emscripten vs Rust: **${emccVsWasm.toFixed(2)}x** ${emccVsWasm > 1 ? 'faster' : 'slower'}\n`;
+md += `- Emscripten vs Rust: **${emccVsWasm.toFixed(2)}x** ${emccVsWasm > 1 ? 'faster' : 'slower'}\n\n`;
+
+md += `## Functions Called\n\n`;
+md += `| Implementation | Function |\n`;
+md += `|----------------|----------|\n`;
+md += `| TypeScript pkg | \`LunisolarCalendar.fromSolarDate(date, timezone)\` |\n`;
+md += `| Rust WASM (wasm-pack) | \`wasm.fromSolarDate(tsMs, tzOffsetSec, newMoonsJson, solarTermsJson)\` |\n`;
+md += `| Emscripten WASM (emcc) | \`emccModule._from_solar_date(tsMs, tzOffsetSec, nmPtr, nmCount, stTsPtr, stIdxPtr, stCount, outPtr, outBufLen)\` |\n`;
 
 const reportPath = resolve(__dirname, 'lunisolar-benchmark-report.md');
 writeFileSync(reportPath, md);

@@ -264,7 +264,7 @@ int from_solar_date(double timestamp_ms, int tz_offset_seconds,
                     int solar_terms_count,
                     char *out_buf, int out_buf_len) {
 
-    const int cst_offset = 8 * 3600;
+    const int cst_offset = tz_offset_seconds; /* Use the caller-provided timezone offset */
 
     /* Local year in user timezone */
     int local_year;

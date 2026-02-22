@@ -227,7 +227,7 @@ fn from_solar_date_core(
     new_moon_timestamps: &[f64],
     solar_term_pairs: &[(f64, u32)],
 ) -> Result<LunisolarResult, String> {
-    let cst_offset = 8 * 3600; // CST is always UTC+8
+    let cst_offset = tz_offset_seconds; // Use the caller-provided timezone offset
 
     // Local date parts in user timezone
     let (local_year, _local_month, _local_day, _lh, _lm, _ls) =

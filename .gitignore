@@ -225,6 +225,7 @@ tests/swisseph-wasm/skyfield-results.json
 tests/swisseph-wasm/report.md
 tests/swisseph-wasm/benchmark-report.md
 tests/lunisolar-wasm/compare-report.md
+tests/lunisolar-wasm/lunisolar-benchmark-report.md
 tests/lunisolar-wasm/package.json
 tests/lunisolar-wasm/package-lock.json
 
