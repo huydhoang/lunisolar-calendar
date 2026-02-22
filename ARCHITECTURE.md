@@ -1,6 +1,6 @@
 # Architecture
 
-This document describes the architecture of the **Lunisolar-TS** project — a two-component system consisting of a **Python data pipeline** for high-precision astronomical calculations and a **TypeScript npm package** that delivers those results through a modern, type-safe API.
+This document describes the architecture of the **Lunisolar-TS** project — a multi-component system consisting of a **Python data pipeline** for high-precision astronomical calculations, **WebAssembly modules** for calendar conversion (with integrated Swiss Ephemeris), and an **npm package** (`lunisolar-wasm`) for distribution.
 
 ---
 
@@ -14,16 +14,24 @@ graph LR
         C --> D[JSON Output<br/>by year]
     end
 
-    subgraph TypeScript Package
-        D --> E[DataLoader<br/>CDN / static / fs]
-        E --> F[LunisolarCalendar]
-        F --> G[Huangdao Systems]
+    subgraph WASM Modules
+        SE[Swiss Ephemeris<br/>vendor/swisseph/] --> RS[lunisolar-rs<br/>Rust + wasm-bindgen]
+        SE --> EMCC[lunisolar-emcc<br/>Emscripten C→WASM]
+        SE --> SRS[swisseph-rs<br/>SE bindings]
     end
 
-    G --> H[Consumer App]
+    RS --> PKG[npm package<br/>lunisolar-wasm]
+    EMCC --> PKG
+
+    subgraph Archived
+        D --> E[DataLoader<br/>CDN / static / fs]
+        E --> F[LunisolarCalendar TS]
+    end
+
+    PKG --> H[Consumer App]
 ```
 
-The Python pipeline pre-computes astronomical events (moon phases, solar terms) from NASA ephemeris data and writes them as year-chunked JSON files. The TypeScript package lazy-loads those files at runtime and exposes a high-level calendar conversion and auspicious-day API.
+The Python pipeline pre-computes astronomical events (moon phases, solar terms) from NASA ephemeris data and writes them as year-chunked JSON files. The WASM modules use the Swiss Ephemeris (with embedded `.se1` data files) for fully standalone calendar conversion — no pre-computed data required.
 
 ---
 
@@ -166,7 +174,246 @@ graph LR
 
 ---
 
-## TypeScript NPM Package (`pkg/`)
+## WebAssembly Modules (`wasm/`)
+
+The project has three WASM implementations, all using the vendored Swiss Ephemeris C source (`vendor/swisseph/`) with embedded `.se1` data files for fully standalone operation.
+
+### Package Naming Convention
+
+| Directory | Language | Build Toolchain | Description |
+|-----------|----------|-----------------|-------------|
+| `wasm/lunisolar-rs/` | Rust | wasm-pack / wasm-bindgen | Lunisolar calendar in Rust |
+| `wasm/lunisolar-emcc/` | C | Emscripten / emcc | Lunisolar calendar in C |
+| `wasm/swisseph-rs/` | Rust | wasm-pack / wasm-bindgen | Swiss Ephemeris bindings |
+
+### `lunisolar-rs/` — Rust WASM Port
+
+```mermaid
+graph TD
+    subgraph "lunisolar-rs (lib.rs)"
+        ENTRY_AUTO["#wasm_bindgen<br/>fromSolarDateAuto(tsMs, tzOffsetSec)"]
+        ENTRY_PRE["#wasm_bindgen<br/>fromSolarDate(tsMs, tzOffsetSec, newMoonsJson, solarTermsJson)"]
+
+        CORE["from_solar_date_core()"]
+
+        subgraph "Calendar Logic"
+            DATE["Date helpers<br/>civil_from_days / days_from_civil<br/>utc_ms_to_date_parts / cst_date_of"]
+            MONTH["Month Period Builder<br/>MonthPeriod[] from new moon pairs"]
+            TERMS["Term Indexer<br/>PrincipalTerm[] → tag periods"]
+            Z11["Z11 Anchor + Leap Rule<br/>Winter Solstice → Zi month<br/>no-zhongqi leap assignment"]
+            RESOLVE["Lunar Month Resolver<br/>target CST date → period"]
+            GZ["Sexagenary Engine<br/>year / month / day / hour ganzhi"]
+            HD["Huangdao<br/>Construction Stars + Great Yellow Path"]
+        end
+
+        RESULT["LunisolarResult → JSON"]
+    end
+
+    subgraph "ephemeris.rs"
+        NM["compute_new_moons(start, end)<br/>1-day elongation scan + bisection"]
+        ST["compute_solar_terms(start, end)<br/>1-day Sun longitude scan + bisection"]
+    end
+
+    subgraph "swisseph-rs crate (dependency)"
+        FFI["swe_bindings FFI<br/>swe_calc_ut · swe_julday"]
+        SE1["Embedded .se1 data<br/>sepl_18.se1 · semo_18.se1"]
+        SHIMS["C stdlib shims<br/>malloc · fopen · sin · …"]
+    end
+
+    subgraph "vendor/swisseph/"
+        CSRC["SE C source (v2.10)<br/>sweph.c · swecl.c · …<br/>compiled via cc crate"]
+    end
+
+    ENTRY_AUTO --> NM
+    ENTRY_AUTO --> ST
+    NM --> FFI
+    ST --> FFI
+    FFI --> CSRC
+    FFI --> SE1
+    CSRC --> SHIMS
+
+    NM --> CORE
+    ST --> CORE
+    ENTRY_PRE --> CORE
+
+    CORE --> DATE
+    DATE --> MONTH
+    MONTH --> TERMS
+    TERMS --> Z11
+    Z11 --> RESOLVE
+    RESOLVE --> GZ
+    GZ --> HD
+    HD --> RESULT
+```
+
+The Rust port depends on `swisseph-rs` as a path dependency:
+
+```toml
+[dependencies]
+swisseph-wasm = { path = "../swisseph-rs" }
+```
+
+Exported JS functions:
+- `fromSolarDate(tsMs, tzOffsetSec, newMoonsJson, solarTermsJson)` — accepts pre-computed data (for benchmark compatibility)
+- `fromSolarDateAuto(tsMs, tzOffsetSec)` — **standalone**: computes everything internally via Swiss Ephemeris
+
+### `lunisolar-emcc/` — Emscripten C Port
+
+```mermaid
+graph TD
+    subgraph "lunisolar-emcc (lunisolar.c)"
+        ENTRY_AUTO_C["EMSCRIPTEN_KEEPALIVE<br/>from_solar_date_auto(tsMs, tzOffsetSec,<br/>outBuf, outBufLen)"]
+        ENTRY_PRE_C["EMSCRIPTEN_KEEPALIVE<br/>from_solar_date(tsMs, tzOffsetSec,<br/>nmPtr, nmCount, stTsPtr, stIdxPtr, stCount,<br/>outBuf, outBufLen)"]
+
+        subgraph "Calendar Logic (C)"
+            DATE_C["Date helpers<br/>civil_from_days / days_from_civil<br/>utc_ms_to_date_parts / cst_date_of"]
+            MONTH_C["Month Period Builder<br/>MonthPeriod[] from new moon pairs"]
+            TERMS_C["Term Indexer<br/>PrincipalTerm[] → tag periods"]
+            Z11_C["Z11 Anchor + Leap Rule<br/>Winter Solstice → Zi month<br/>no-zhongqi leap assignment"]
+            RESOLVE_C["Lunar Month Resolver<br/>target CST date → period"]
+            GZ_C["Sexagenary Engine<br/>year / month / day / hour ganzhi"]
+            HD_C["Huangdao<br/>Construction Stars + Great Yellow Path"]
+        end
+
+        JSON_C["snprintf() → JSON string in outBuf"]
+    end
+
+    subgraph "ephemeris.c / ephemeris.h"
+        NM_C["compute_new_moons(start, end,<br/>outTs, maxCount)<br/>1-day elongation scan + bisection"]
+        ST_C["compute_solar_terms(start, end,<br/>outTs, outIdx, maxCount)<br/>1-day Sun longitude scan + bisection"]
+        INIT_C["ephe_init() → swe_set_ephe_path('/ephe')"]
+        CLOSE_C["ephe_close() → swe_close()"]
+    end
+
+    subgraph "vendor/swisseph/ (compiled by emcc)"
+        CSRC_C["SE C source (v2.10)<br/>sweph.c · swecl.c · …<br/>9 files linked by build.sh"]
+    end
+
+    subgraph "Embedded data (--embed-file)"
+        SE1_C["sepl_18.se1 → /ephe/sepl_18.se1<br/>semo_18.se1 → /ephe/semo_18.se1"]
+    end
+
+    ENTRY_AUTO_C --> INIT_C
+    ENTRY_AUTO_C --> NM_C
+    ENTRY_AUTO_C --> ST_C
+    ENTRY_AUTO_C --> CLOSE_C
+    NM_C --> CSRC_C
+    ST_C --> CSRC_C
+    CSRC_C --> SE1_C
+
+    NM_C --> ENTRY_PRE_C
+    ST_C --> ENTRY_PRE_C
+    ENTRY_AUTO_C --> ENTRY_PRE_C
+
+    ENTRY_PRE_C --> DATE_C
+    DATE_C --> MONTH_C
+    MONTH_C --> TERMS_C
+    TERMS_C --> Z11_C
+    Z11_C --> RESOLVE_C
+    RESOLVE_C --> GZ_C
+    GZ_C --> HD_C
+    HD_C --> JSON_C
+```
+
+Built by `build.sh`, which compiles the calendar C code plus all 9 SE C files from `vendor/swisseph/` and embeds `.se1` data via `--embed-file`:
+
+```bash
+emcc lunisolar.c ephemeris.c "${SWE_SRCS[@]}" \
+  -I"$SWE_DIR" \
+  --embed-file "$EPHE_DIR/sepl_18.se1@/ephe/sepl_18.se1" \
+  --embed-file "$EPHE_DIR/semo_18.se1@/ephe/semo_18.se1" \
+  -o "$OUT_DIR/lunisolar_emcc.mjs"
+```
+
+Exported C functions:
+- `from_solar_date(...)` — accepts pre-computed data via WASM heap pointers
+- `from_solar_date_auto(tsMs, tzOffsetSec, outBuf, outBufLen)` — **standalone**: computes everything internally
+
+### `swisseph-rs/` — Swiss Ephemeris Bindings
+
+```mermaid
+graph TD
+    subgraph "swisseph-rs (lib.rs)"
+        subgraph "WASM Exports (#wasm_bindgen)"
+            JS_CALC["swe_calc_ut(jd, ipl, iflag)<br/>→ Vec&lt;f64&gt; [lon, lat, dist, ...]"]
+            JS_JUL["swe_julday(y, m, d, h, greg)<br/>→ f64"]
+            JS_REV["swe_revjul(jd, greg)<br/>→ {year, month, day, hour}"]
+            JS_NAME["swe_get_planet_name(ipl)<br/>→ String"]
+            JS_CONST["SE_SUN · SE_MOON · SE_GREG_CAL<br/>SEFLG_SWIEPH · SEFLG_SPEED"]
+        end
+
+        subgraph "FFI Layer (bindings.rs)"
+            BIND["#link(name = 'swe') extern 'C'<br/>impl_swe_calc_ut<br/>impl_swe_julday<br/>impl_swe_revjul<br/>impl_swe_get_planet_name"]
+        end
+
+        subgraph "C stdlib shims (mod shims)"
+            MATH["Math via libm<br/>sin · cos · atan2 · sqrt · …"]
+            MEM["Allocator<br/>malloc · free · calloc · realloc"]
+            STR["String ops<br/>strlen · strcmp · strcpy · strcat · …"]
+            FS["In-memory filesystem<br/>fopen · fread · fseek · ftell · fclose"]
+            MISC["Stubs<br/>time · getenv · exit · dlopen · stat · …"]
+        end
+
+        subgraph "Embedded data"
+            SE1_RS["include_bytes!<br/>sepl_18.se1 · semo_18.se1"]
+        end
+    end
+
+    subgraph "build.rs (cc crate)"
+        BUILD["Compiles 9 SE C files<br/>with symbol renaming<br/>(swe_calc_ut → impl_swe_calc_ut)<br/>and wasm32 target flags"]
+    end
+
+    subgraph "vendor/swisseph/"
+        VENDOR_C["SE C source (v2.10)<br/>sweph.c · swedate.c · swecl.c<br/>swehouse.c · swejpl.c · swehel.c<br/>swemmoon.c · swemplan.c · swephlib.c"]
+    end
+
+    JS_CALC --> BIND
+    JS_JUL --> BIND
+    JS_REV --> BIND
+    JS_NAME --> BIND
+
+    BIND --> BUILD
+    BUILD --> VENDOR_C
+    VENDOR_C --> MATH
+    VENDOR_C --> MEM
+    VENDOR_C --> STR
+    VENDOR_C --> FS
+    VENDOR_C --> MISC
+    FS --> SE1_RS
+```
+
+Provides low-level SE function access via Rust FFI with wasm-bindgen:
+- Compiles SE C source via `cc` crate (`build.rs`)
+- Renames C symbols to avoid collision with wasm-bindgen exports
+- Provides in-memory filesystem shims (`fopen`/`fread`/`fseek`) for embedded `.se1` data
+- Exports `swe_calc_ut`, `swe_julday`, `swe_revjul`, `swe_get_planet_name` to JS
+
+### npm Package (`pkg/`)
+
+The Emscripten-based `lunisolar-wasm` package is published to npm:
+
+```json
+{
+  "name": "lunisolar-wasm",
+  "main": "lunisolar_emcc.mjs",
+  "files": ["lunisolar_emcc.mjs", "lunisolar_emcc.wasm", "README.md"]
+}
+```
+
+Usage:
+```js
+import createLunisolarEmcc from 'lunisolar-wasm';
+const mod = await createLunisolarEmcc();
+
+const outPtr = mod._malloc(1024);
+const n = mod._from_solar_date_auto(Date.now(), 28800, outPtr, 1024);
+if (n > 0) console.log(JSON.parse(mod.UTF8ToString(outPtr, n)));
+mod._free(outPtr);
+```
+
+---
+
+## TypeScript NPM Package (`archive/pkg-ts/`) — Archived
 
 ### Package Structure
 
@@ -276,6 +523,23 @@ The package ships as dual CJS/ESM with zero runtime dependencies (only `tslib`).
 
 ```mermaid
 sequenceDiagram
+    participant SE as Swiss Ephemeris<br/>(embedded .se1)
+    participant WASM as WASM Module
+    participant App as Consumer Application
+
+    App->>WASM: fromSolarDateAuto(timestamp, tzOffset)
+    WASM->>SE: swe_calc_ut() — Sun/Moon positions
+    WASM->>WASM: Compute new moons (elongation scan)
+    WASM->>WASM: Compute solar terms (longitude scan)
+    WASM->>WASM: Build month periods, apply leap rule
+    WASM->>WASM: Compute Gan-Zhi cycles + Huangdao
+    WASM-->>App: JSON result
+```
+
+For the archived TypeScript path (requires pre-computed data):
+
+```mermaid
+sequenceDiagram
     participant Eph as NASA DE440 Ephemeris
     participant Py as Python Pipeline
     participant JSON as JSON Files (by year)
@@ -293,7 +557,6 @@ sequenceDiagram
     DL->>JSON: Fetch / import / read
     DL-->>Cal: Cached astronomical data
     Cal-->>App: LunisolarCalendar instance
-    App->>App: Access lunar date, Gan-Zhi, auspicious info
 ```
 
 ---
@@ -302,6 +565,8 @@ sequenceDiagram
 
 ```
 lunisolar-ts/
+├── archive/                    # Archived implementations
+│   └── pkg-ts/                 # Previous TypeScript npm package (lunisolar-ts)
 ├── data/                       # Python data pipeline
 │   ├── config.py               # Shared constants (ephemeris path, physics, location)
 │   ├── utils.py                # Logging, CSV/JSON I/O, argument parsing
@@ -315,34 +580,33 @@ lunisolar-ts/
 │   ├── tidal_data.py           # Tidal acceleration & lunar mansions
 │   ├── lunisolar_v2.py         # Core lunisolar calendar engine (9 services)
 │   └── huangdao_systems_v2.py  # Auspicious day systems
-├── pkg/                        # TypeScript npm package
-│   ├── src/
-│   │   ├── index.ts            # Public API barrel export
-│   │   ├── config.ts           # Global configuration (strategy, CDN)
-│   │   ├── types.ts            # Type definitions
-│   │   ├── core/
-│   │   │   └── LunisolarCalendar.ts   # Gregorian → Lunisolar conversion
-│   │   ├── data/
-│   │   │   ├── DataLoader.ts   # Lazy-loading with cache
-│   │   │   └── manifest.ts     # Static import map (generated)
-│   │   ├── timezone/
-│   │   │   └── TimezoneHandler.ts     # Intl-based timezone handling
-│   │   └── huangdao/
-│   │       ├── ConstructionStars.ts   # 12 Construction Stars (十二建星)
-│   │       └── GreatYellowPath.ts     # Great Yellow Path (大黄道)
-│   ├── package.json
-│   ├── tsconfig.json
-│   └── rollup.config.mjs
+├── pkg/                        # Main npm package (lunisolar-wasm, Emscripten)
+│   ├── package.json            # npm package metadata
+│   └── README.md               # Package documentation
+├── vendor/                     # Shared third-party source code
+│   └── swisseph/               # Swiss Ephemeris C source (v2.10.03)
+├── wasm/                       # WebAssembly implementations
+│   ├── lunisolar-rs/           # Rust wasm-pack port (standalone with SE)
+│   │   ├── Cargo.toml          # Depends on swisseph-wasm
+│   │   └── src/
+│   │       ├── lib.rs          # Calendar logic + fromSolarDateAuto()
+│   │       └── ephemeris.rs    # SE-based new moon / solar term computation
+│   ├── lunisolar-emcc/         # Emscripten C source (builds to pkg/)
+│   │   ├── build.sh            # Compiles C + SE + embeds .se1 data
+│   │   ├── lunisolar.c         # Calendar logic + from_solar_date_auto()
+│   │   ├── ephemeris.c         # SE-based new moon / solar term computation
+│   │   └── ephemeris.h
+│   └── swisseph-rs/            # Swiss Ephemeris Rust + wasm-bindgen bindings
+│       ├── Cargo.toml
+│       ├── build.rs            # Compiles SE C source via cc crate
+│       ├── ephe/               # Embedded .se1 ephemeris data files
+│       └── src/
+│           ├── lib.rs          # WASM exports + C stdlib shims + in-memory FS
+│           └── bindings.rs     # FFI bindings to SE C functions
+├── tests/                      # Integration tests
+│   ├── lunisolar-wasm/         # Accuracy & benchmark tests
+│   └── swisseph-wasm/          # Swiss Ephemeris accuracy & benchmark tests
 ├── docs/                       # Detailed documentation
-│   ├── lunisolar_calendar_rules.md
-│   ├── 12_construction_stars.md
-│   ├── great_yellow_path.md
-│   ├── huangdao_systems.md
-│   ├── timezone.md
-│   ├── serverless.md
-│   ├── ci_cd.md
-│   ├── debug/                  # Troubleshooting notes
-│   └── plans/                  # Development roadmaps
 ├── nasa/                       # JPL ephemeris data files
 │   └── de440.bsp
 ├── output/                     # Generated data (git-ignored)

@@ -5,16 +5,22 @@
  * so we can benchmark Emscripten vs wasm-pack compilation paths.
  *
  * Compiled with:
- *   emcc lunisolar.c -O3 -s WASM=1 -s MODULARIZE=1 ...
+ *   emcc lunisolar.c ephemeris.c vendor/swisseph/*.c ...
  *
- * Exposed function:
+ * Exposed functions:
+ *
  *   from_solar_date(timestamp_ms, tz_offset_seconds,
  *                   new_moons_ptr, new_moons_count,
  *                   solar_terms_ts_ptr, solar_terms_idx_ptr,
  *                   solar_terms_count,
  *                   out_buf, out_buf_len)
+ *       Accepts pre-computed astronomical data. Returns bytes written.
  *
- *   Returns the number of bytes written to out_buf (a JSON string).
+ *   from_solar_date_auto(timestamp_ms, tz_offset_seconds,
+ *                        out_buf, out_buf_len)
+ *       Standalone: computes new moons and solar terms internally
+ *       using the Swiss Ephemeris with embedded .se1 data files.
+ *       Returns bytes written, or -1 on error.
  */
 
 #include <emscripten/emscripten.h>
@@ -22,6 +28,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+
+#include "ephemeris.h"
 
 /* ── Constants ─────────────────────────────────────────────────────────────── */
 
@@ -548,4 +556,61 @@ int from_solar_date(double timestamp_ms, int tz_offset_seconds,
     free(periods);
 
     return n;
+}
+
+/* ── Standalone conversion using Swiss Ephemeris ──────────────────────────── */
+
+/*
+ * from_solar_date_auto
+ *
+ * Fully standalone conversion: computes new moons and solar terms internally
+ * using the Swiss Ephemeris library with embedded .se1 ephemeris data.
+ *
+ * Parameters:
+ *   timestamp_ms      – UTC timestamp in milliseconds
+ *   tz_offset_seconds – Timezone offset from UTC in seconds
+ *   out_buf           – output buffer for JSON string
+ *   out_buf_len       – size of out_buf
+ *
+ * Returns: number of bytes written to out_buf, or -1 on error.
+ */
+EMSCRIPTEN_KEEPALIVE
+int from_solar_date_auto(double timestamp_ms, int tz_offset_seconds,
+                         char *out_buf, int out_buf_len) {
+
+    /* Determine which years of data we need */
+    int local_year;
+    {
+        unsigned lm, ld, lh, lmin, ls;
+        utc_ms_to_date_parts(timestamp_ms, tz_offset_seconds,
+                             &local_year, &lm, &ld, &lh, &lmin, &ls);
+    }
+    int start_year = local_year - 1;
+    int end_year   = local_year + 1;
+
+    /* Initialise Swiss Ephemeris */
+    ephe_init();
+
+    /* Compute new moons */
+    double nm_sec[EPHE_MAX_NEW_MOONS];
+    int nm_count = compute_new_moons(start_year, end_year,
+                                     nm_sec, EPHE_MAX_NEW_MOONS);
+    if (nm_count < 2) { ephe_close(); return -1; }
+
+    /* Compute solar terms */
+    double st_sec[EPHE_MAX_SOLAR_TERMS];
+    unsigned st_idx[EPHE_MAX_SOLAR_TERMS];
+    int st_count = compute_solar_terms(start_year, end_year,
+                                       st_sec, st_idx,
+                                       EPHE_MAX_SOLAR_TERMS);
+    if (st_count < 1) { ephe_close(); return -1; }
+
+    ephe_close();
+
+    /* Delegate to the existing from_solar_date() */
+    int result = from_solar_date(timestamp_ms, tz_offset_seconds,
+                                 nm_sec, nm_count,
+                                 st_sec, st_idx, st_count,
+                                 out_buf, out_buf_len);
+    return result;
 }

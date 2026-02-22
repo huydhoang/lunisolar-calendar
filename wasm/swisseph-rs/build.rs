@@ -6,7 +6,7 @@ fn main() {
 
     let mut build = cc::Build::new();
 
-    let swe_src = "vendor/swisseph";
+    let swe_src = "../../vendor/swisseph";
     let wrapper_src = "src/wrapper";
 
     // Swiss Ephemeris core C files

@@ -21,17 +21,17 @@ const ROOT = resolve(__dirname, '..', '..');
 // ── 1. Load the TypeScript package ──────────────────────────────────────────
 
 const { LunisolarCalendar, ConstructionStars, GreatYellowPath, configure } = await import(
-  resolve(ROOT, 'pkg', 'dist', 'index.mjs')
+  resolve(ROOT, 'archive', 'pkg-ts', 'dist', 'index.mjs')
 );
 configure({ strategy: 'static' });
 
 // ── 2. Load the Rust WASM package ───────────────────────────────────────────
 
-const wasm = await import(resolve(ROOT, 'wasm', 'lunisolar', 'pkg', 'lunisolar_wasm.js'));
+const wasm = await import(resolve(ROOT, 'wasm', 'lunisolar-rs', 'pkg', 'lunisolar_wasm.js'));
 
 // ── 3. Load the Emscripten WASM package ─────────────────────────────────────
 
-const createLunisolarEmcc = (await import(resolve(ROOT, 'wasm', 'lunisolar-emcc', 'pkg', 'lunisolar_emcc.mjs'))).default;
+const createLunisolarEmcc = (await import(resolve(ROOT, 'pkg', 'lunisolar_emcc.mjs'))).default;
 const emccModule = await createLunisolarEmcc();
 
 // ── 4. Data loader helper ───────────────────────────────────────────────────
@@ -119,37 +119,18 @@ function getTzOffsetSeconds(dateMs, tz) {
   return Math.round((localMs - utcMs) / 1000);
 }
 
-// ── 7. Emscripten WASM wrapper ──────────────────────────────────────────────
+// ── 7. Emscripten WASM wrapper (standalone) ─────────────────────────────────
 
 /**
- * Call the Emscripten-compiled from_solar_date function.
- * Marshals arrays into WASM linear memory and reads the JSON result.
+ * Call the standalone Emscripten-compiled from_solar_date_auto function.
+ * Uses embedded Swiss Ephemeris to compute new moons and solar terms internally.
  */
-function emccFromSolarDate(timestampMs, tzOffsetSeconds, newMoons, solarTerms) {
-  const nmCount = newMoons.length;
-  const stCount = solarTerms.length;
-
-  // Allocate memory for arrays
-  const nmPtr = emccModule._malloc(nmCount * 8); // Float64
-  const stTsPtr = emccModule._malloc(stCount * 8); // Float64
-  const stIdxPtr = emccModule._malloc(stCount * 4); // Uint32
+function emccFromSolarDateAuto(timestampMs, tzOffsetSeconds) {
   const outBufLen = 1024;
   const outPtr = emccModule._malloc(outBufLen);
 
-  // Write new moon timestamps (Float64)
-  for (let i = 0; i < nmCount; i++) {
-    emccModule.HEAPF64[(nmPtr >> 3) + i] = newMoons[i];
-  }
-  // Write solar term timestamps (Float64) and indices (Uint32)
-  for (let i = 0; i < stCount; i++) {
-    emccModule.HEAPF64[(stTsPtr >> 3) + i] = solarTerms[i][0];
-    emccModule.HEAPU32[(stIdxPtr >> 2) + i] = solarTerms[i][1];
-  }
-
-  const result = emccModule._from_solar_date(
+  const result = emccModule._from_solar_date_auto(
     timestampMs, tzOffsetSeconds,
-    nmPtr, nmCount,
-    stTsPtr, stIdxPtr, stCount,
     outPtr, outBufLen,
   );
 
@@ -158,9 +139,6 @@ function emccFromSolarDate(timestampMs, tzOffsetSeconds, newMoons, solarTerms) {
     json = emccModule.UTF8ToString(outPtr, result);
   }
 
-  emccModule._free(nmPtr);
-  emccModule._free(stTsPtr);
-  emccModule._free(stIdxPtr);
   emccModule._free(outPtr);
 
   return json ? JSON.parse(json) : null;
@@ -305,10 +283,10 @@ for (const tsMs of timestamps50) {
     wasmResult = { error: e.message };
   }
 
-  // Emscripten WASM
+  // Emscripten WASM (standalone — uses embedded Swiss Ephemeris)
   try {
-    emccResult = emccFromSolarDate(tsMs, tzOffsetSec, newMoons, solarTerms);
-    if (!emccResult) emccResult = { error: 'from_solar_date returned -1' };
+    emccResult = emccFromSolarDateAuto(tsMs, tzOffsetSec);
+    if (!emccResult) emccResult = { error: 'from_solar_date_auto returned -1' };
   } catch (e) {
     emccResult = { error: e.message };
   }

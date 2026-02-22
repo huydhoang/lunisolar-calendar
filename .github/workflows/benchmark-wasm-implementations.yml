@@ -6,10 +6,10 @@ on:
       - '.github/workflows/benchmark-wasm-implementations.yml'
       - 'tests/swisseph-wasm/benchmark.mjs'
       - 'tests/lunisolar-wasm/benchmark.mjs'
-      - 'wasm/swisseph/**'
-      - 'wasm/lunisolar/**'
+      - 'wasm/swisseph-rs/**'
+      - 'wasm/lunisolar-rs/**'
       - 'wasm/lunisolar-emcc/**'
-      - 'pkg/src/**'
+      - 'vendor/swisseph/**'
   workflow_dispatch:
 
 jobs:
@@ -56,21 +56,21 @@ jobs:
 
       # ── 5. Build vendored swisseph WASM ────────────────────────────────────
       - name: Build swisseph WASM (vendored C source)
-        working-directory: wasm/swisseph
+        working-directory: wasm/swisseph-rs
         run: wasm-pack build --target nodejs --release
 
-      # ── 6. Build TypeScript package ────────────────────────────────────────
+      # ── 6. Build TypeScript package (archived, for benchmark comparison) ────
       - name: Install TS dependencies
-        working-directory: pkg
+        working-directory: archive/pkg-ts
         run: npm ci
 
       - name: Build TypeScript package
-        working-directory: pkg
+        working-directory: archive/pkg-ts
         run: npm run build
 
       # ── 7. Build lunisolar Rust WASM ───────────────────────────────────────
       - name: Build lunisolar WASM (Rust / wasm-pack)
-        working-directory: wasm/lunisolar
+        working-directory: wasm/lunisolar-rs
         run: wasm-pack build --target nodejs --release
 
       # ── 8. Build lunisolar Emscripten WASM ─────────────────────────────────
@@ -84,14 +84,14 @@ jobs:
           echo "=== swisseph WASM ==="
           ls -lh tests/swisseph-wasm/node_modules/@fusionstrings/swisseph-wasm/esm/lib/swisseph_wasm.wasm
           ls -lh tests/swisseph-wasm/node_modules/swisseph-wasm/wsam/swisseph.wasm
-          ls -lh wasm/swisseph/pkg/swisseph_wasm_bg.wasm
+          ls -lh wasm/swisseph-rs/pkg/swisseph_wasm_bg.wasm
           echo ""
           echo "=== lunisolar WASM ==="
-          ls -lh wasm/lunisolar/pkg/lunisolar_wasm_bg.wasm
-          ls -lh wasm/lunisolar-emcc/pkg/lunisolar_emcc.wasm
+          ls -lh wasm/lunisolar-rs/pkg/lunisolar_wasm_bg.wasm
+          ls -lh pkg/lunisolar_emcc.wasm
           echo ""
-          echo "=== TypeScript package ==="
-          ls -lh pkg/dist/index.mjs
+          echo "=== TypeScript package (archived) ==="
+          ls -lh archive/pkg-ts/dist/index.mjs
 
       # ── 10. Run swisseph benchmark ─────────────────────────────────────────
       - name: Run swisseph benchmark

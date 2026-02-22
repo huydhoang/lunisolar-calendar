@@ -22,7 +22,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # Our vendored version
-          VENDORED=$(grep '#define SE_VERSION' wasm/swisseph/vendor/swisseph/sweph.h | sed 's/.*"\(.*\)".*/\1/')
+          VENDORED=$(grep '#define SE_VERSION' vendor/swisseph/sweph.h | sed 's/.*"\(.*\)".*/\1/')
           echo "Vendored SE version: $VENDORED"
 
           # Latest tag from official repo
@@ -52,8 +52,8 @@ jobs:
 
           ### Steps to update
           1. Download the 9 core C files + headers from the [$LATEST tag](https://github.com/aloistr/swisseph/tree/$LATEST)
-          2. Replace files in \`wasm/swisseph/vendor/swisseph/\`
-          3. Run \`wasm-pack build --target nodejs --release\` in \`wasm/swisseph/\`
+          2. Replace files in \`vendor/swisseph/\`
+          3. Run \`wasm-pack build --target nodejs --release\` in \`wasm/swisseph-rs/\`
           4. Run the benchmark: \`node tests/swisseph-wasm/benchmark.mjs\`
           5. Verify position agreement is still < 0.001°"
               echo "📋 Created issue for Swiss Ephemeris update"

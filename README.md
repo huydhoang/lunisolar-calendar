@@ -1,21 +1,41 @@
-# Gemini Project Context: Lunisolar-TS
+# Lunisolar-TS
 
 ## Project Overview
 
-This project contains the Python implementation for a comprehensive, high-precision astronomical and astrological calculator focused on the traditional Chinese lunisolar calendar. The Python scripts serve two primary purposes:
+A comprehensive, high-precision astronomical and astrological calculator focused on the traditional Chinese lunisolar calendar. The project includes:
 
-1.  **Data Pipeline:** To generate high-precision astronomical data (e.g., moon phases, solar terms, planetary events) that will be consumed by a downstream TypeScript npm package.
-2.  **Prototyping:** To serve as a reference implementation and prototype for the core calendar and Huangdao (Yellow Path) system logic.
+1. **Python Data Pipeline** (`data/`) — Generates high-precision astronomical data (moon phases, solar terms, planetary events) using NASA's JPL DE440 ephemeris via Skyfield.
+2. **WebAssembly Modules** (`wasm/`) — Three WASM implementations, all integrating with the Swiss Ephemeris for standalone operation:
+   - **`lunisolar-rs/`** — Rust port using wasm-pack / wasm-bindgen (depends on `swisseph-rs`)
+   - **`lunisolar-emcc/`** — C port using Emscripten / emcc (main package, published to npm)
+   - **`swisseph-rs/`** — Swiss Ephemeris Rust bindings (vendored C source + embedded `.se1` data)
+3. **npm Package** (`pkg/`) — The Emscripten-based `lunisolar-wasm` package published to npmjs
+4. **Archived TypeScript Port** (`archive/pkg-ts/`) — Previous TypeScript npm package (`lunisolar-ts`)
 
-The calculations are powered by the `skyfield` library and NASA's JPL DE440 ephemeris data, ensuring a high degree of accuracy.
+### Core Features
 
-The primary functions of this project are:
+- **Lunisolar Calendar Conversion:** Gregorian → lunisolar dates with Heavenly Stems and Earthly Branches (Gan-Zhi)
+- **Auspicious Day Calculation:** "Twelve Construction Stars" (十二建星) and "Great Yellow Path" (大黄道)
+- **Standalone Operation:** Both WASM ports compute new moons and solar terms internally via Swiss Ephemeris — no pre-computed data needed
+- **Astronomical Data Generation:** Moon phases, solar terms, planetary events, tidal forces (Python pipeline)
 
-- **Lunisolar Calendar Conversion:** Converting Gregorian calendar dates to their lunisolar counterparts, including the correct year, month, day, and hour with their corresponding Heavenly Stems and Earthly Branches (Gan-Zhi).
-- **Auspicious Day Calculation:** Implementing traditional Chinese day selection methods, including the "Twelve Construction Stars" (十二建星) and the "Great Yellow Path" (大黄道) systems.
-- **Astronomical Data Generation:** Calculating various celestial events such as moon phases, solar terms, planetary rise/set times, tidal forces, and moon illumination percentages.
+### Project Structure
 
-The architecture is modular, with specific calculations encapsulated in their own scripts within the `data/` directory. The system is designed for performance, utilizing multiprocessing to parallelize computations.
+```
+lunisolar-ts/
+├── archive/pkg-ts/         # Archived TypeScript npm package
+├── data/                    # Python data pipeline
+├── docs/                    # Documentation
+├── nasa/                    # JPL ephemeris data
+├── output/                  # Generated data (JSON)
+├── pkg/                     # npm package (lunisolar-wasm, Emscripten)
+├── tests/                   # Integration tests
+├── vendor/swisseph/         # Shared Swiss Ephemeris C source (v2.10)
+└── wasm/                    # WebAssembly implementations
+    ├── lunisolar-rs/        # Rust port (standalone with SE via swisseph-rs)
+    ├── lunisolar-emcc/      # C port (standalone with SE, builds to pkg/)
+    └── swisseph-rs/         # Swiss Ephemeris Rust bindings + embedded .se1
+```
 
 ## Building and Running
 

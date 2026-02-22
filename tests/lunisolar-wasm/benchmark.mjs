@@ -6,7 +6,7 @@
  *
  *   - TypeScript pkg:  LunisolarCalendar.fromSolarDate(date, timezone)
  *   - Rust WASM:       wasm.fromSolarDate(timestampMs, tzOffsetSec, newMoonsJson, solarTermsJson)
- *   - Emscripten WASM: emccModule._from_solar_date(timestampMs, tzOffsetSec, nmPtr, nmCount, ...)
+ *   - Emscripten WASM: emccModule._from_solar_date_auto(timestampMs, tzOffsetSec, outPtr, outBufLen)
  *
  * Each call converts a Unix-epoch millisecond timestamp to a full lunisolar
  * date (lunar year/month/day, four ganzhi with cycle indices).
@@ -26,13 +26,13 @@ const ROOT = resolve(__dirname, '..', '..');
 // ── 1. Load implementations ────────────────────────────────────────────────
 
 const { LunisolarCalendar, configure } = await import(
-  resolve(ROOT, 'pkg', 'dist', 'index.mjs')
+  resolve(ROOT, 'archive', 'pkg-ts', 'dist', 'index.mjs')
 );
 configure({ strategy: 'static' });
 
-const wasm = await import(resolve(ROOT, 'wasm', 'lunisolar', 'pkg', 'lunisolar_wasm.js'));
+const wasm = await import(resolve(ROOT, 'wasm', 'lunisolar-rs', 'pkg', 'lunisolar_wasm.js'));
 
-const createLunisolarEmcc = (await import(resolve(ROOT, 'wasm', 'lunisolar-emcc', 'pkg', 'lunisolar_emcc.mjs'))).default;
+const createLunisolarEmcc = (await import(resolve(ROOT, 'pkg', 'lunisolar_emcc.mjs'))).default;
 const emccModule = await createLunisolarEmcc();
 
 // ── 2. Data loader ─────────────────────────────────────────────────────────
@@ -53,33 +53,20 @@ function loadDataForYears(years) {
   return { newMoons, solarTerms };
 }
 
-// ── 3. Emscripten WASM wrapper ─────────────────────────────────────────────
+// ── 3. Emscripten WASM wrapper (standalone) ────────────────────────────────
 
-function emccFromSolarDate(timestampMs, tzOffsetSeconds, newMoons, solarTerms) {
-  const nmCount = newMoons.length;
-  const stCount = solarTerms.length;
-  const nmPtr = emccModule._malloc(nmCount * 8);
-  const stTsPtr = emccModule._malloc(stCount * 8);
-  const stIdxPtr = emccModule._malloc(stCount * 4);
+function emccFromSolarDateAuto(timestampMs, tzOffsetSeconds) {
   const outBufLen = 1024;
   const outPtr = emccModule._malloc(outBufLen);
 
-  for (let i = 0; i < nmCount; i++) emccModule.HEAPF64[(nmPtr >> 3) + i] = newMoons[i];
-  for (let i = 0; i < stCount; i++) {
-    emccModule.HEAPF64[(stTsPtr >> 3) + i] = solarTerms[i][0];
-    emccModule.HEAPU32[(stIdxPtr >> 2) + i] = solarTerms[i][1];
-  }
-
-  const result = emccModule._from_solar_date(
-    timestampMs, tzOffsetSeconds, nmPtr, nmCount, stTsPtr, stIdxPtr, stCount, outPtr, outBufLen,
+  const result = emccModule._from_solar_date_auto(
+    timestampMs, tzOffsetSeconds,
+    outPtr, outBufLen,
   );
 
   let json = null;
   if (result > 0) json = emccModule.UTF8ToString(outPtr, result);
 
-  emccModule._free(nmPtr);
-  emccModule._free(stTsPtr);
-  emccModule._free(stIdxPtr);
   emccModule._free(outPtr);
 
   return json ? JSON.parse(json) : null;
@@ -115,7 +102,7 @@ console.log('Running lunisolar burst benchmark (500 requests)...');
 console.log('  Functions under test:');
 console.log('    TS:   LunisolarCalendar.fromSolarDate(date, timezone)');
 console.log('    Rust: wasm.fromSolarDate(tsMs, tzOffsetSec, newMoonsJson, solarTermsJson)');
-console.log('    Emcc: emccModule._from_solar_date(tsMs, tzOffsetSec, nmPtr, nmCount, ...)');
+console.log('    Emcc: emccModule._from_solar_date_auto(tsMs, tzOffsetSec, outPtr, outBufLen)');
 console.log();
 
 const timestamps500 = randomTimestamps(500);
@@ -147,11 +134,11 @@ for (const tsMs of timestamps500) {
 }
 const wasmTime = performance.now() - wasmStart;
 
-// Emscripten WASM
+// Emscripten WASM (standalone — uses embedded Swiss Ephemeris)
 const emccStart = performance.now();
 let emccOK = 0;
 for (const tsMs of timestamps500) {
-  try { if (emccFromSolarDate(tsMs, CST_OFFSET_SEC, bulkData.newMoons, bulkData.solarTerms)) emccOK++; } catch { /* */ }
+  try { if (emccFromSolarDateAuto(tsMs, CST_OFFSET_SEC)) emccOK++; } catch { /* */ }
 }
 const emccTime = performance.now() - emccStart;
 
@@ -182,7 +169,7 @@ md += `| Implementation | Function |\n`;
 md += `|----------------|----------|\n`;
 md += `| TypeScript pkg | \`LunisolarCalendar.fromSolarDate(date, timezone)\` |\n`;
 md += `| Rust WASM (wasm-pack) | \`wasm.fromSolarDate(tsMs, tzOffsetSec, newMoonsJson, solarTermsJson)\` |\n`;
-md += `| Emscripten WASM (emcc) | \`emccModule._from_solar_date(tsMs, tzOffsetSec, nmPtr, nmCount, stTsPtr, stIdxPtr, stCount, outPtr, outBufLen)\` |\n`;
+md += `| Emscripten WASM (emcc) | \`emccModule._from_solar_date_auto(tsMs, tzOffsetSec, outPtr, outBufLen)\` |\n`;
 
 const reportPath = resolve(__dirname, 'lunisolar-benchmark-report.md');
 writeFileSync(reportPath, md);
