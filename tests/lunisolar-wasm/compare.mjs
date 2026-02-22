@@ -79,6 +79,7 @@ function getTzOffsetSeconds(dateMs, tz) {
   const get = (type) => {
     const p = parts.find((p) => p.type === type);
     let v = p ? parseInt(p.value) : 0;
+    // Intl.DateTimeFormat can represent midnight as hour 24 of the prior day
     if (type === 'hour' && v === 24) v = 0;
     return v;
   };

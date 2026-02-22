@@ -356,8 +356,8 @@ int from_solar_date(double timestamp_ms, int tz_offset_seconds,
         if (z11_best < 0) z11_best = i;
         else {
             int cy;
-            unsigned cm, cd2, ch, cmn, cs2;
-            utc_ms_to_date_parts(pts[z11_best].instant_utc_ms, 0, &cy, &cm, &cd2, &ch, &cmn, &cs2);
+            unsigned c_month, c_day, c_hour, c_minute, c_second;
+            utc_ms_to_date_parts(pts[z11_best].instant_utc_ms, 0, &cy, &c_month, &c_day, &c_hour, &c_minute, &c_second);
             if (abs(ty - local_year) < abs(cy - local_year))
                 z11_best = i;
         }
