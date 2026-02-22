@@ -1,0 +1,81 @@
+name: Benchmark lunisolar WASM vs TypeScript
+
+on:
+  push:
+    paths:
+      - '.github/workflows/benchmark-lunisolar-wasm.yml'
+      - 'tests/lunisolar-wasm/**'
+      - 'wasm/lunisolar/**'
+      - 'pkg/src/**'
+  workflow_dispatch:
+
+jobs:
+  benchmark:
+    name: Rust WASM vs TypeScript comparison
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      # ── 1. Checkout ──────────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── 2. Set up Node.js ────────────────────────────────────────────────
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # ── 3. Set up Rust ───────────────────────────────────────────────────
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install wasm-pack
+        run: curl -sSL https://rustwasm.github.io/wasm-pack/installer/init.sh | sh
+
+      # ── 4. Build TypeScript package ──────────────────────────────────────
+      - name: Install npm dependencies
+        working-directory: pkg
+        run: npm ci
+
+      - name: Build TypeScript package
+        working-directory: pkg
+        run: npm run build
+
+      # ── 5. Build Rust WASM package ───────────────────────────────────────
+      - name: Build lunisolar WASM
+        working-directory: wasm/lunisolar
+        run: wasm-pack build --target nodejs --release
+
+      # ── 6. Verify build artifacts ────────────────────────────────────────
+      - name: Verify build artifacts
+        run: |
+          echo "=== TypeScript package ==="
+          ls -lh pkg/dist/index.mjs pkg/dist/index.cjs
+          echo ""
+          echo "=== Rust WASM package ==="
+          ls -lh wasm/lunisolar/pkg/lunisolar_wasm.js wasm/lunisolar/pkg/lunisolar_wasm_bg.wasm
+
+      # ── 7. Run comparison and benchmark ──────────────────────────────────
+      - name: Run comparison and benchmark
+        run: node tests/lunisolar-wasm/compare.mjs
+
+      # ── 8. Write results to step summary ─────────────────────────────────
+      - name: Write step summary
+        if: always()
+        run: |
+          if [ -f tests/lunisolar-wasm/compare-report.md ]; then
+            cat tests/lunisolar-wasm/compare-report.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      # ── 9. Upload report artifact ────────────────────────────────────────
+      - name: Upload comparison report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lunisolar-wasm-comparison-report
+          path: tests/lunisolar-wasm/compare-report.md
+          retention-days: 30

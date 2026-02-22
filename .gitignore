@@ -224,6 +224,7 @@ tests/swisseph-wasm/de440s.bsp
 tests/swisseph-wasm/skyfield-results.json
 tests/swisseph-wasm/report.md
 tests/swisseph-wasm/benchmark-report.md
+tests/lunisolar-wasm/compare-report.md
 
 # Rust / WASM build artifacts
 wasm/*/target/
