@@ -123,7 +123,7 @@ fn day_ganzhi(timestamp_ms: f64) -> (&'static str, &'static str, usize) {
     // Anchor: 4 AD-01-31 is Jiazi day (cycle 1)
     let ref_days = days_from_civil(4, 1, 31);
 
-    // Use UTC date for day counting (matches Python ground truth).
+    // Use local wall-clock date for day counting (day boundary at local midnight).
     let total_s = (timestamp_ms / 1000.0).floor() as i64;
     let day_from_epoch = total_s.div_euclid(86400);
 
@@ -387,10 +387,10 @@ fn from_solar_date_core(
         + wmin as f64 * 60000.0
         + ws as f64 * 1000.0;
 
-    // Sexagenary cycles (use provided timezone offset for day/hour ganzhi)
+    // Sexagenary cycles (use local wall time for day ganzhi so day boundary is at local midnight)
     let (y_stem, y_branch, y_cycle) = year_ganzhi(lunar_year);
     let (m_stem, m_branch, m_cycle) = month_ganzhi(lunar_year, target_period.month_number);
-    let (d_stem, d_branch, d_cycle) = day_ganzhi(timestamp_ms);
+    let (d_stem, d_branch, d_cycle) = day_ganzhi(wall_ms);
     let (h_stem, h_branch, h_cycle) = hour_ganzhi(wall_ms, d_stem);
 
     Ok(LunisolarResult {

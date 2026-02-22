@@ -79,7 +79,7 @@ function monthGanzhi(lunarYear: number, lunarMonth: number): [string, string, nu
 function dayGanzhi(targetUtc: Date): [string, string, number] {
   // Anchor: 4 AD-01-31 is Jiazi day
   const ref = new Date(Date.UTC(4, 0, 31, 0, 0, 0));
-  // Use UTC date for day counting (matches Python ground truth).
+  // Use local wall-clock date for day counting (day boundary at local midnight).
   const days = Math.floor((Date.UTC(targetUtc.getUTCFullYear(), targetUtc.getUTCMonth(), targetUtc.getUTCDate()) - ref.getTime()) / 86400000);
   const dayCycle = ((days % 60) + 60) % 60 + 1;
   const stem = HEAVENLY_STEMS[(dayCycle - 1) % 10];
@@ -322,7 +322,7 @@ export class LunisolarCalendar {
     const tzWall = userTz.convertToTimezone(targetUtc);
     const [yStem, yBranch, yCycle] = yearGanzhi(lunarYear);
     const [mStem, mBranch, mCycle] = monthGanzhi(lunarYear, targetPeriod.monthNumber);
-    const [dStem, dBranch, dCycle] = dayGanzhi(targetUtc);
+    const [dStem, dBranch, dCycle] = dayGanzhi(tzWall);
     const [hStem, hBranch, hCycle] = hourGanzhi(tzWall, dStem);
 
     const result: TLunisolarDate = {

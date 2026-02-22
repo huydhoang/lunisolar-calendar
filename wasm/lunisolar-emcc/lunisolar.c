@@ -162,7 +162,7 @@ static void month_ganzhi(int lunar_year, unsigned lunar_month,
 static void day_ganzhi(double timestamp_ms,
                        unsigned *stem_idx, unsigned *branch_idx,
                        unsigned *cycle) {
-    /* Use UTC date for day counting (matches Python ground truth). */
+    /* Use local wall-clock date for day counting (day boundary at local midnight). */
     long long ref_days = days_from_civil(4, 1, 31);
     long long total_s = (long long)floor(timestamp_ms / 1000.0);
     long long day_from_epoch;
@@ -462,7 +462,7 @@ int from_solar_date(double timestamp_ms, int tz_offset_seconds,
                    + (double)wmin * 60000.0
                    + (double)ws * 1000.0;
 
-    /* Ganzhi (use provided timezone offset for day/hour ganzhi) */
+    /* Ganzhi (use local wall time for day ganzhi so day boundary is at local midnight) */
     unsigned ys, yb, ycc;
     year_ganzhi(lunar_year, &ys, &yb, &ycc);
 
@@ -470,7 +470,7 @@ int from_solar_date(double timestamp_ms, int tz_offset_seconds,
     month_ganzhi(lunar_year, tp->month_number, &ms, &mb, &mcc);
 
     unsigned ds, db, dcc;
-    day_ganzhi(timestamp_ms, &ds, &db, &dcc);
+    day_ganzhi(wall_ms, &ds, &db, &dcc);
 
     unsigned hs, hb, hcc;
     hour_ganzhi(wall_ms, ds, &hs, &hb, &hcc);
