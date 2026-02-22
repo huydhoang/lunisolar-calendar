@@ -1,7 +1,7 @@
 {
   "name": "lunisolar-wasm",
   "version": "0.1.0",
-  "description": "Chinese lunisolar calendar conversion compiled to WebAssembly via Emscripten",
+  "description": "Chinese lunisolar calendar conversion compiled to WebAssembly via Emscripten, with embedded Swiss Ephemeris",
   "type": "module",
   "main": "lunisolar_emcc.mjs",
   "files": [
