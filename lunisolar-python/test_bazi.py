@@ -26,9 +26,12 @@ from bazi import (
     classify_structure,
     classify_structure_professional,
     detect_branch_interactions,
+    detect_self_punishment,
+    detect_xing,
     ganzhi_from_cycle,
     generate_luck_pillars,
     generate_narrative,
+    normalize_gender,
     parse_ganzhi,
     rate_chart,
     recommend_useful_god,
@@ -364,6 +367,10 @@ class TestBranchInteractions(unittest.TestCase):
         chart = build_chart(31, 43, 3, 54, "male")
         interactions = detect_branch_interactions(chart)
         self.assertTrue(len(interactions['自刑']) > 0)
+        entry = interactions['自刑'][0]
+        self.assertEqual(entry['branch'], '午')
+        self.assertEqual(entry['count'], 2)
+        self.assertIn(entry['mode'], ('complete', 'partial'))
 
     def test_no_false_self_punishment(self):
         """子 + 子 is NOT a self-punishment branch (子 not in ZI_XING set)."""
@@ -391,11 +398,15 @@ class TestBranchInteractions(unittest.TestCase):
         self.assertEqual(len(interactions['三合']), 0)
 
     def test_xing_partial_match(self):
-        """2 of 3 punishment branches should still trigger 刑."""
-        # year=甲寅=51, month=丙申=33, day=丙寅=3, hour=丁巳=54
-        chart = build_chart(51, 33, 3, 54, "male")
+        """2 of 3 punishment branches should still trigger 刑 (partial)."""
+        # year=甲寅=51(寅), month=丙申=33(申), day=丙寅=3(寅), hour=丁卯=4(卯)
+        # branches = {寅, 申, 卯} → 2 of {寅,巳,申} → partial
+        chart = build_chart(51, 33, 3, 4, "male")
         interactions = detect_branch_interactions(chart)
         self.assertTrue(len(interactions['刑']) > 0)
+        entry = interactions['刑'][0]
+        self.assertEqual(entry['mode'], 'partial')
+        self.assertEqual(entry['found'], 2)
 
 
 class TestLuckPillars(unittest.TestCase):
@@ -518,6 +529,128 @@ class TestWeightedDistribution(unittest.TestCase):
         dist = weighted_ten_god_distribution(chart)
         self.assertIsInstance(dist, dict)
         self.assertTrue(all(v > 0 for v in dist.values()))
+
+
+class TestNormalizeGender(unittest.TestCase):
+    """Tests for gender validation and normalization."""
+
+    def test_canonical_male(self):
+        self.assertEqual(normalize_gender('male'), 'male')
+
+    def test_canonical_female(self):
+        self.assertEqual(normalize_gender('female'), 'female')
+
+    def test_short_alias_m(self):
+        self.assertEqual(normalize_gender('m'), 'male')
+
+    def test_short_alias_f(self):
+        self.assertEqual(normalize_gender('f'), 'female')
+
+    def test_chinese_male(self):
+        self.assertEqual(normalize_gender('男'), 'male')
+
+    def test_chinese_female(self):
+        self.assertEqual(normalize_gender('女'), 'female')
+
+    def test_case_insensitive(self):
+        self.assertEqual(normalize_gender('Male'), 'male')
+        self.assertEqual(normalize_gender('FEMALE'), 'female')
+
+    def test_whitespace_stripped(self):
+        self.assertEqual(normalize_gender('  male  '), 'male')
+
+    def test_none_raises(self):
+        with self.assertRaises(ValueError):
+            normalize_gender(None)
+
+    def test_invalid_raises(self):
+        with self.assertRaises(ValueError):
+            normalize_gender('unknown')
+
+    def test_build_chart_validates_gender(self):
+        with self.assertRaises(ValueError):
+            build_chart(1, 2, 3, 54, "invalid_gender")
+
+    def test_build_chart_normalizes_gender(self):
+        chart = build_chart(1, 2, 3, 54, "m")
+        self.assertEqual(chart['gender'], 'male')
+
+    def test_generate_luck_pillars_validates_gender(self):
+        """Luck pillar generation validates the chart's stored gender."""
+        chart = build_chart(1, 2, 3, 54, "male")
+        chart['gender'] = 'invalid'
+        with self.assertRaises(ValueError):
+            generate_luck_pillars(chart)
+
+
+class TestDetectSelfPunishment(unittest.TestCase):
+    """Tests for the robust detect_self_punishment function."""
+
+    def test_basic_self_punishment(self):
+        """午 + 午 detected as self-punishment."""
+        chart = build_chart(31, 43, 3, 54, "male")
+        results = detect_self_punishment(chart)
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]['branch'], '午')
+        self.assertEqual(results[0]['count'], 2)
+        self.assertEqual(results[0]['mode'], 'complete')
+
+    def test_no_self_punishment_non_zi_branch(self):
+        """子 + 子 is not a self-punishment branch."""
+        chart = build_chart(1, 37, 3, 54, "male")  # 庚子=37, 甲子=1
+        results = detect_self_punishment(chart)
+        self.assertEqual(len(results), 0)
+
+    def test_require_adjacent_true(self):
+        """With require_adjacent=True, adjacent 午 pillars detected."""
+        chart = build_chart(31, 43, 3, 54, "male")  # year=午, month=午 (adjacent)
+        results = detect_self_punishment(chart, require_adjacent=True)
+        self.assertEqual(len(results), 1)
+
+    def test_require_exposed_main(self):
+        """With require_exposed_main=True, checks main hidden stem exposure."""
+        chart = build_chart(31, 43, 3, 54, "male")
+        results = detect_self_punishment(chart, require_exposed_main=True)
+        # 午 main hidden stem is 丁; year stem is 甲, month stem is 丙
+        # Neither is 丁, so this should NOT match
+        self.assertEqual(len(results), 0)
+
+
+class TestDetectXing(unittest.TestCase):
+    """Tests for the graded detect_xing function."""
+
+    def test_partial_xing(self):
+        """2 of 3 punishment branches detected as partial."""
+        # year=甲寅=51(寅), month=丙申=33(申), day=丙寅=3(寅), hour=丁卯=4(卯)
+        # branches = {寅, 申, 卯} → 2 of {寅,巳,申} → partial
+        chart = build_chart(51, 33, 3, 4, "male")
+        results = detect_xing(chart, strict=False)
+        partial = [r for r in results if r['mode'] == 'partial']
+        self.assertTrue(len(partial) > 0)
+
+    def test_strict_no_partial(self):
+        """strict=True should NOT report partial matches."""
+        # branches = {寅, 申, 卯} → only 2 of {寅,巳,申}
+        chart = build_chart(51, 33, 3, 4, "male")
+        results = detect_xing(chart, strict=True)
+        partial = [r for r in results if r['mode'] == 'partial']
+        self.assertEqual(len(partial), 0)
+
+    def test_complete_xing(self):
+        """All 3 branches present → complete mode."""
+        # 寅巳申 = graceless punishment. Need 寅, 巳, 申 in branches.
+        # 甲寅=51, 辛巳=18, 壬申=9, 丁卯=4
+        chart = build_chart(51, 18, 9, 4, "male")
+        results = detect_xing(chart, strict=False)
+        complete = [r for r in results if r['mode'] == 'complete']
+        self.assertTrue(len(complete) > 0)
+
+    def test_strict_complete_xing(self):
+        """strict=True should report complete matches."""
+        chart = build_chart(51, 18, 9, 4, "male")
+        results = detect_xing(chart, strict=True)
+        self.assertTrue(len(results) > 0)
+        self.assertTrue(all(r['mode'] == 'complete' for r in results))
 
 
 if __name__ == '__main__':
