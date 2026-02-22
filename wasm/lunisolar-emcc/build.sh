@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Build the Emscripten C→WASM variant of the lunisolar calendar.
 # Requires the Emscripten SDK (emcc) to be on PATH.
 set -euo pipefail

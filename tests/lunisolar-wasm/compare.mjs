@@ -215,6 +215,13 @@ for (const tsMs of timestamps50) {
   // TypeScript (TS returns only character strings; compute cycle indices here)
   try {
     const cal = await LunisolarCalendar.fromSolarDate(date, TZ);
+    const yc = cycleFromChars(cal.yearStem, cal.yearBranch);
+    const mc = cycleFromChars(cal.monthStem, cal.monthBranch);
+    const dc = cycleFromChars(cal.dayStem, cal.dayBranch);
+    const hc = cycleFromChars(cal.hourStem, cal.hourBranch);
+    if (yc < 0 || mc < 0 || dc < 0 || hc < 0) {
+      console.warn(`  ⚠️ Encoding issue at ${date.toISOString()}: cycle lookup failed (y=${yc} m=${mc} d=${dc} h=${hc})`);
+    }
     tsResult = {
       lunarYear: cal.lunarYear,
       lunarMonth: cal.lunarMonth,
@@ -222,16 +229,16 @@ for (const tsMs of timestamps50) {
       isLeapMonth: cal.isLeapMonth,
       yearStem: cal.yearStem,
       yearBranch: cal.yearBranch,
-      yearCycle: cycleFromChars(cal.yearStem, cal.yearBranch),
+      yearCycle: yc,
       monthStem: cal.monthStem,
       monthBranch: cal.monthBranch,
-      monthCycle: cycleFromChars(cal.monthStem, cal.monthBranch),
+      monthCycle: mc,
       dayStem: cal.dayStem,
       dayBranch: cal.dayBranch,
-      dayCycle: cycleFromChars(cal.dayStem, cal.dayBranch),
+      dayCycle: dc,
       hourStem: cal.hourStem,
       hourBranch: cal.hourBranch,
-      hourCycle: cycleFromChars(cal.hourStem, cal.hourBranch),
+      hourCycle: hc,
     };
   } catch (e) {
     tsResult = { error: e.message };
