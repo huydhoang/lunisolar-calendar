@@ -5,10 +5,10 @@
 A comprehensive, high-precision astronomical and astrological calculator focused on the traditional Chinese lunisolar calendar. The project includes:
 
 1. **Python Data Pipeline** (`data/`) — Generates high-precision astronomical data (moon phases, solar terms, planetary events) using NASA's JPL DE440 ephemeris via Skyfield.
-2. **WebAssembly Modules** (`wasm/`) — Three WASM implementations of the lunisolar calendar conversion:
-   - **Emscripten C** (`wasm/lunisolar-emcc/`) — Main implementation, compiled to WASM via Emscripten
-   - **Rust wasm-pack** (`wasm/lunisolar/`) — Pure Rust port using wasm-bindgen
-   - **Swiss Ephemeris bindings** (`wasm/swisseph/`) — Vendored C source + Rust wasm-bindgen
+2. **WebAssembly Modules** (`wasm/`) — Three WASM implementations, all integrating with the Swiss Ephemeris for standalone operation:
+   - **`lunisolar-rs/`** — Rust port using wasm-pack / wasm-bindgen (depends on `swisseph-rs`)
+   - **`lunisolar-emcc/`** — C port using Emscripten / emcc (main package, published to npm)
+   - **`swisseph-rs/`** — Swiss Ephemeris Rust bindings (vendored C source + embedded `.se1` data)
 3. **npm Package** (`pkg/`) — The Emscripten-based `lunisolar-wasm` package published to npmjs
 4. **Archived TypeScript Port** (`archive/pkg-ts/`) — Previous TypeScript npm package (`lunisolar-ts`)
 
@@ -16,24 +16,25 @@ A comprehensive, high-precision astronomical and astrological calculator focused
 
 - **Lunisolar Calendar Conversion:** Gregorian → lunisolar dates with Heavenly Stems and Earthly Branches (Gan-Zhi)
 - **Auspicious Day Calculation:** "Twelve Construction Stars" (十二建星) and "Great Yellow Path" (大黄道)
-- **Astronomical Data Generation:** Moon phases, solar terms, planetary events, tidal forces
+- **Standalone Operation:** Both WASM ports compute new moons and solar terms internally via Swiss Ephemeris — no pre-computed data needed
+- **Astronomical Data Generation:** Moon phases, solar terms, planetary events, tidal forces (Python pipeline)
 
 ### Project Structure
 
 ```
 lunisolar-ts/
-├── archive/pkg-ts/        # Archived TypeScript npm package
-├── data/                   # Python data pipeline
-├── docs/                   # Documentation
-├── nasa/                   # JPL ephemeris data
-├── output/                 # Generated data (JSON)
-├── pkg/                    # npm package (lunisolar-wasm, Emscripten)
-├── tests/                  # Integration tests
-├── vendor/swisseph/        # Shared Swiss Ephemeris C source (v2.10)
-└── wasm/                   # WebAssembly implementations
-    ├── lunisolar/          # Rust wasm-pack port
-    ├── lunisolar-emcc/     # Emscripten C source
-    └── swisseph/           # Swiss Ephemeris Rust bindings
+├── archive/pkg-ts/         # Archived TypeScript npm package
+├── data/                    # Python data pipeline
+├── docs/                    # Documentation
+├── nasa/                    # JPL ephemeris data
+├── output/                  # Generated data (JSON)
+├── pkg/                     # npm package (lunisolar-wasm, Emscripten)
+├── tests/                   # Integration tests
+├── vendor/swisseph/         # Shared Swiss Ephemeris C source (v2.10)
+└── wasm/                    # WebAssembly implementations
+    ├── lunisolar-rs/        # Rust port (standalone with SE via swisseph-rs)
+    ├── lunisolar-emcc/      # C port (standalone with SE, builds to pkg/)
+    └── swisseph-rs/         # Swiss Ephemeris Rust bindings + embedded .se1
 ```
 
 ## Building and Running
