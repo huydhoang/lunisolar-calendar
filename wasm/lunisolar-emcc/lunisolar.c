@@ -520,8 +520,9 @@ int from_solar_date(double timestamp_ms, int tz_offset_seconds,
     hour_ganzhi(wall_ms, ds, &hs, &hb, &hcc);
 
     /* Huangdao: Construction Star + Great Yellow Path */
-    unsigned cs_idx = ((int)db - (int)BUILDING_BRANCH[tp->month_number] + 12) % 12;
-    unsigned gyp_idx = ((int)db - (int)AZURE_START[tp->month_number] + 12) % 12;
+    /* Double modulo to handle negative differences correctly */
+    unsigned cs_idx = (unsigned)(((int)db - (int)BUILDING_BRANCH[tp->month_number]) % 12 + 12) % 12;
+    unsigned gyp_idx = (unsigned)(((int)db - (int)AZURE_START[tp->month_number]) % 12 + 12) % 12;
 
     /* Serialize to JSON */
     int n = snprintf(out_buf, (size_t)out_buf_len,

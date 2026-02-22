@@ -197,6 +197,7 @@ fn hour_ganzhi(local_date_utc_ms: f64, base_day_stem: &str) -> (&'static str, &'
 /// Construction Star (十二建星) base calculation from lunar month and day branch index.
 fn construction_star(lunar_month: u32, day_branch_idx: usize) -> &'static str {
     let building = BUILDING_BRANCH[lunar_month as usize];
+    // Double modulo to handle negative differences correctly
     let star_idx = ((day_branch_idx as isize - building as isize) % 12 + 12) % 12;
     CONSTRUCTION_STARS[star_idx as usize]
 }
@@ -204,6 +205,7 @@ fn construction_star(lunar_month: u32, day_branch_idx: usize) -> &'static str {
 /// Great Yellow Path spirit from lunar month and day branch index.
 fn gyp_spirit(lunar_month: u32, day_branch_idx: usize) -> (&'static str, bool) {
     let start = AZURE_START[lunar_month as usize];
+    // Double modulo to handle negative differences correctly
     let idx = ((day_branch_idx as isize - start as isize) % 12 + 12) % 12;
     (GYP_SPIRITS[idx as usize], GYP_AUSPICIOUS[idx as usize])
 }
@@ -432,7 +434,8 @@ fn from_solar_date_core(
     let (h_stem, h_branch, h_cycle) = hour_ganzhi(wall_ms, d_stem);
 
     // Huangdao: Construction Star + Great Yellow Path
-    let day_branch_idx = EARTHLY_BRANCHES.iter().position(|&b| b == d_branch).unwrap_or(0);
+    let day_branch_idx = EARTHLY_BRANCHES.iter().position(|&b| b == d_branch)
+        .expect("day_ganzhi returned an invalid branch character");
     let cs = construction_star(target_period.month_number, day_branch_idx);
     let (spirit, spirit_auspicious) = gyp_spirit(target_period.month_number, day_branch_idx);
 
