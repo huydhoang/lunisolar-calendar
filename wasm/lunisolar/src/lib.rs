@@ -119,12 +119,12 @@ fn month_ganzhi(lunar_year: i32, lunar_month: u32) -> (&'static str, &'static st
     (stem_char, branch_char, month_cycle)
 }
 
-fn day_ganzhi(timestamp_ms: f64, tz_offset_seconds: i32) -> (&'static str, &'static str, usize) {
+fn day_ganzhi(timestamp_ms: f64) -> (&'static str, &'static str, usize) {
     // Anchor: 4 AD-01-31 is Jiazi day (cycle 1)
     let ref_days = days_from_civil(4, 1, 31);
 
-    // Use date in the provided timezone for day counting.
-    let total_s = (timestamp_ms / 1000.0).floor() as i64 + tz_offset_seconds as i64;
+    // Use UTC date for day counting (matches Python ground truth).
+    let total_s = (timestamp_ms / 1000.0).floor() as i64;
     let day_from_epoch = total_s.div_euclid(86400);
 
     let days = day_from_epoch - ref_days;
@@ -390,7 +390,7 @@ fn from_solar_date_core(
     // Sexagenary cycles (use provided timezone offset for day/hour ganzhi)
     let (y_stem, y_branch, y_cycle) = year_ganzhi(lunar_year);
     let (m_stem, m_branch, m_cycle) = month_ganzhi(lunar_year, target_period.month_number);
-    let (d_stem, d_branch, d_cycle) = day_ganzhi(timestamp_ms, tz_offset_seconds);
+    let (d_stem, d_branch, d_cycle) = day_ganzhi(timestamp_ms);
     let (h_stem, h_branch, h_cycle) = hour_ganzhi(wall_ms, d_stem);
 
     Ok(LunisolarResult {
@@ -475,10 +475,9 @@ mod tests {
 
     #[test]
     fn test_day_ganzhi_reference() {
-        // 4 AD-01-31 should be Jiazi (cycle 1)
-        // Use CST offset (28800s = UTC+8) since ganzhi_day now expects a tz offset
+        // 4 AD-01-31 should be Jiazi (cycle 1) — uses UTC date for day counting
         let ref_ms = days_from_civil(4, 1, 31) as f64 * 86400000.0;
-        let (stem, branch, cycle) = day_ganzhi(ref_ms, 28800);
+        let (stem, branch, cycle) = day_ganzhi(ref_ms);
         assert_eq!(stem, "甲");
         assert_eq!(branch, "子");
         assert_eq!(cycle, 1);

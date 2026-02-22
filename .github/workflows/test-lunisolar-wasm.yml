@@ -1,19 +1,19 @@
-name: "Test & Benchmark: lunisolar ports vs Python ground truth"
+name: "Test: lunisolar accuracy vs Python ground truth"
 
 on:
   push:
     paths:
-      - '.github/workflows/benchmark-lunisolar-wasm.yml'
-      - 'tests/lunisolar-wasm/**'
+      - '.github/workflows/test-lunisolar-wasm.yml'
+      - 'tests/lunisolar-wasm/compare.mjs'
+      - 'tests/lunisolar-wasm/python_reference.py'
       - 'wasm/lunisolar/**'
       - 'wasm/lunisolar-emcc/**'
-      - 'wasm/swisseph/**'
       - 'pkg/src/**'
   workflow_dispatch:
 
 jobs:
-  benchmark:
-    name: Rust WASM vs Emscripten WASM vs TypeScript
+  accuracy:
+    name: Accuracy vs Python (DE440s)
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -77,18 +77,7 @@ jobs:
         working-directory: wasm/lunisolar-emcc
         run: bash build.sh
 
-      # ── 9. Build vendored swisseph WASM + install npm swisseph packages ─
-      - name: Build swisseph WASM (vendored C source)
-        working-directory: wasm/swisseph
-        run: wasm-pack build --target nodejs --release
-
-      - name: Install npm swisseph packages
-        working-directory: tests/lunisolar-wasm
-        run: |
-          echo '{"type":"module","name":"lunisolar-wasm-benchmark"}' > package.json
-          npm install swisseph-wasm @fusionstrings/swisseph-wasm
-
-      # ── 10. Verify build artifacts ───────────────────────────────────────
+      # ── 9. Verify build artifacts ────────────────────────────────────────
       - name: Verify build artifacts
         run: |
           echo "=== DE440s ephemeris (git-lfs) ==="
@@ -102,20 +91,13 @@ jobs:
           echo ""
           echo "=== Emscripten WASM package ==="
           ls -lh wasm/lunisolar-emcc/pkg/lunisolar_emcc.mjs wasm/lunisolar-emcc/pkg/lunisolar_emcc.wasm
-          echo ""
-          echo "=== Vendored swisseph WASM ==="
-          ls -lh wasm/swisseph/pkg/swisseph_wasm_bg.wasm
-          echo ""
-          echo "=== npm swisseph packages ==="
-          ls -lh tests/lunisolar-wasm/node_modules/@fusionstrings/swisseph-wasm/esm/lib/swisseph_wasm.wasm
-          ls -lh tests/lunisolar-wasm/node_modules/swisseph-wasm/wsam/swisseph.wasm
 
-      # ── 11. Run comparison and benchmark ─────────────────────────────────
-      - name: Run comparison and benchmark
+      # ── 10. Run accuracy comparison ──────────────────────────────────────
+      - name: Run accuracy comparison
         working-directory: tests/lunisolar-wasm
         run: node compare.mjs
 
-      # ── 12. Write results to step summary ───────────────────────────────
+      # ── 11. Write results to step summary ────────────────────────────────
       - name: Write step summary
         if: always()
         run: |
@@ -123,11 +105,11 @@ jobs:
             cat tests/lunisolar-wasm/compare-report.md >> "$GITHUB_STEP_SUMMARY"
           fi
 
-      # ── 13. Upload report artifact ──────────────────────────────────────
-      - name: Upload comparison report
+      # ── 12. Upload report artifact ──────────────────────────────────────
+      - name: Upload accuracy report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: lunisolar-wasm-comparison-report
+          name: lunisolar-accuracy-report
           path: tests/lunisolar-wasm/compare-report.md
           retention-days: 30

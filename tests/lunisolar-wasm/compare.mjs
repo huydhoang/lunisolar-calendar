@@ -1,11 +1,10 @@
 /**
- * Lunisolar WASM vs Python Reference — Comparison & Benchmark
+ * Lunisolar Accuracy Test — Python Reference (DE440s) vs JS/WASM Implementations
  *
- * 1. Generates 50 random timestamps and computes results from the Python
- *    reference implementation (DE440s), Rust WASM, Emscripten WASM, and
- *    TypeScript package.  Compares all three JS/WASM variants against
- *    the Python ground truth in a markdown table.
- * 2. Runs a burst of 500 requests to compare speed between TS / Rust / Emcc.
+ * Generates 50 random timestamps and computes results from the Python
+ * reference implementation (DE440s), Rust WASM, Emscripten WASM, and
+ * TypeScript package.  Compares all three JS/WASM variants against
+ * the Python ground truth in a markdown table.
  *
  * Usage:  node compare.mjs
  * Outputs: compare-report.md
@@ -14,7 +13,6 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { performance } from 'node:perf_hooks';
 import { execFileSync } from 'node:child_process';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -304,146 +302,7 @@ for (const tsMs of timestamps50) {
   results.push({ tsMs, date: date.toISOString(), pyRef, tsResult, wasmResult, emccResult, tsMatch, rustMatch, emccMatch });
 }
 
-// ── 10. Run burst benchmark (500 requests) ──────────────────────────────────
-
-console.log('Running burst benchmark (500 requests)...');
-
-const timestamps500 = randomTimestamps(500);
-
-// Pre-load all data needed for the timestamps
-const allYears = new Set();
-for (const tsMs of timestamps500) {
-  const y = new Date(tsMs).getUTCFullYear();
-  allYears.add(y - 1);
-  allYears.add(y);
-  allYears.add(y + 1);
-}
-const bulkData = loadDataForYears([...allYears].sort((a, b) => a - b));
-const bulkNewMoonsJson = JSON.stringify(bulkData.newMoons);
-const bulkSolarTermsJson = JSON.stringify(bulkData.solarTerms);
-
-// Benchmark TS
-const tsStart = performance.now();
-let tsSuccessCount = 0;
-for (const tsMs of timestamps500) {
-  try {
-    await LunisolarCalendar.fromSolarDate(new Date(tsMs), TZ);
-    tsSuccessCount++;
-  } catch { /* count failures */ }
-}
-const tsElapsed = performance.now() - tsStart;
-
-// Benchmark Rust WASM
-const wasmStart = performance.now();
-let wasmSuccessCount = 0;
-for (const tsMs of timestamps500) {
-  try {
-    wasm.fromSolarDate(tsMs, CST_OFFSET_SEC, bulkNewMoonsJson, bulkSolarTermsJson);
-    wasmSuccessCount++;
-  } catch { /* count failures */ }
-}
-const wasmElapsed = performance.now() - wasmStart;
-
-// Benchmark Emscripten WASM
-const emccStart = performance.now();
-let emccSuccessCount = 0;
-for (const tsMs of timestamps500) {
-  try {
-    const r = emccFromSolarDate(tsMs, CST_OFFSET_SEC, bulkData.newMoons, bulkData.solarTerms);
-    if (r) emccSuccessCount++;
-  } catch { /* count failures */ }
-}
-const emccElapsed = performance.now() - emccStart;
-
-// ── 11. swe_calc_ut micro-benchmark ────────────────────────────────────────
-
-console.log('Running swe_calc_ut micro-benchmark...');
-
-const CALC_WARMUP = 100;
-const CALC_ITERATIONS = 10_000;
-
-function benchSync(fn, iterations = CALC_ITERATIONS, warmup = CALC_WARMUP) {
-  for (let i = 0; i < warmup; i++) fn();
-  const start = performance.now();
-  for (let i = 0; i < iterations; i++) fn();
-  const elapsed = performance.now() - start;
-  return {
-    mean_ms: elapsed / iterations,
-    ops_per_sec: Math.round((iterations / elapsed) * 1000),
-  };
-}
-
-let fusionSweph = null;
-let prolaxuSweph = null;
-let oursSweph = null;
-
-try {
-  fusionSweph = await import('@fusionstrings/swisseph-wasm');
-} catch (e) {
-  console.warn('  ⚠️ @fusionstrings/swisseph-wasm not available:', e.message);
-}
-
-try {
-  const SwissEph = (await import('swisseph-wasm')).default;
-  prolaxuSweph = new SwissEph();
-  await prolaxuSweph.initSwissEph();
-} catch (e) {
-  console.warn('  ⚠️ swisseph-wasm (prolaxu) not available:', e.message);
-}
-
-try {
-  oursSweph = await import(resolve(ROOT, 'wasm', 'swisseph', 'pkg', 'swisseph_wasm.js'));
-  const testJd = oursSweph.swe_julday(2025, 1, 1, 12.0, 1);
-  if (typeof testJd !== 'number' || testJd === 0) throw new Error('julday returned invalid result');
-} catch (e) {
-  console.warn('  ⚠️ swisseph (ours) not available:', e.message);
-  oursSweph = null;
-}
-
-const sweCalcResults = [];
-const sweBodies = [
-  { id: 0, name: 'Sun' },
-  { id: 1, name: 'Moon' },
-];
-
-if (fusionSweph) {
-  const jd = fusionSweph.swe_julday(2025, 1, 1, 12.0, fusionSweph.SE_GREG_CAL);
-
-  for (const body of sweBodies) {
-    const fusionBench = benchSync(() => fusionSweph.swe_calc_ut(jd, body.id, fusionSweph.SEFLG_SWIEPH));
-
-    let prolaxuBench = null;
-    if (prolaxuSweph) {
-      prolaxuBench = benchSync(() => prolaxuSweph.calc_ut(jd, body.id, prolaxuSweph.SEFLG_SWIEPH));
-    }
-
-    let oursBench = null;
-    if (oursSweph) {
-      try {
-        oursBench = benchSync(() => oursSweph.swe_calc_ut(jd, body.id, 2));
-      } catch { oursBench = null; }
-    }
-
-    sweCalcResults.push({
-      body: body.name,
-      fusionOps: fusionBench.ops_per_sec,
-      prolaxuOps: prolaxuBench ? prolaxuBench.ops_per_sec : null,
-      oursOps: oursBench ? oursBench.ops_per_sec : null,
-    });
-
-    console.log(
-      `  ${body.name}: fusion=${fusionBench.ops_per_sec.toLocaleString()} ops/s` +
-      (prolaxuBench ? `, prolaxu=${prolaxuBench.ops_per_sec.toLocaleString()} ops/s` : '') +
-      (oursBench ? `, ours=${oursBench.ops_per_sec.toLocaleString()} ops/s` : ''),
-    );
-  }
-}
-
-if (prolaxuSweph && typeof prolaxuSweph.close === 'function') {
-  prolaxuSweph.close();
-}
-
-// ── 12. Generate markdown report ────────────────────────────────────────────
+// ── 10. Generate markdown report ────────────────────────────────────────────
 
 const tsMatchCount = results.filter((r) => r.tsMatch).length;
 const rustMatchCount = results.filter((r) => r.rustMatch).length;
@@ -499,52 +358,10 @@ for (let i = 0; i < results.length; i++) {
   md += `| ${i + 1} | ${r.date.slice(0, 19)} | ${cstStr} | ${lunarDate} | ${yearG} | ${monthG} | ${dayG} | ${hourG} | ${tsIcon} | ${rustIcon} | ${emccIcon} |\n`;
 }
 
-// Benchmark results
-md += `\n## Burst Benchmark (500 Requests)\n\n`;
-md += `| Implementation | Total Time (ms) | Avg per Request (ms) | Successful | Failed |\n`;
-md += `|----------------|-----------------|----------------------|------------|--------|\n`;
-md += `| TypeScript | ${tsElapsed.toFixed(1)} | ${(tsElapsed / 500).toFixed(3)} | ${tsSuccessCount} | ${500 - tsSuccessCount} |\n`;
-md += `| Rust WASM (wasm-pack) | ${wasmElapsed.toFixed(1)} | ${(wasmElapsed / 500).toFixed(3)} | ${wasmSuccessCount} | ${500 - wasmSuccessCount} |\n`;
-md += `| Emscripten WASM (emcc) | ${emccElapsed.toFixed(1)} | ${(emccElapsed / 500).toFixed(3)} | ${emccSuccessCount} | ${500 - emccSuccessCount} |\n`;
-md += `\n`;
-
-const speedupWasm = tsElapsed / wasmElapsed;
-const speedupEmcc = tsElapsed / emccElapsed;
-const emccVsWasm = wasmElapsed / emccElapsed;
-md += `**Speed ratios:**\n`;
-md += `- Rust WASM is **${speedupWasm.toFixed(2)}x** ${speedupWasm > 1 ? 'faster' : 'slower'} than TypeScript\n`;
-md += `- Emscripten WASM is **${speedupEmcc.toFixed(2)}x** ${speedupEmcc > 1 ? 'faster' : 'slower'} than TypeScript\n`;
-md += `- Emscripten WASM is **${emccVsWasm.toFixed(2)}x** ${emccVsWasm > 1 ? 'faster' : 'slower'} than Rust WASM\n`;
-
-// swe_calc_ut benchmark section
-if (sweCalcResults.length > 0) {
-  md += `\n## swe_calc_ut Micro-Benchmark (${CALC_ITERATIONS.toLocaleString()} iterations)\n\n`;
-  md += `Compares the raw \`swe_calc_ut\` throughput across Swiss Ephemeris WASM builds.\n`;
-  md += `Our build returns a \`Float64Array\` directly — no JS Object or \`Reflect::set\` overhead.\n\n`;
-  md += `| Body | fusionstrings | prolaxu (emcc) | ours (F64Array) | ours/prolaxu |\n`;
-  md += `|------|-------------:|--------------:|----------------:|-------------:|\n`;
-
-  for (const r of sweCalcResults) {
-    const fOps = r.fusionOps.toLocaleString();
-    const pOps = r.prolaxuOps ? r.prolaxuOps.toLocaleString() : '—';
-    const oOps = r.oursOps ? r.oursOps.toLocaleString() : '—';
-    const oursVsProlaxu = r.oursOps && r.prolaxuOps
-      ? (r.oursOps / r.prolaxuOps).toFixed(2) + 'x'
-      : '—';
-    md += `| ${r.body} | ${fOps} ops/s | ${pOps} ops/s | ${oOps} ops/s | ${oursVsProlaxu} |\n`;
-  }
-
-  md += `\n`;
-  md += `> Our vendored build returns a \`Float64Array\` via wasm-bindgen, avoiding the\n`;
-  md += `> \`Object::new() + 7× Reflect::set\` overhead that previously made it 5× slower than prolaxu.\n`;
-}
-
 md += `\n## Notes\n\n`;
 md += `- **Reference**: Python \`lunisolar_v2.py\` with JPL DE440s ephemeris.\n`;
-md += `- The Rust WASM build uses \`wasm-pack\` + \`wasm-bindgen\` (JSON string interface).\n`;
-md += `- The Emscripten WASM build uses \`emcc\` from C source (pre-parsed array interface via linear memory).\n`;
-md += `- Both WASM variants receive the actual timezone offset computed via \`Intl.DateTimeFormat\`,\n`;
-md += `  matching the TypeScript implementation's DST-aware behavior.\n`;
+md += `- **Day ganzhi** uses UTC date for day counting (matching the Python implementation).\n`;
+md += `- **Hour ganzhi** uses local wall time (CST) for the hour branch/stem.\n`;
 md += `- All four ganzhi (year, month, day, hour) with cycle indices are compared field-by-field.\n`;
 
 // Write report
@@ -552,7 +369,3 @@ const reportPath = resolve(__dirname, 'compare-report.md');
 writeFileSync(reportPath, md);
 console.log(`\nReport written to ${reportPath}`);
 console.log(`\nMatch vs Python (DE440s): TS=${tsMatchCount}/${results.length}, Rust=${rustMatchCount}/${results.length}, Emcc=${emccMatchCount}/${results.length}`);
-console.log(`TS:   ${tsElapsed.toFixed(1)}ms for 500 requests (${(tsElapsed / 500).toFixed(3)}ms/req)`);
-console.log(`WASM: ${wasmElapsed.toFixed(1)}ms for 500 requests (${(wasmElapsed / 500).toFixed(3)}ms/req)`);
-console.log(`EMCC: ${emccElapsed.toFixed(1)}ms for 500 requests (${(emccElapsed / 500).toFixed(3)}ms/req)`);
-console.log(`Speed: WASM ${speedupWasm.toFixed(2)}x, EMCC ${speedupEmcc.toFixed(2)}x faster than TS`);
