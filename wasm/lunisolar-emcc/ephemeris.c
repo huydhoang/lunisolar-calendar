@@ -12,6 +12,9 @@
 #include "swephexp.h"
 #include <math.h>
 
+/* Bisection convergence threshold in Julian Days (~1 ms). */
+#define BISECT_PRECISION_JD 1e-8
+
 /* ── Helpers ───────────────────────────────────────────────────────────────── */
 
 /* JD (UT) → Unix timestamp in seconds */
@@ -63,7 +66,7 @@ static double bisect_new_moon(double jd_lo, double jd_hi) {
             jd_lo = jd_mid, e_lo = e_mid;
         else
             jd_hi = jd_mid;
-        if (jd_hi - jd_lo < 1e-8) break;   /* ~1 ms precision */
+        if (jd_hi - jd_lo < BISECT_PRECISION_JD) break;
     }
     return (jd_lo + jd_hi) * 0.5;
 }
@@ -107,7 +110,7 @@ static double bisect_sun_crossing(double target, double jd_lo, double jd_hi) {
             jd_lo = jd_mid, d_lo = d_mid;
         else
             jd_hi = jd_mid;
-        if (jd_hi - jd_lo < 1e-8) break;
+        if (jd_hi - jd_lo < BISECT_PRECISION_JD) break;
     }
     return (jd_lo + jd_hi) * 0.5;
 }
