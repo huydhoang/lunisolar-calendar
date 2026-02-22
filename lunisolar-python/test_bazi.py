@@ -593,7 +593,7 @@ class TestDetectSelfPunishment(unittest.TestCase):
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0]['branch'], '午')
         self.assertEqual(results[0]['count'], 2)
-        self.assertEqual(results[0]['mode'], 'complete')
+        self.assertEqual(results[0]['mode'], 'partial')
 
     def test_no_self_punishment_non_zi_branch(self):
         """子 + 子 is not a self-punishment branch."""
@@ -607,6 +607,14 @@ class TestDetectSelfPunishment(unittest.TestCase):
         results = detect_self_punishment(chart, require_adjacent=True)
         self.assertEqual(len(results), 1)
 
+    def test_require_adjacent_non_adjacent(self):
+        """With require_adjacent=True, non-adjacent duplicates are filtered out."""
+        # year=戊辰(5), month=乙丑(2), day=壬辰(29), hour=丁巳(54)
+        # 辰 at positions 0 and 2 (year and day) — not adjacent
+        chart = build_chart(5, 2, 29, 54, "male")
+        results = detect_self_punishment(chart, require_adjacent=True)
+        self.assertEqual(len(results), 0)
+
     def test_require_exposed_main(self):
         """With require_exposed_main=True, checks main hidden stem exposure."""
         chart = build_chart(31, 43, 3, 54, "male")
@@ -614,6 +622,15 @@ class TestDetectSelfPunishment(unittest.TestCase):
         # 午 main hidden stem is 丁; year stem is 甲, month stem is 丙
         # Neither is 丁, so this should NOT match
         self.assertEqual(len(results), 0)
+
+    def test_require_exposed_main_positive(self):
+        """With require_exposed_main=True, matches when main stem IS exposed."""
+        # year=戊辰(5), month=庚辰(17), day=丙寅(3), hour=丁巳(54)
+        # 辰 at positions 0,1; main hidden stem of 辰 is 戊; year stem is 戊 → exposed
+        chart = build_chart(5, 17, 3, 54, "male")
+        results = detect_self_punishment(chart, require_exposed_main=True)
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]['branch'], '辰')
 
 
 class TestDetectXing(unittest.TestCase):

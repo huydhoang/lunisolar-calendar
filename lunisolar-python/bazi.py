@@ -498,7 +498,7 @@ def detect_self_punishment(
                 )
 
             if adjacent_ok and exposed_ok:
-                mode = 'complete' if len(inds) >= 2 else 'partial'
+                mode = 'complete' if len(inds) >= 3 else 'partial'
                 results.append({
                     'branch': b,
                     'count': len(inds),
