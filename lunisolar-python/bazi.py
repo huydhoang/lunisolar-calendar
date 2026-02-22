@@ -29,7 +29,7 @@ Usage::
 """
 
 from collections import Counter
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Union
 
 from lunisolar_v2 import (
     EARTHLY_BRANCHES as _EB_TUPLES,
@@ -103,6 +103,29 @@ BRANCH_HIDDEN_STEMS: Dict[str, List[str]] = {
 }
 
 HIDDEN_ROLES = ('main', 'middle', 'residual')
+
+
+# ============================================================
+# Gender Validation
+# ============================================================
+
+def normalize_gender(gender: Union[str, None]) -> str:
+    """Normalize and validate gender string. Returns ``'male'`` or ``'female'``.
+
+    Accepts common aliases such as ``'m'``, ``'f'``, ``'man'``, ``'woman'``,
+    ``'男'``, ``'女'`` (case-insensitive, stripped).
+
+    Raises :class:`ValueError` when the input cannot be mapped.
+    """
+    if gender is None:
+        raise ValueError("gender must be provided as 'male' or 'female'")
+    g = str(gender).strip().lower()
+    if g in ('m', 'male', 'man', '男'):
+        return 'male'
+    if g in ('f', 'female', 'woman', '女'):
+        return 'female'
+    raise ValueError("gender must be 'male' or 'female' (or common aliases)")
+
 
 # ============================================================
 # Twelve Longevity Stages — spec §3
@@ -309,6 +332,8 @@ def build_chart(
     dict
         Chart dictionary with ``pillars``, ``day_master``, and ``gender``.
     """
+    gender = normalize_gender(gender)
+
     pillar_cycles = {
         'year': year_cycle,
         'month': month_cycle,
@@ -339,6 +364,7 @@ def build_chart(
 
 def from_lunisolar_dto(dto: LunisolarDateDTO, gender: str) -> Dict:
     """Build a Bazi chart from a :class:`LunisolarDateDTO`."""
+    gender = normalize_gender(gender)
     return build_chart(
         dto.year_cycle,
         dto.month_cycle,
@@ -360,6 +386,7 @@ def from_solar_date(
     lunisolar calendar pipeline (solar term boundaries, etc.) to the Bazi
     analysis layers.
     """
+    gender = normalize_gender(gender)
     dto = solar_to_lunisolar(solar_date, solar_time, timezone_name, quiet=True)
     return from_lunisolar_dto(dto, gender)
 
@@ -421,6 +448,99 @@ def score_day_master(chart: Dict) -> Tuple[int, str]:
 # Branch Interaction Detection — spec §8
 # ============================================================
 
+def detect_self_punishment(
+    chart: Dict,
+    require_exposed_main: bool = False,
+    require_adjacent: bool = False,
+) -> List[Dict]:
+    """Detect 自刑 (self-punishment) patterns among natal branches.
+
+    Returns a list of dicts, each describing a self-punishment event::
+
+        {'branch': '酉', 'count': 2, 'positions': [0, 3],
+         'mode': 'complete', 'notes': '...'}
+
+    Parameters
+    ----------
+    chart : dict
+        Natal chart built by :func:`build_chart`.
+    require_exposed_main : bool
+        If *True*, only flag self-punishment when at least one pillar with the
+        duplicate branch has its main hidden stem (本气) appear as that
+        pillar's heavenly stem (天干透出).  Reduces false positives.
+    require_adjacent : bool
+        If *True*, the two identical branches must occupy adjacent pillar
+        positions (year-month, month-day, or day-hour).
+    """
+    pillar_names = list(chart['pillars'].keys())
+    branches = [chart['pillars'][n]['branch'] for n in pillar_names]
+    positions: Dict[str, List[int]] = {}
+    for idx, b in enumerate(branches):
+        positions.setdefault(b, []).append(idx)
+
+    results: List[Dict] = []
+    for b, inds in positions.items():
+        if b in ZI_XING_BRANCHES and len(inds) >= 2:
+            # Adjacency check
+            adjacent_ok = True
+            if require_adjacent:
+                adjacent_ok = any(
+                    abs(i - j) == 1 for i in inds for j in inds if i != j
+                )
+
+            # Main-stem exposure check
+            exposed_ok = True
+            if require_exposed_main:
+                main_hidden = BRANCH_HIDDEN_STEMS[b][0]
+                exposed_ok = any(
+                    chart['pillars'][pillar_names[i]]['stem'] == main_hidden
+                    for i in inds
+                )
+
+            if adjacent_ok and exposed_ok:
+                mode = 'complete' if len(inds) >= 3 else 'partial'
+                results.append({
+                    'branch': b,
+                    'count': len(inds),
+                    'positions': inds,
+                    'mode': mode,
+                    'notes': f"adjacent_ok={adjacent_ok}, exposed_ok={exposed_ok}",
+                })
+    return results
+
+
+def detect_xing(chart: Dict, strict: bool = False) -> List[Dict]:
+    """Detect 刑 (punishment) patterns among natal branches.
+
+    Returns a list of dicts::
+
+        {'pattern': frozenset({'寅','巳','申'}), 'found': 2,
+         'mode': 'partial'|'complete'}
+
+    Parameters
+    ----------
+    chart : dict
+        Natal chart built by :func:`build_chart`.
+    strict : bool
+        If *True*, only report **complete** patterns (all branches present).
+        If *False* (default, permissive), also report partial matches (two of
+        three branches present).
+    """
+    branches = [p['branch'] for p in chart['pillars'].values()]
+    bset = set(branches)
+    results: List[Dict] = []
+    for trio in XING:
+        found = len(trio & bset)
+        if strict:
+            if found == len(trio):
+                results.append({'pattern': trio, 'found': found, 'mode': 'complete'})
+        else:
+            if found >= 2:
+                mode = 'complete' if found == len(trio) else 'partial'
+                results.append({'pattern': trio, 'found': found, 'mode': mode})
+    return results
+
+
 def detect_branch_interactions(chart: Dict) -> Dict[str, list]:
     """Detect 六合, 六冲, 六害, 三合, 三会, 刑, and 自刑 among natal branches."""
     branches = [p['branch'] for p in chart['pillars'].values()]
@@ -439,9 +559,6 @@ def detect_branch_interactions(chart: Dict) -> Dict[str, list]:
                 results['六冲'].append((branches[i], branches[j]))
             if pair in LIU_HAI:
                 results['害'].append((branches[i], branches[j]))
-            # Self-punishment: same branch appears twice and is a 自刑 branch
-            if branches[i] == branches[j] and branches[i] in ZI_XING_BRANCHES:
-                results['自刑'].append((branches[i], branches[j]))
 
     # Triple-set checks
     bset = set(branches)
@@ -451,9 +568,14 @@ def detect_branch_interactions(chart: Dict) -> Dict[str, list]:
     for trio in SAN_HUI:
         if trio.issubset(bset):
             results['三会'].append(trio)
-    for trio in XING:
-        if len(trio & bset) >= 2:
-            results['刑'].append(trio & bset)
+
+    # Graded 刑 detection (default: permissive / partial + complete)
+    for entry in detect_xing(chart, strict=False):
+        results['刑'].append(entry)
+
+    # Robust 自刑 detection
+    for entry in detect_self_punishment(chart):
+        results['自刑'].append(entry)
 
     return results
 
@@ -589,7 +711,7 @@ def generate_luck_pillars(chart: Dict, count: int = 8) -> List[Tuple[str, str]]:
        dates and is not included here.  The pillar *sequence* is correct.
     """
     year_stem = chart['pillars']['year']['stem']
-    gender = chart.get('gender', 'male')
+    gender = normalize_gender(chart.get('gender', 'male'))
     is_yang = STEM_POLARITY[year_stem] == 'Yang'
     forward = (is_yang and gender == 'male') or (
         not is_yang and gender == 'female'
