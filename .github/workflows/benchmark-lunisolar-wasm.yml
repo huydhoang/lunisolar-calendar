@@ -7,6 +7,7 @@ on:
       - 'tests/lunisolar-wasm/**'
       - 'wasm/lunisolar/**'
       - 'wasm/lunisolar-emcc/**'
+      - 'wasm/swisseph/**'
       - 'pkg/src/**'
   workflow_dispatch:
 
@@ -65,7 +66,18 @@ jobs:
         working-directory: wasm/lunisolar-emcc
         run: bash build.sh
 
-      # ── 8. Verify build artifacts ────────────────────────────────────────
+      # ── 8. Build vendored swisseph WASM + install npm swisseph packages ─
+      - name: Build swisseph WASM (vendored C source)
+        working-directory: wasm/swisseph
+        run: wasm-pack build --target nodejs --release
+
+      - name: Install npm swisseph packages
+        working-directory: tests/lunisolar-wasm
+        run: |
+          echo '{"type":"module","name":"lunisolar-wasm-benchmark"}' > package.json
+          npm install swisseph-wasm @fusionstrings/swisseph-wasm
+
+      # ── 9. Verify build artifacts ────────────────────────────────────────
       - name: Verify build artifacts
         run: |
           echo "=== TypeScript package ==="
@@ -76,12 +88,20 @@ jobs:
           echo ""
           echo "=== Emscripten WASM package ==="
           ls -lh wasm/lunisolar-emcc/pkg/lunisolar_emcc.mjs wasm/lunisolar-emcc/pkg/lunisolar_emcc.wasm
+          echo ""
+          echo "=== Vendored swisseph WASM ==="
+          ls -lh wasm/swisseph/pkg/swisseph_wasm_bg.wasm
+          echo ""
+          echo "=== npm swisseph packages ==="
+          ls -lh tests/lunisolar-wasm/node_modules/@fusionstrings/swisseph-wasm/esm/lib/swisseph_wasm.wasm
+          ls -lh tests/lunisolar-wasm/node_modules/swisseph-wasm/wsam/swisseph.wasm
 
-      # ── 9. Run comparison and benchmark ──────────────────────────────────
+      # ── 10. Run comparison and benchmark ─────────────────────────────────
       - name: Run comparison and benchmark
-        run: node tests/lunisolar-wasm/compare.mjs
+        working-directory: tests/lunisolar-wasm
+        run: node compare.mjs
 
-      # ── 10. Write results to step summary ────────────────────────────────
+      # ── 11. Write results to step summary ───────────────────────────────
       - name: Write step summary
         if: always()
         run: |
@@ -89,7 +109,7 @@ jobs:
             cat tests/lunisolar-wasm/compare-report.md >> "$GITHUB_STEP_SUMMARY"
           fi
 
-      # ── 11. Upload report artifact ───────────────────────────────────────
+      # ── 12. Upload report artifact ──────────────────────────────────────
       - name: Upload comparison report
         if: always()
         uses: actions/upload-artifact@v4

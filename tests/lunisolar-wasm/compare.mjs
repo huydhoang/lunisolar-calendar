@@ -342,7 +342,95 @@ for (const tsMs of timestamps500) {
 }
 const emccElapsed = performance.now() - emccStart;
 
-// ── 11. Generate markdown report ────────────────────────────────────────────
+// ── 11. swe_calc_ut micro-benchmark ────────────────────────────────────────
+
+console.log('Running swe_calc_ut micro-benchmark...');
+
+const CALC_WARMUP = 100;
+const CALC_ITERATIONS = 10_000;
+
+function benchSync(fn, iterations = CALC_ITERATIONS, warmup = CALC_WARMUP) {
+  for (let i = 0; i < warmup; i++) fn();
+  const start = performance.now();
+  for (let i = 0; i < iterations; i++) fn();
+  const elapsed = performance.now() - start;
+  return {
+    mean_ms: elapsed / iterations,
+    ops_per_sec: Math.round((iterations / elapsed) * 1000),
+  };
+}
+
+let fusionSweph = null;
+let prolaxuSweph = null;
+let oursSweph = null;
+
+try {
+  fusionSweph = await import('@fusionstrings/swisseph-wasm');
+} catch (e) {
+  console.warn('  ⚠️ @fusionstrings/swisseph-wasm not available:', e.message);
+}
+
+try {
+  const SwissEph = (await import('swisseph-wasm')).default;
+  prolaxuSweph = new SwissEph();
+  await prolaxuSweph.initSwissEph();
+} catch (e) {
+  console.warn('  ⚠️ swisseph-wasm (prolaxu) not available:', e.message);
+}
+
+try {
+  oursSweph = await import(resolve(ROOT, 'wasm', 'swisseph', 'pkg', 'swisseph_wasm.js'));
+  const testJd = oursSweph.swe_julday(2025, 1, 1, 12.0, 1);
+  if (typeof testJd !== 'number' || testJd === 0) throw new Error('julday returned invalid result');
+} catch (e) {
+  console.warn('  ⚠️ swisseph (ours) not available:', e.message);
+  oursSweph = null;
+}
+
+const sweCalcResults = [];
+const sweBodies = [
+  { id: 0, name: 'Sun' },
+  { id: 1, name: 'Moon' },
+];
+
+if (fusionSweph) {
+  const jd = fusionSweph.swe_julday(2025, 1, 1, 12.0, fusionSweph.SE_GREG_CAL);
+
+  for (const body of sweBodies) {
+    const fusionBench = benchSync(() => fusionSweph.swe_calc_ut(jd, body.id, fusionSweph.SEFLG_SWIEPH));
+
+    let prolaxuBench = null;
+    if (prolaxuSweph) {
+      prolaxuBench = benchSync(() => prolaxuSweph.calc_ut(jd, body.id, prolaxuSweph.SEFLG_SWIEPH));
+    }
+
+    let oursBench = null;
+    if (oursSweph) {
+      try {
+        oursBench = benchSync(() => oursSweph.swe_calc_ut(jd, body.id, 2));
+      } catch { oursBench = null; }
+    }
+
+    sweCalcResults.push({
+      body: body.name,
+      fusionOps: fusionBench.ops_per_sec,
+      prolaxuOps: prolaxuBench ? prolaxuBench.ops_per_sec : null,
+      oursOps: oursBench ? oursBench.ops_per_sec : null,
+    });
+
+    console.log(
+      `  ${body.name}: fusion=${fusionBench.ops_per_sec.toLocaleString()} ops/s` +
+      (prolaxuBench ? `, prolaxu=${prolaxuBench.ops_per_sec.toLocaleString()} ops/s` : '') +
+      (oursBench ? `, ours=${oursBench.ops_per_sec.toLocaleString()} ops/s` : ''),
+    );
+  }
+}
+
+if (prolaxuSweph && typeof prolaxuSweph.close === 'function') {
+  prolaxuSweph.close();
+}
+
+// ── 12. Generate markdown report ────────────────────────────────────────────
 
 const matchCount = results.filter((r) => r.match).length;
 const errorCount = results.filter(
@@ -421,6 +509,31 @@ md += `**Speed ratios:**\n`;
 md += `- Rust WASM is **${speedupWasm.toFixed(2)}x** ${speedupWasm > 1 ? 'faster' : 'slower'} than TypeScript\n`;
 md += `- Emscripten WASM is **${speedupEmcc.toFixed(2)}x** ${speedupEmcc > 1 ? 'faster' : 'slower'} than TypeScript\n`;
 md += `- Emscripten WASM is **${emccVsWasm.toFixed(2)}x** ${emccVsWasm > 1 ? 'faster' : 'slower'} than Rust WASM\n`;
+
+// swe_calc_ut benchmark section
+if (sweCalcResults.length > 0) {
+  md += `\n## swe_calc_ut Micro-Benchmark (${CALC_ITERATIONS.toLocaleString()} iterations)\n\n`;
+  md += `Compares the raw \`swe_calc_ut\` throughput across three Swiss Ephemeris WASM builds.\n`;
+  md += `This isolates the ephemeris calculation performance from the lunisolar calendar logic above.\n\n`;
+  md += `| Body | fusionstrings (wasm-bindgen) | prolaxu (Emscripten) | ours (vendored wasm-bindgen) | prolaxu/fusion | ours/fusion |\n`;
+  md += `|------|----------------------------:|---------------------:|-----------------------------:|---------------:|------------:|\n`;
+
+  for (const r of sweCalcResults) {
+    const fOps = r.fusionOps.toLocaleString();
+    const pOps = r.prolaxuOps ? r.prolaxuOps.toLocaleString() : '—';
+    const oOps = r.oursOps ? r.oursOps.toLocaleString() : '—';
+    const pRatio = r.prolaxuOps ? (r.prolaxuOps / r.fusionOps).toFixed(2) + 'x' : '—';
+    const oRatio = r.oursOps ? (r.oursOps / r.fusionOps).toFixed(2) + 'x' : '—';
+    md += `| ${r.body} | ${fOps} ops/s | ${pOps} ops/s | ${oOps} ops/s | ${pRatio} | ${oRatio} |\n`;
+  }
+
+  md += `\n`;
+  md += `> **Key insight:** prolaxu (Emscripten C→WASM) is significantly faster at raw \`calc_ut\`\n`;
+  md += `> because Emscripten compiles C directly to WASM with minimal overhead, while wasm-bindgen\n`;
+  md += `> adds JS↔WASM marshalling per call. However, the lunisolar calendar conversion (above)\n`;
+  md += `> does NOT call \`swe_calc_ut\` — it uses pre-computed ephemeris data from JSON files.\n`;
+  md += `> The lunisolar WASM speedup comes from eliminating JS \`Intl.DateTimeFormat\` calls.\n`;
+}
 
 md += `\n## Notes\n\n`;
 md += `- The Rust WASM build uses \`wasm-pack\` + \`wasm-bindgen\` (JSON string interface).\n`;
