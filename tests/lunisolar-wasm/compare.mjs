@@ -405,14 +405,10 @@ if (fusionSweph) {
     }
 
     let oursBench = null;
-    let oursFastBench = null;
     if (oursSweph) {
       try {
         oursBench = benchSync(() => oursSweph.swe_calc_ut(jd, body.id, 2));
       } catch { oursBench = null; }
-      try {
-        oursFastBench = benchSync(() => oursSweph.swe_calc_ut_fast(jd, body.id, 2));
-      } catch { oursFastBench = null; }
     }
 
     sweCalcResults.push({
@@ -420,14 +416,12 @@ if (fusionSweph) {
       fusionOps: fusionBench.ops_per_sec,
       prolaxuOps: prolaxuBench ? prolaxuBench.ops_per_sec : null,
       oursOps: oursBench ? oursBench.ops_per_sec : null,
-      oursFastOps: oursFastBench ? oursFastBench.ops_per_sec : null,
     });
 
     console.log(
       `  ${body.name}: fusion=${fusionBench.ops_per_sec.toLocaleString()} ops/s` +
       (prolaxuBench ? `, prolaxu=${prolaxuBench.ops_per_sec.toLocaleString()} ops/s` : '') +
-      (oursBench ? `, ours=${oursBench.ops_per_sec.toLocaleString()} ops/s` : '') +
-      (oursFastBench ? `, ours_fast=${oursFastBench.ops_per_sec.toLocaleString()} ops/s` : ''),
+      (oursBench ? `, ours=${oursBench.ops_per_sec.toLocaleString()} ops/s` : ''),
     );
   }
 }
@@ -520,25 +514,23 @@ md += `- Emscripten WASM is **${emccVsWasm.toFixed(2)}x** ${emccVsWasm > 1 ? 'fa
 if (sweCalcResults.length > 0) {
   md += `\n## swe_calc_ut Micro-Benchmark (${CALC_ITERATIONS.toLocaleString()} iterations)\n\n`;
   md += `Compares the raw \`swe_calc_ut\` throughput across Swiss Ephemeris WASM builds.\n`;
-  md += `\`swe_calc_ut\` returns Object via 7× Reflect::set; \`swe_calc_ut_fast\` returns Float64Array.\n\n`;
-  md += `| Body | fusionstrings | prolaxu (emcc) | ours (Object) | ours_fast (F64Array) | fast/prolaxu |\n`;
-  md += `|------|-------------:|--------------:|--------------:|---------------------:|-------------:|\n`;
+  md += `Our build returns a \`Float64Array\` directly — no JS Object or \`Reflect::set\` overhead.\n\n`;
+  md += `| Body | fusionstrings | prolaxu (emcc) | ours (F64Array) | ours/prolaxu |\n`;
+  md += `|------|-------------:|--------------:|----------------:|-------------:|\n`;
 
   for (const r of sweCalcResults) {
     const fOps = r.fusionOps.toLocaleString();
     const pOps = r.prolaxuOps ? r.prolaxuOps.toLocaleString() : '—';
     const oOps = r.oursOps ? r.oursOps.toLocaleString() : '—';
-    const ofOps = r.oursFastOps ? r.oursFastOps.toLocaleString() : '—';
-    const fastVsProlaxu = r.oursFastOps && r.prolaxuOps
-      ? (r.oursFastOps / r.prolaxuOps).toFixed(2) + 'x'
+    const oursVsProlaxu = r.oursOps && r.prolaxuOps
+      ? (r.oursOps / r.prolaxuOps).toFixed(2) + 'x'
       : '—';
-    md += `| ${r.body} | ${fOps} ops/s | ${pOps} ops/s | ${oOps} ops/s | ${ofOps} ops/s | ${fastVsProlaxu} |\n`;
+    md += `| ${r.body} | ${fOps} ops/s | ${pOps} ops/s | ${oOps} ops/s | ${oursVsProlaxu} |\n`;
   }
 
   md += `\n`;
-  md += `> **Key finding:** \`swe_calc_ut\` (Object return) is slow because each call creates a JS Object\n`;
-  md += `> and does 7× \`Reflect::set\` across the WASM↔JS boundary.  \`swe_calc_ut_fast\` eliminates this\n`;
-  md += `> overhead by returning a \`Float64Array\`, making it faster than prolaxu's Emscripten build.\n`;
+  md += `> Our vendored build returns a \`Float64Array\` via wasm-bindgen, avoiding the\n`;
+  md += `> \`Object::new() + 7× Reflect::set\` overhead that previously made it 5× slower than prolaxu.\n`;
 }
 
 md += `\n## Notes\n\n`;

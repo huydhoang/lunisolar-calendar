@@ -18,38 +18,9 @@ pub mod swe_bindings {
 
 // --- WASM exports ---
 
+/// Returns a Float64Array [lon, lat, dist, speed_lon, speed_lat, speed_dist].
 #[wasm_bindgen(js_name = swe_calc_ut)]
-pub fn js_swe_calc_ut(tjd_ut: f64, ipl: i32, iflag: i32) -> Result<JsValue, JsValue> {
-    let mut xx = [0.0f64; 6];
-    let mut serr = [0i8; 256];
-
-    let ret = unsafe {
-        swe_bindings::swe_calc_ut(tjd_ut, ipl, iflag, xx.as_mut_ptr(), serr.as_mut_ptr())
-    };
-
-    if ret < 0 {
-        let msg = unsafe {
-            CStr::from_ptr(serr.as_ptr()).to_str().unwrap_or("unknown error")
-        };
-        return Err(JsValue::from_str(msg));
-    }
-
-    let obj = Object::new();
-    Reflect::set(&obj, &"longitude".into(), &xx[0].into())?;
-    Reflect::set(&obj, &"latitude".into(), &xx[1].into())?;
-    Reflect::set(&obj, &"distance".into(), &xx[2].into())?;
-    Reflect::set(&obj, &"speed_long".into(), &xx[3].into())?;
-    Reflect::set(&obj, &"speed_lat".into(), &xx[4].into())?;
-    Reflect::set(&obj, &"speed_dist".into(), &xx[5].into())?;
-    Reflect::set(&obj, &"rc_flags".into(), &ret.into())?;
-
-    Ok(obj.into())
-}
-
-/// Fast variant: returns a Float64Array [lon, lat, dist, speed_lon, speed_lat, speed_dist]
-/// instead of building a JS Object with Reflect::set.  Avoids 7 WASM↔JS boundary crossings.
-#[wasm_bindgen(js_name = swe_calc_ut_fast)]
-pub fn js_swe_calc_ut_fast(tjd_ut: f64, ipl: i32, iflag: i32) -> Result<Vec<f64>, JsValue> {
+pub fn js_swe_calc_ut(tjd_ut: f64, ipl: i32, iflag: i32) -> Result<Vec<f64>, JsValue> {
     let mut xx = [0.0f64; 6];
     let mut serr = [0i8; 256];
 
