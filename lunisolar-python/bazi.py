@@ -714,10 +714,13 @@ def rate_chart(chart: Dict) -> int:
     for p in chart['pillars'].values():
         for role, stem in p['hidden']:
             if STEM_ELEMENT[stem] == dm_elem:
-                root += 5 if role == 'main' else 3 if role == 'middle' else 0
+                if role == 'main':
+                    root += 5
+                elif role == 'middle':
+                    root += 3
     total += min(root, 15)
 
-    # 5. Interaction stability (max 10)
+    # 5. Interaction stability (max 10) — clashes indicate turbulence
     interactions = detect_branch_interactions(chart)
     total += 4 if interactions['六冲'] else 10
 

@@ -336,6 +336,18 @@ class TestBranchInteractions(unittest.TestCase):
         interactions = detect_branch_interactions(chart)
         self.assertTrue(any('子' in p and '未' in p for p in interactions['害']))
 
+    def test_san_he_partial_no_match(self):
+        """Only 2 of 3 三合 branches should NOT trigger 三合."""
+        chart = build_chart("甲寅", "丙午", "丙寅", "丁巳", "male")
+        interactions = detect_branch_interactions(chart)
+        self.assertEqual(len(interactions['三合']), 0)
+
+    def test_xing_partial_match(self):
+        """2 of 3 punishment branches should still trigger 刑."""
+        chart = build_chart("甲寅", "丙申", "丙寅", "丁巳", "male")
+        interactions = detect_branch_interactions(chart)
+        self.assertTrue(len(interactions['刑']) > 0)
+
 
 class TestLuckPillars(unittest.TestCase):
 
