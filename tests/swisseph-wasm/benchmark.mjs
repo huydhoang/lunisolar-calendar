@@ -216,8 +216,8 @@ async function main() {
 
   const jd = fusion.swe_julday(2025, 1, 1, 12.0, fusion.SE_GREG_CAL);
 
-  log('| Body | fusionstrings ops/sec | prolaxu ops/sec | ours ops/sec | Speedup (f/p) | Lon Δ° | Agreement |');
-  log('|------|---------------------:|----------------:|------------:|--------------:|-------:|-----------|');
+  log('| Body | fusionstrings ops/sec | prolaxu ops/sec | ours ops/sec | ours_fast ops/sec | Speedup (f/p) | Lon Δ° | Agreement |');
+  log('|------|---------------------:|----------------:|------------:|------------------:|--------------:|-------:|-----------|');
 
   const calcResults = [];
 
@@ -230,6 +230,7 @@ async function main() {
 
     // Benchmark ours (if available)
     let oursCalc = null;
+    let oursFastCalc = null;
     let oursLon = null;
     if (ours) {
       try {
@@ -237,6 +238,9 @@ async function main() {
         const oursPos = ours.swe_calc_ut(jd, body.id, 2);
         oursLon = oursPos.longitude;
       } catch { oursCalc = null; }
+      try {
+        oursFastCalc = bench(() => ours.swe_calc_ut_fast(jd, body.id, 2));
+      } catch { oursFastCalc = null; }
     }
 
     // Get actual positions for comparison
@@ -250,9 +254,10 @@ async function main() {
 
     const ratio = fusionCalc.ops_per_sec / prolaxuCalc.ops_per_sec;
     const oursOpsStr = oursCalc ? oursCalc.ops_per_sec.toLocaleString() : '—';
+    const oursFastOpsStr = oursFastCalc ? oursFastCalc.ops_per_sec.toLocaleString() : '—';
 
     log(
-      `| ${body.name} | ${fusionCalc.ops_per_sec.toLocaleString()} | ${prolaxuCalc.ops_per_sec.toLocaleString()} | ${oursOpsStr} | ${f(ratio, 2)}x | ${f(lonDiff, 6)} | ${agree} |`,
+      `| ${body.name} | ${fusionCalc.ops_per_sec.toLocaleString()} | ${prolaxuCalc.ops_per_sec.toLocaleString()} | ${oursOpsStr} | ${oursFastOpsStr} | ${f(ratio, 2)}x | ${f(lonDiff, 6)} | ${agree} |`,
     );
 
     calcResults.push({
@@ -260,6 +265,7 @@ async function main() {
       fusionOps: fusionCalc.ops_per_sec,
       prolaxuOps: prolaxuCalc.ops_per_sec,
       oursOps: oursCalc ? oursCalc.ops_per_sec : null,
+      oursFastOps: oursFastCalc ? oursFastCalc.ops_per_sec : null,
       ratio,
       lonDiff,
       fusionLon,

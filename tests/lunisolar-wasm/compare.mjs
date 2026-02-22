@@ -405,10 +405,14 @@ if (fusionSweph) {
     }
 
     let oursBench = null;
+    let oursFastBench = null;
     if (oursSweph) {
       try {
         oursBench = benchSync(() => oursSweph.swe_calc_ut(jd, body.id, 2));
       } catch { oursBench = null; }
+      try {
+        oursFastBench = benchSync(() => oursSweph.swe_calc_ut_fast(jd, body.id, 2));
+      } catch { oursFastBench = null; }
     }
 
     sweCalcResults.push({
@@ -416,12 +420,14 @@ if (fusionSweph) {
       fusionOps: fusionBench.ops_per_sec,
       prolaxuOps: prolaxuBench ? prolaxuBench.ops_per_sec : null,
       oursOps: oursBench ? oursBench.ops_per_sec : null,
+      oursFastOps: oursFastBench ? oursFastBench.ops_per_sec : null,
     });
 
     console.log(
       `  ${body.name}: fusion=${fusionBench.ops_per_sec.toLocaleString()} ops/s` +
       (prolaxuBench ? `, prolaxu=${prolaxuBench.ops_per_sec.toLocaleString()} ops/s` : '') +
-      (oursBench ? `, ours=${oursBench.ops_per_sec.toLocaleString()} ops/s` : ''),
+      (oursBench ? `, ours=${oursBench.ops_per_sec.toLocaleString()} ops/s` : '') +
+      (oursFastBench ? `, ours_fast=${oursFastBench.ops_per_sec.toLocaleString()} ops/s` : ''),
     );
   }
 }
@@ -513,26 +519,26 @@ md += `- Emscripten WASM is **${emccVsWasm.toFixed(2)}x** ${emccVsWasm > 1 ? 'fa
 // swe_calc_ut benchmark section
 if (sweCalcResults.length > 0) {
   md += `\n## swe_calc_ut Micro-Benchmark (${CALC_ITERATIONS.toLocaleString()} iterations)\n\n`;
-  md += `Compares the raw \`swe_calc_ut\` throughput across three Swiss Ephemeris WASM builds.\n`;
-  md += `This isolates the ephemeris calculation performance from the lunisolar calendar logic above.\n\n`;
-  md += `| Body | fusionstrings (wasm-bindgen) | prolaxu (Emscripten) | ours (vendored wasm-bindgen) | prolaxu/fusion | ours/fusion |\n`;
-  md += `|------|----------------------------:|---------------------:|-----------------------------:|---------------:|------------:|\n`;
+  md += `Compares the raw \`swe_calc_ut\` throughput across Swiss Ephemeris WASM builds.\n`;
+  md += `\`swe_calc_ut\` returns Object via 7× Reflect::set; \`swe_calc_ut_fast\` returns Float64Array.\n\n`;
+  md += `| Body | fusionstrings | prolaxu (emcc) | ours (Object) | ours_fast (F64Array) | fast/prolaxu |\n`;
+  md += `|------|-------------:|--------------:|--------------:|---------------------:|-------------:|\n`;
 
   for (const r of sweCalcResults) {
     const fOps = r.fusionOps.toLocaleString();
     const pOps = r.prolaxuOps ? r.prolaxuOps.toLocaleString() : '—';
     const oOps = r.oursOps ? r.oursOps.toLocaleString() : '—';
-    const pRatio = r.prolaxuOps ? (r.prolaxuOps / r.fusionOps).toFixed(2) + 'x' : '—';
-    const oRatio = r.oursOps ? (r.oursOps / r.fusionOps).toFixed(2) + 'x' : '—';
-    md += `| ${r.body} | ${fOps} ops/s | ${pOps} ops/s | ${oOps} ops/s | ${pRatio} | ${oRatio} |\n`;
+    const ofOps = r.oursFastOps ? r.oursFastOps.toLocaleString() : '—';
+    const fastVsProlaxu = r.oursFastOps && r.prolaxuOps
+      ? (r.oursFastOps / r.prolaxuOps).toFixed(2) + 'x'
+      : '—';
+    md += `| ${r.body} | ${fOps} ops/s | ${pOps} ops/s | ${oOps} ops/s | ${ofOps} ops/s | ${fastVsProlaxu} |\n`;
   }
 
   md += `\n`;
-  md += `> **Key insight:** prolaxu (Emscripten C→WASM) is significantly faster at raw \`calc_ut\`\n`;
-  md += `> because Emscripten compiles C directly to WASM with minimal overhead, while wasm-bindgen\n`;
-  md += `> adds JS↔WASM marshalling per call. However, the lunisolar calendar conversion (above)\n`;
-  md += `> does NOT call \`swe_calc_ut\` — it uses pre-computed ephemeris data from JSON files.\n`;
-  md += `> The lunisolar WASM speedup comes from eliminating JS \`Intl.DateTimeFormat\` calls.\n`;
+  md += `> **Key finding:** \`swe_calc_ut\` (Object return) is slow because each call creates a JS Object\n`;
+  md += `> and does 7× \`Reflect::set\` across the WASM↔JS boundary.  \`swe_calc_ut_fast\` eliminates this\n`;
+  md += `> overhead by returning a \`Float64Array\`, making it faster than prolaxu's Emscripten build.\n`;
 }
 
 md += `\n## Notes\n\n`;

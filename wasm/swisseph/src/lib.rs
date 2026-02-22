@@ -46,6 +46,27 @@ pub fn js_swe_calc_ut(tjd_ut: f64, ipl: i32, iflag: i32) -> Result<JsValue, JsVa
     Ok(obj.into())
 }
 
+/// Fast variant: returns a Float64Array [lon, lat, dist, speed_lon, speed_lat, speed_dist]
+/// instead of building a JS Object with Reflect::set.  Avoids 7 WASM↔JS boundary crossings.
+#[wasm_bindgen(js_name = swe_calc_ut_fast)]
+pub fn js_swe_calc_ut_fast(tjd_ut: f64, ipl: i32, iflag: i32) -> Result<Vec<f64>, JsValue> {
+    let mut xx = [0.0f64; 6];
+    let mut serr = [0i8; 256];
+
+    let ret = unsafe {
+        swe_bindings::swe_calc_ut(tjd_ut, ipl, iflag, xx.as_mut_ptr(), serr.as_mut_ptr())
+    };
+
+    if ret < 0 {
+        let msg = unsafe {
+            CStr::from_ptr(serr.as_ptr()).to_str().unwrap_or("unknown error")
+        };
+        return Err(JsValue::from_str(msg));
+    }
+
+    Ok(xx.to_vec())
+}
+
 #[wasm_bindgen(js_name = swe_julday)]
 pub fn js_swe_julday(year: i32, month: i32, day: i32, hour: f64, gregflag: i32) -> f64 {
     unsafe { swe_bindings::swe_julday(year, month, day, hour, gregflag) }
