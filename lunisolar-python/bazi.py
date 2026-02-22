@@ -223,21 +223,15 @@ def ganzhi_from_cycle(cycle: int) -> Tuple[str, str]:
     return stem, branch
 
 
-def parse_ganzhi(gz: str) -> Tuple[str, str]:
-    """Parse a two-character GanZhi string into (stem, branch)."""
-    gz = gz.strip()
-    if len(gz) != 2:
-        raise ValueError(f"GanZhi must be two characters, got '{gz}'")
-    stem, branch = gz[0], gz[1]
-    if stem not in HEAVENLY_STEMS:
-        raise ValueError(f"Invalid heavenly stem: '{stem}'")
-    if branch not in EARTHLY_BRANCHES:
-        raise ValueError(f"Invalid earthly branch: '{branch}'")
-    return stem, branch
+def branch_hidden_with_roles(branch_idx: int) -> List[Tuple[str, str]]:
+    """Return [(role, stem), …] for the hidden stems of the branch at *branch_idx*.
 
-
-def branch_hidden_with_roles(branch: str) -> List[Tuple[str, str]]:
-    """Return [(role, stem), …] for the hidden stems of *branch*."""
+    Parameters
+    ----------
+    branch_idx : int
+        0-based index into :data:`EARTHLY_BRANCHES`.
+    """
+    branch = EARTHLY_BRANCHES[branch_idx]
     stems = BRANCH_HIDDEN_STEMS[branch]
     return [(HIDDEN_ROLES[i], stems[i]) for i in range(len(stems))]
 
@@ -246,19 +240,26 @@ def branch_hidden_with_roles(branch: str) -> List[Tuple[str, str]]:
 # Twelve Longevity Stages — calculation (spec §3)
 # ============================================================
 
-def changsheng_stage(stem: str, branch: str) -> Tuple[int, str]:
-    """Return (1-based stage index, stage name) for *stem* at *branch*.
+def changsheng_stage(stem_idx: int, branch_idx: int) -> Tuple[int, str]:
+    """Return (1-based stage index, stage name) for the stem at *stem_idx* at branch *branch_idx*.
 
     Yang stems progress forward (clockwise); Yin stems progress backward.
+
+    Parameters
+    ----------
+    stem_idx : int
+        0-based index into :data:`HEAVENLY_STEMS`.
+    branch_idx : int
+        0-based index into :data:`EARTHLY_BRANCHES`.
     """
+    stem = HEAVENLY_STEMS[stem_idx]
     start = LONGEVITY_START[stem]
     i_start = EARTHLY_BRANCHES.index(start)
-    i_target = EARTHLY_BRANCHES.index(branch)
 
     if STEM_POLARITY[stem] == 'Yang':
-        offset = (i_target - i_start) % 12
+        offset = (branch_idx - i_start) % 12
     else:
-        offset = (i_start - i_target) % 12
+        offset = (i_start - branch_idx) % 12
 
     idx = offset + 1          # 1-based
     return idx, LONGEVITY_STAGES[idx - 1]
@@ -283,13 +284,22 @@ def _element_relation(dm_elem: str, other_elem: str) -> str:
     raise ValueError(f"Unexpected element pair: {dm_elem}, {other_elem}")
 
 
-def ten_god(dm_stem: str, target_stem: str) -> str:
-    """Return the Ten-God name of *target_stem* relative to Day Master *dm_stem*.
+def ten_god(dm_stem_idx: int, target_stem_idx: int) -> str:
+    """Return the Ten-God name of the stem at *target_stem_idx* relative to Day Master at *dm_stem_idx*.
 
     Follows the convention in spec §1.1:
     - 正 (Direct) = opposite polarity to Day Master
     - 偏 (Indirect) = same polarity as Day Master
+
+    Parameters
+    ----------
+    dm_stem_idx : int
+        0-based index into :data:`HEAVENLY_STEMS` for the Day Master stem.
+    target_stem_idx : int
+        0-based index into :data:`HEAVENLY_STEMS` for the target stem.
     """
+    dm_stem = HEAVENLY_STEMS[dm_stem_idx]
+    target_stem = HEAVENLY_STEMS[target_stem_idx]
     dm_elem = STEM_ELEMENT[dm_stem]
     t_elem = STEM_ELEMENT[target_stem]
     rel = _element_relation(dm_elem, t_elem)
@@ -355,8 +365,8 @@ def build_chart(
         chart['pillars'][name] = {
             'stem': stem,
             'branch': branch,
-            'hidden': branch_hidden_with_roles(branch),
-            'ten_god': ten_god(dm_stem, stem),
+            'hidden': branch_hidden_with_roles(EARTHLY_BRANCHES.index(branch)),
+            'ten_god': ten_god(HEAVENLY_STEMS.index(dm_stem), HEAVENLY_STEMS.index(stem)),
         }
 
     return chart
@@ -413,7 +423,7 @@ def score_day_master(chart: Dict) -> Tuple[int, str]:
     score = 0
 
     # 1) Month-order (月令) via longevity stage
-    idx, _stage = changsheng_stage(dm_stem, month_branch)
+    idx, _stage = changsheng_stage(HEAVENLY_STEMS.index(dm_stem), EARTHLY_BRANCHES.index(month_branch))
     if idx <= 5:
         score += 2
     else:
@@ -592,7 +602,7 @@ def classify_structure(chart: Dict, strength: str) -> str:
     for p in chart['pillars'].values():
         tg_counts[p['ten_god']] += 1
         for _role, stem in p['hidden']:
-            tg_counts[ten_god(dm_stem, stem)] += 1
+            tg_counts[ten_god(HEAVENLY_STEMS.index(dm_stem), HEAVENLY_STEMS.index(stem))] += 1
 
     dominant = tg_counts.most_common(1)[0][0]
 
@@ -623,11 +633,11 @@ def weighted_ten_god_distribution(chart: Dict) -> Dict[str, float]:
 
     for pname, p in chart['pillars'].items():
         w_stem = weight_map.get(pname, 2)
-        tg = ten_god(dm, p['stem'])
+        tg = ten_god(HEAVENLY_STEMS.index(dm), HEAVENLY_STEMS.index(p['stem']))
         dist[tg] = dist.get(tg, 0) + w_stem
 
         for role, stem in p['hidden']:
-            tg_h = ten_god(dm, stem)
+            tg_h = ten_god(HEAVENLY_STEMS.index(dm), HEAVENLY_STEMS.index(stem))
             w_hidden = {'main': 2, 'middle': 1}.get(role, 0.5)
             dist[tg_h] = dist.get(tg_h, 0) + w_hidden
 
@@ -750,7 +760,7 @@ def annual_analysis(chart: Dict, year_pillar_cycle: int) -> Dict:
     natal_branches = [p['branch'] for p in chart['pillars'].values()]
 
     result: Dict = {}
-    result['year_ten_god'] = ten_god(dm, year_stem)
+    result['year_ten_god'] = ten_god(HEAVENLY_STEMS.index(dm), HEAVENLY_STEMS.index(year_stem))
 
     interactions: List[str] = []
     for b in natal_branches:

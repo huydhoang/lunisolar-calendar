@@ -32,7 +32,6 @@ from bazi import (
     generate_luck_pillars,
     generate_narrative,
     normalize_gender,
-    parse_ganzhi,
     rate_chart,
     recommend_useful_god,
     score_day_master,
@@ -119,16 +118,16 @@ class TestHiddenStems(unittest.TestCase):
             self.assertIn(b, BRANCH_HIDDEN_STEMS)
 
     def test_branch_hidden_with_roles(self):
-        roles = branch_hidden_with_roles('寅')
+        roles = branch_hidden_with_roles(2)  # 寅 = index 2
         self.assertEqual(roles, [('main', '甲'), ('middle', '丙'), ('residual', '戊')])
 
     def test_branch_hidden_with_roles_single(self):
-        roles = branch_hidden_with_roles('子')
+        roles = branch_hidden_with_roles(0)  # 子 = index 0
         self.assertEqual(roles, [('main', '癸')])
 
 
 class TestGanzhi(unittest.TestCase):
-    """Tests for ganzhi_from_cycle and parse_ganzhi."""
+    """Tests for ganzhi_from_cycle."""
 
     def test_ganzhi_from_cycle_jiazi(self):
         """Cycle 1 = 甲子."""
@@ -165,87 +164,66 @@ class TestGanzhi(unittest.TestCase):
             ganzhi_from_cycle(61)
 
 
-class TestParseGanzhi(unittest.TestCase):
-
-    def test_valid(self):
-        self.assertEqual(parse_ganzhi('甲子'), ('甲', '子'))
-
-    def test_whitespace(self):
-        self.assertEqual(parse_ganzhi(' 乙丑 '), ('乙', '丑'))
-
-    def test_invalid_length(self):
-        with self.assertRaises(ValueError):
-            parse_ganzhi('甲')
-
-    def test_invalid_stem(self):
-        with self.assertRaises(ValueError):
-            parse_ganzhi('X子')
-
-    def test_invalid_branch(self):
-        with self.assertRaises(ValueError):
-            parse_ganzhi('甲X')
-
-
 class TestTenGods(unittest.TestCase):
     """Ten Gods verified against spec §1.1 relationship table."""
 
     def test_same_element_same_polarity(self):
         """比肩: same element, same polarity."""
-        self.assertEqual(ten_god('甲', '甲'), '比肩')
+        self.assertEqual(ten_god(0, 0), '比肩')  # 甲(0) vs 甲(0)
 
     def test_same_element_diff_polarity(self):
         """劫财: same element, opposite polarity."""
-        self.assertEqual(ten_god('甲', '乙'), '劫财')
+        self.assertEqual(ten_god(0, 1), '劫财')  # 甲(0) vs 乙(1)
 
     def test_i_produce_same_polarity(self):
         """食神: element I produce, same polarity."""
         # 甲(Wood Yang) produces Fire; 丙(Fire Yang) = same polarity → 食神
-        self.assertEqual(ten_god('甲', '丙'), '食神')
+        self.assertEqual(ten_god(0, 2), '食神')  # 甲(0) vs 丙(2)
 
     def test_i_produce_diff_polarity(self):
         """伤官: element I produce, opposite polarity."""
         # 甲(Wood Yang) produces Fire; 丁(Fire Yin) = diff polarity → 伤官
-        self.assertEqual(ten_god('甲', '丁'), '伤官')
+        self.assertEqual(ten_god(0, 3), '伤官')  # 甲(0) vs 丁(3)
 
     def test_i_control_same_polarity(self):
         """偏财: element I control, same polarity."""
         # 甲(Wood Yang) controls Earth; 戊(Earth Yang) → 偏财
-        self.assertEqual(ten_god('甲', '戊'), '偏财')
+        self.assertEqual(ten_god(0, 4), '偏财')  # 甲(0) vs 戊(4)
 
     def test_i_control_diff_polarity(self):
         """正财: element I control, opposite polarity."""
         # 甲(Wood Yang) controls Earth; 己(Earth Yin) → 正财
-        self.assertEqual(ten_god('甲', '己'), '正财')
+        self.assertEqual(ten_god(0, 5), '正财')  # 甲(0) vs 己(5)
 
     def test_controls_me_same_polarity(self):
         """七杀: element that controls me, same polarity."""
         # 甲(Wood Yang) controlled by Metal; 庚(Metal Yang) → 七杀
-        self.assertEqual(ten_god('甲', '庚'), '七杀')
+        self.assertEqual(ten_god(0, 6), '七杀')  # 甲(0) vs 庚(6)
 
     def test_controls_me_diff_polarity(self):
         """正官: element that controls me, opposite polarity."""
         # 甲(Wood Yang) controlled by Metal; 辛(Metal Yin) → 正官
-        self.assertEqual(ten_god('甲', '辛'), '正官')
+        self.assertEqual(ten_god(0, 7), '正官')  # 甲(0) vs 辛(7)
 
     def test_produces_me_same_polarity(self):
         """偏印: element that produces me, same polarity."""
         # 甲(Wood Yang) produced by Water; 壬(Water Yang) → 偏印
-        self.assertEqual(ten_god('甲', '壬'), '偏印')
+        self.assertEqual(ten_god(0, 8), '偏印')  # 甲(0) vs 壬(8)
 
     def test_produces_me_diff_polarity(self):
         """正印: element that produces me, opposite polarity."""
         # 甲(Wood Yang) produced by Water; 癸(Water Yin) → 正印
-        self.assertEqual(ten_god('甲', '癸'), '正印')
+        self.assertEqual(ten_god(0, 9), '正印')  # 甲(0) vs 癸(9)
 
     def test_fire_dm(self):
         """Cross-check with a Fire Day Master."""
         # 丙(Fire Yang): Water controls Fire
-        self.assertEqual(ten_god('丙', '壬'), '七杀')
-        self.assertEqual(ten_god('丙', '癸'), '正官')
+        self.assertEqual(ten_god(2, 8), '七杀')   # 丙(2) vs 壬(8)
+        self.assertEqual(ten_god(2, 9), '正官')   # 丙(2) vs 癸(9)
         # Fire produces Earth
-        self.assertEqual(ten_god('丙', '戊'), '食神')
+        self.assertEqual(ten_god(2, 4), '食神')   # 丙(2) vs 戊(4)
         # Wood produces Fire
-        self.assertEqual(ten_god('丙', '甲'), '偏印')
+        self.assertEqual(ten_god(2, 0), '偏印')   # 丙(2) vs 甲(0)
 
 
 class TestLongevityStages(unittest.TestCase):
@@ -254,43 +232,45 @@ class TestLongevityStages(unittest.TestCase):
     def test_starting_branches(self):
         """Each stem starts at the branch listed in spec §3.3."""
         for stem, expected_branch in LONGEVITY_START.items():
-            idx, stage = changsheng_stage(stem, expected_branch)
+            stem_idx = HEAVENLY_STEMS.index(stem)
+            branch_idx = EARTHLY_BRANCHES.index(expected_branch)
+            idx, stage = changsheng_stage(stem_idx, branch_idx)
             self.assertEqual(idx, 1, f"{stem} at {expected_branch} should be stage 1 (长生)")
             self.assertEqual(stage, '长生')
 
     def test_yang_wood_forward_example(self):
         """Spec §3.4: 甲 forward from 亥 → 卯 is 帝旺 (stage 5)."""
-        idx, stage = changsheng_stage('甲', '卯')
+        idx, stage = changsheng_stage(0, 3)  # 甲(0), 卯(3)
         self.assertEqual(idx, 5)
         self.assertEqual(stage, '帝旺')
 
     def test_yang_wood_decline(self):
         """甲 at 辰 should be 衰 (stage 6)."""
-        idx, stage = changsheng_stage('甲', '辰')
+        idx, stage = changsheng_stage(0, 4)  # 甲(0), 辰(4)
         self.assertEqual(idx, 6)
         self.assertEqual(stage, '衰')
 
     def test_yin_wood_backward_example(self):
         """Spec §3.4: 乙 backward from 午 → 巳 is 沐浴 (stage 2)."""
-        idx, stage = changsheng_stage('乙', '巳')
+        idx, stage = changsheng_stage(1, 5)  # 乙(1), 巳(5)
         self.assertEqual(idx, 2)
         self.assertEqual(stage, '沐浴')
 
     def test_yin_wood_officer(self):
         """乙 backward: 午→巳→辰→卯 = 临官 (stage 4)."""
-        idx, stage = changsheng_stage('乙', '卯')
+        idx, stage = changsheng_stage(1, 3)  # 乙(1), 卯(3)
         self.assertEqual(idx, 4)
         self.assertEqual(stage, '临官')
 
     def test_yang_fire_starts_at_yin(self):
         """丙 starts at 寅."""
-        idx, stage = changsheng_stage('丙', '寅')
+        idx, stage = changsheng_stage(2, 2)  # 丙(2), 寅(2)
         self.assertEqual(idx, 1)
         self.assertEqual(stage, '长生')
 
     def test_yang_earth_shares_with_fire(self):
         """戊 starts at 寅 (same as 丙), per spec §3.3 note."""
-        idx, stage = changsheng_stage('戊', '寅')
+        idx, stage = changsheng_stage(4, 2)  # 戊(4), 寅(2)
         self.assertEqual(idx, 1)
         self.assertEqual(stage, '长生')
 
