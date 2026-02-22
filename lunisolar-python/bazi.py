@@ -187,6 +187,19 @@ ZI_XING_BRANCHES = frozenset({'辰', '午', '酉', '亥'})
 # Parsing helpers
 # ============================================================
 
+def ganzhi_from_cycle(cycle: int) -> Tuple[str, str]:
+    """Convert a 1-60 sexagenary cycle number to (stem, branch) characters.
+
+    Uses the same formula as ``lunisolar_v2._get_stem_branch``:
+    ``stem_index = (cycle - 1) % 10``, ``branch_index = (cycle - 1) % 12``.
+    """
+    if not (1 <= cycle <= 60):
+        raise ValueError(f"Cycle must be between 1 and 60, got {cycle}")
+    stem = HEAVENLY_STEMS[(cycle - 1) % 10]
+    branch = EARTHLY_BRANCHES[(cycle - 1) % 12]
+    return stem, branch
+
+
 def parse_ganzhi(gz: str) -> Tuple[str, str]:
     """Parse a two-character GanZhi string into (stem, branch)."""
     gz = gz.strip()
@@ -275,18 +288,19 @@ def ten_god(dm_stem: str, target_stem: str) -> str:
 # ============================================================
 
 def build_chart(
-    year_gz: str,
-    month_gz: str,
-    day_gz: str,
-    hour_gz: str,
+    year_cycle: int,
+    month_cycle: int,
+    day_cycle: int,
+    hour_cycle: int,
     gender: str,
 ) -> Dict:
-    """Build a structured natal chart from four GanZhi pillar strings.
+    """Build a structured natal chart from four sexagenary cycle numbers.
 
     Parameters
     ----------
-    year_gz, month_gz, day_gz, hour_gz : str
-        Two-character GanZhi strings (e.g. ``"甲子"``).
+    year_cycle, month_cycle, day_cycle, hour_cycle : int
+        Sexagenary cycle position (1-60) for each pillar, as produced by
+        :class:`~lunisolar_v2.LunisolarDateDTO` (e.g. ``dto.year_cycle``).
     gender : str
         ``"male"`` or ``"female"``.
 
@@ -295,12 +309,13 @@ def build_chart(
     dict
         Chart dictionary with ``pillars``, ``day_master``, and ``gender``.
     """
-    pillars = {
-        'year': parse_ganzhi(year_gz),
-        'month': parse_ganzhi(month_gz),
-        'day': parse_ganzhi(day_gz),
-        'hour': parse_ganzhi(hour_gz),
+    pillar_cycles = {
+        'year': year_cycle,
+        'month': month_cycle,
+        'day': day_cycle,
+        'hour': hour_cycle,
     }
+    pillars = {name: ganzhi_from_cycle(c) for name, c in pillar_cycles.items()}
 
     dm_stem = pillars['day'][0]
     dm_elem = STEM_ELEMENT[dm_stem]
@@ -325,10 +340,10 @@ def build_chart(
 def from_lunisolar_dto(dto: LunisolarDateDTO, gender: str) -> Dict:
     """Build a Bazi chart from a :class:`LunisolarDateDTO`."""
     return build_chart(
-        dto.year_stem + dto.year_branch,
-        dto.month_stem + dto.month_branch,
-        dto.day_stem + dto.day_branch,
-        dto.hour_stem + dto.hour_branch,
+        dto.year_cycle,
+        dto.month_cycle,
+        dto.day_cycle,
+        dto.hour_cycle,
         gender,
     )
 
@@ -593,12 +608,21 @@ def generate_luck_pillars(chart: Dict, count: int = 8) -> List[Tuple[str, str]]:
 # Annual Flow Engine (流年) — spec §6
 # ============================================================
 
-def annual_analysis(chart: Dict, year_stem: str, year_branch: str) -> Dict:
+def annual_analysis(chart: Dict, year_pillar_cycle: int) -> Dict:
     """Analyse a flowing-year pillar against the natal chart.
+
+    Parameters
+    ----------
+    chart : dict
+        Natal chart built by :func:`build_chart`.
+    year_pillar_cycle : int
+        Sexagenary cycle number (1-60) for the flowing year pillar, as
+        produced by :class:`~lunisolar_v2.LunisolarDateDTO`.
 
     Returns the year's Ten-God role, branch interactions with natal
     branches, and an approximate Day-Master strength delta.
     """
+    year_stem, year_branch = ganzhi_from_cycle(year_pillar_cycle)
     dm = chart['day_master']['stem']
     dm_elem = STEM_ELEMENT[dm]
     natal_branches = [p['branch'] for p in chart['pillars'].values()]
@@ -775,8 +799,8 @@ def generate_narrative(
 # ============================================================
 
 if __name__ == "__main__":
-    # Demo with raw GanZhi input
-    chart = build_chart("甲子", "乙丑", "丙寅", "丁巳", "male")
+    # Demo with cycle number input (甲子=1, 乙丑=2, 丙寅=3, 丁巳=54)
+    chart = build_chart(1, 2, 3, 54, "male")
 
     score, strength = score_day_master(chart)
     interactions = detect_branch_interactions(chart)
@@ -800,7 +824,6 @@ if __name__ == "__main__":
     print("--- Narrative ---")
     print(narrative)
 
-    # Demo annual analysis
-    print()
-    print("--- Flowing Year 2026 (丙午) ---")
-    print(annual_analysis(chart, '丙', '午'))
+    # Demo annual analysis - 丙午 = cycle 43
+    print("--- Flowing Year 2026 (丙午, cycle 43) ---")
+    print(annual_analysis(chart, 43))

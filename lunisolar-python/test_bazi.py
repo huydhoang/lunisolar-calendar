@@ -26,6 +26,7 @@ from bazi import (
     classify_structure,
     classify_structure_professional,
     detect_branch_interactions,
+    ganzhi_from_cycle,
     generate_luck_pillars,
     generate_narrative,
     parse_ganzhi,
@@ -121,6 +122,44 @@ class TestHiddenStems(unittest.TestCase):
     def test_branch_hidden_with_roles_single(self):
         roles = branch_hidden_with_roles('子')
         self.assertEqual(roles, [('main', '癸')])
+
+
+class TestGanzhi(unittest.TestCase):
+    """Tests for ganzhi_from_cycle and parse_ganzhi."""
+
+    def test_ganzhi_from_cycle_jiazi(self):
+        """Cycle 1 = 甲子."""
+        self.assertEqual(ganzhi_from_cycle(1), ('甲', '子'))
+
+    def test_ganzhi_from_cycle_yichou(self):
+        """Cycle 2 = 乙丑."""
+        self.assertEqual(ganzhi_from_cycle(2), ('乙', '丑'))
+
+    def test_ganzhi_from_cycle_bingyin(self):
+        """Cycle 3 = 丙寅."""
+        self.assertEqual(ganzhi_from_cycle(3), ('丙', '寅'))
+
+    def test_ganzhi_from_cycle_dingsi(self):
+        """Cycle 54 = 丁巳."""
+        self.assertEqual(ganzhi_from_cycle(54), ('丁', '巳'))
+
+    def test_ganzhi_from_cycle_bingwu(self):
+        """Cycle 43 = 丙午."""
+        self.assertEqual(ganzhi_from_cycle(43), ('丙', '午'))
+
+    def test_ganzhi_from_cycle_jiawu(self):
+        """Cycle 31 = 甲午."""
+        self.assertEqual(ganzhi_from_cycle(31), ('甲', '午'))
+
+    def test_ganzhi_from_cycle_bounds(self):
+        """Cycle 60 is valid; 0 and 61 raise ValueError."""
+        stem, branch = ganzhi_from_cycle(60)
+        self.assertIn(stem, HEAVENLY_STEMS)
+        self.assertIn(branch, EARTHLY_BRANCHES)
+        with self.assertRaises(ValueError):
+            ganzhi_from_cycle(0)
+        with self.assertRaises(ValueError):
+            ganzhi_from_cycle(61)
 
 
 class TestParseGanzhi(unittest.TestCase):
@@ -256,7 +295,8 @@ class TestLongevityStages(unittest.TestCase):
 class TestBuildChart(unittest.TestCase):
 
     def setUp(self):
-        self.chart = build_chart("甲子", "乙丑", "丙寅", "丁巳", "male")
+        # 甲子=1, 乙丑=2, 丙寅=3, 丁巳=54
+        self.chart = build_chart(1, 2, 3, 54, "male")
 
     def test_day_master(self):
         self.assertEqual(self.chart['day_master']['stem'], '丙')
@@ -288,14 +328,16 @@ class TestBuildChart(unittest.TestCase):
 class TestScoreDayMaster(unittest.TestCase):
 
     def test_example_chart(self):
-        chart = build_chart("甲子", "乙丑", "丙寅", "丁巳", "male")
+        # 甲子=1, 乙丑=2, 丙寅=3, 丁巳=54
+        chart = build_chart(1, 2, 3, 54, "male")
         score, strength = score_day_master(chart)
         self.assertIsInstance(score, int)
         self.assertIn(strength, ('strong', 'weak', 'balanced'))
 
     def test_strong_fire_chart(self):
         """丙 DM in month branch 午 (Fire peak) should be strong."""
-        chart = build_chart("甲午", "丙午", "丙午", "丁巳", "male")
+        # 甲午=31, 丙午=43, 丁巳=54
+        chart = build_chart(31, 43, 43, 54, "male")
         score, strength = score_day_master(chart)
         self.assertEqual(strength, 'strong')
 
@@ -304,19 +346,22 @@ class TestBranchInteractions(unittest.TestCase):
 
     def test_six_combination(self):
         """子 + 丑 should trigger 六合."""
-        chart = build_chart("甲子", "乙丑", "丙寅", "丁巳", "male")
+        # 甲子=1, 乙丑=2, 丙寅=3, 丁巳=54
+        chart = build_chart(1, 2, 3, 54, "male")
         interactions = detect_branch_interactions(chart)
         self.assertTrue(any('子' in p and '丑' in p for p in interactions['六合']))
 
     def test_six_clash(self):
         """子 + 午 should trigger 六冲."""
-        chart = build_chart("甲子", "乙丑", "丙午", "丁巳", "male")
+        # 甲子=1, 乙丑=2, 丙午=43, 丁巳=54
+        chart = build_chart(1, 2, 43, 54, "male")
         interactions = detect_branch_interactions(chart)
         self.assertTrue(any('子' in p and '午' in p for p in interactions['六冲']))
 
     def test_self_punishment(self):
         """午 + 午 should trigger 自刑."""
-        chart = build_chart("甲午", "乙午", "丙寅", "丁巳", "male")
+        # year=甲午=31, month=丙午=43, day=丙寅=3, hour=丁巳=54
+        chart = build_chart(31, 43, 3, 54, "male")
         interactions = detect_branch_interactions(chart)
         self.assertTrue(len(interactions['自刑']) > 0)
 
@@ -326,25 +371,29 @@ class TestBranchInteractions(unittest.TestCase):
 
     def test_san_he(self):
         """寅 + 午 + 戌 → Fire 三合."""
-        chart = build_chart("甲寅", "丙午", "戊戌", "庚子", "male")
+        # year=甲寅=51, month=丙午=43, day=戊戌=35, hour=庚子=37
+        chart = build_chart(51, 43, 35, 37, "male")
         interactions = detect_branch_interactions(chart)
         self.assertTrue(len(interactions['三合']) > 0)
 
     def test_harm(self):
         """子 + 未 should trigger 害."""
-        chart = build_chart("甲子", "己未", "丙寅", "丁巳", "male")
+        # 甲子=1, 己未=56, 丙寅=3, 丁巳=54
+        chart = build_chart(1, 56, 3, 54, "male")
         interactions = detect_branch_interactions(chart)
         self.assertTrue(any('子' in p and '未' in p for p in interactions['害']))
 
     def test_san_he_partial_no_match(self):
         """Only 2 of 3 三合 branches should NOT trigger 三合."""
-        chart = build_chart("甲寅", "丙午", "丙寅", "丁巳", "male")
+        # year=甲寅=51, month=丙午=43, day=丙寅=3, hour=丁巳=54
+        chart = build_chart(51, 43, 3, 54, "male")
         interactions = detect_branch_interactions(chart)
         self.assertEqual(len(interactions['三合']), 0)
 
     def test_xing_partial_match(self):
         """2 of 3 punishment branches should still trigger 刑."""
-        chart = build_chart("甲寅", "丙申", "丙寅", "丁巳", "male")
+        # year=甲寅=51, month=丙申=33, day=丙寅=3, hour=丁巳=54
+        chart = build_chart(51, 33, 3, 54, "male")
         interactions = detect_branch_interactions(chart)
         self.assertTrue(len(interactions['刑']) > 0)
 
@@ -352,13 +401,15 @@ class TestBranchInteractions(unittest.TestCase):
 class TestLuckPillars(unittest.TestCase):
 
     def test_count(self):
-        chart = build_chart("甲子", "乙丑", "丙寅", "丁巳", "male")
+        # 甲子=1, 乙丑=2, 丙寅=3, 丁巳=54
+        chart = build_chart(1, 2, 3, 54, "male")
         pillars = generate_luck_pillars(chart, count=8)
         self.assertEqual(len(pillars), 8)
 
     def test_forward_yang_male(self):
         """Yang year + male → forward. 乙丑 → next is 丙寅."""
-        chart = build_chart("甲子", "乙丑", "丙寅", "丁巳", "male")
+        # 甲子=1, 乙丑=2, 丙寅=3, 丁巳=54
+        chart = build_chart(1, 2, 3, 54, "male")
         pillars = generate_luck_pillars(chart, count=3)
         self.assertEqual(pillars[0], ('丙', '寅'))
         self.assertEqual(pillars[1], ('丁', '卯'))
@@ -366,14 +417,16 @@ class TestLuckPillars(unittest.TestCase):
 
     def test_backward_yin_male(self):
         """Yin year + male → backward. 乙丑 month → prev is 甲子."""
-        chart = build_chart("乙丑", "乙丑", "丙寅", "丁巳", "male")
+        # 乙丑=2, 丙寅=3, 丁巳=54
+        chart = build_chart(2, 2, 3, 54, "male")
         pillars = generate_luck_pillars(chart, count=2)
         self.assertEqual(pillars[0], ('甲', '子'))
         self.assertEqual(pillars[1], ('癸', '亥'))
 
     def test_forward_yin_female(self):
         """Yin year + female → forward."""
-        chart = build_chart("乙丑", "乙丑", "丙寅", "丁巳", "female")
+        # 乙丑=2, 丙寅=3, 丁巳=54
+        chart = build_chart(2, 2, 3, 54, "female")
         pillars = generate_luck_pillars(chart, count=1)
         self.assertEqual(pillars[0], ('丙', '寅'))
 
@@ -381,29 +434,33 @@ class TestLuckPillars(unittest.TestCase):
 class TestAnnualAnalysis(unittest.TestCase):
 
     def test_basic_analysis(self):
-        chart = build_chart("甲子", "乙丑", "丙寅", "丁巳", "male")
-        result = annual_analysis(chart, '丙', '午')
+        # 甲子=1, 乙丑=2, 丙寅=3, 丁巳=54; flowing year 丙午=43
+        chart = build_chart(1, 2, 3, 54, "male")
+        result = annual_analysis(chart, 43)
         self.assertIn('year_ten_god', result)
         self.assertIn('interactions', result)
         self.assertIn('strength_delta', result)
 
     def test_year_ten_god(self):
         """丙 year stem vs 丙 DM → 比肩."""
-        chart = build_chart("甲子", "乙丑", "丙寅", "丁巳", "male")
-        result = annual_analysis(chart, '丙', '午')
+        # 甲子=1, 乙丑=2, 丙寅=3, 丁巳=54; flowing year 丙午=43
+        chart = build_chart(1, 2, 3, 54, "male")
+        result = annual_analysis(chart, 43)
         self.assertEqual(result['year_ten_god'], '比肩')
 
 
 class TestStructure(unittest.TestCase):
 
     def test_basic_structure(self):
-        chart = build_chart("甲子", "乙丑", "丙寅", "丁巳", "male")
+        # 甲子=1, 乙丑=2, 丙寅=3, 丁巳=54
+        chart = build_chart(1, 2, 3, 54, "male")
         _, strength = score_day_master(chart)
         structure = classify_structure(chart, strength)
         self.assertIsInstance(structure, str)
 
     def test_professional_structure(self):
-        chart = build_chart("甲子", "乙丑", "丙寅", "丁巳", "male")
+        # 甲子=1, 乙丑=2, 丙寅=3, 丁巳=54
+        chart = build_chart(1, 2, 3, 54, "male")
         _, strength = score_day_master(chart)
         struct, score = classify_structure_professional(chart, strength)
         self.assertIsInstance(struct, str)
@@ -432,7 +489,8 @@ class TestUsefulGod(unittest.TestCase):
 class TestChartRating(unittest.TestCase):
 
     def test_rating_range(self):
-        chart = build_chart("甲子", "乙丑", "丙寅", "丁巳", "male")
+        # 甲子=1, 乙丑=2, 丙寅=3, 丁巳=54
+        chart = build_chart(1, 2, 3, 54, "male")
         rating = rate_chart(chart)
         self.assertGreaterEqual(rating, 0)
         self.assertLessEqual(rating, 100)
@@ -441,7 +499,8 @@ class TestChartRating(unittest.TestCase):
 class TestNarrative(unittest.TestCase):
 
     def test_narrative_contains_day_master(self):
-        chart = build_chart("甲子", "乙丑", "丙寅", "丁巳", "male")
+        # 甲子=1, 乙丑=2, 丙寅=3, 丁巳=54
+        chart = build_chart(1, 2, 3, 54, "male")
         _, strength = score_day_master(chart)
         interactions = detect_branch_interactions(chart)
         structure = classify_structure(chart, strength)
@@ -454,7 +513,8 @@ class TestNarrative(unittest.TestCase):
 class TestWeightedDistribution(unittest.TestCase):
 
     def test_month_pillar_weighted_higher(self):
-        chart = build_chart("甲子", "乙丑", "丙寅", "丁巳", "male")
+        # 甲子=1, 乙丑=2, 丙寅=3, 丁巳=54
+        chart = build_chart(1, 2, 3, 54, "male")
         dist = weighted_ten_god_distribution(chart)
         self.assertIsInstance(dist, dict)
         self.assertTrue(all(v > 0 for v in dist.values()))
