@@ -1,4 +1,4 @@
-name: Benchmark lunisolar WASM vs TypeScript
+name: "Test & Benchmark: lunisolar ports vs Python ground truth"
 
 on:
   push:
@@ -37,8 +37,8 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Install skyfield
-        run: pip install skyfield
+      - name: Install Python dependencies
+        run: pip install skyfield pytz
 
       # ── 4. Set up Rust ───────────────────────────────────────────────────
       - name: Set up Rust

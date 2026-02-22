@@ -1,4 +1,4 @@
-name: Test swisseph-wasm Accuracy
+name: "Test: swisseph-wasm accuracy vs JPL Horizons"
 
 # Trigger on push (only when workflow or test files change) and on manual dispatch.
 on:

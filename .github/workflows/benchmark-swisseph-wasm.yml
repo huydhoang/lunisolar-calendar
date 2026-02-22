@@ -1,4 +1,4 @@
-name: Benchmark swisseph-wasm Implementations
+name: "Benchmark: swisseph-wasm implementations"
 
 # Trigger on push (only when workflow or benchmark files change) and on manual dispatch.
 on:
