@@ -1,0 +1,138 @@
+name: "Benchmark: WASM implementations"
+
+on:
+  push:
+    paths:
+      - '.github/workflows/benchmark-wasm-implementations.yml'
+      - 'tests/swisseph-wasm/benchmark.mjs'
+      - 'tests/lunisolar-wasm/benchmark.mjs'
+      - 'wasm/swisseph/**'
+      - 'wasm/lunisolar/**'
+      - 'wasm/lunisolar-emcc/**'
+      - 'pkg/src/**'
+  workflow_dispatch:
+
+jobs:
+  benchmark:
+    name: swisseph + lunisolar throughput
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      # ── 1. Source code ────────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── 2. Runtimes ───────────────────────────────────────────────────────
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install wasm-pack
+        run: curl -sSL https://rustwasm.github.io/wasm-pack/installer/init.sh | sh
+
+      # ── 3. Set up Emscripten ──────────────────────────────────────────────
+      - name: Set up Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 'latest'
+
+      - name: Verify emcc
+        run: emcc --version
+
+      # ── 4. Install npm swisseph-wasm packages ─────────────────────────────
+      - name: Install npm swisseph packages
+        working-directory: tests/swisseph-wasm
+        run: |
+          echo '{"type":"module","name":"swisseph-wasm-benchmark"}' > package.json
+          npm install swisseph-wasm @fusionstrings/swisseph-wasm
+
+      # ── 5. Build vendored swisseph WASM ────────────────────────────────────
+      - name: Build swisseph WASM (vendored C source)
+        working-directory: wasm/swisseph
+        run: wasm-pack build --target nodejs --release
+
+      # ── 6. Build TypeScript package ────────────────────────────────────────
+      - name: Install TS dependencies
+        working-directory: pkg
+        run: npm ci
+
+      - name: Build TypeScript package
+        working-directory: pkg
+        run: npm run build
+
+      # ── 7. Build lunisolar Rust WASM ───────────────────────────────────────
+      - name: Build lunisolar WASM (Rust / wasm-pack)
+        working-directory: wasm/lunisolar
+        run: wasm-pack build --target nodejs --release
+
+      # ── 8. Build lunisolar Emscripten WASM ─────────────────────────────────
+      - name: Build lunisolar WASM (Emscripten / emcc)
+        working-directory: wasm/lunisolar-emcc
+        run: bash build.sh
+
+      # ── 9. Verify WASM files ───────────────────────────────────────────────
+      - name: Verify WASM files
+        run: |
+          echo "=== swisseph WASM ==="
+          ls -lh tests/swisseph-wasm/node_modules/@fusionstrings/swisseph-wasm/esm/lib/swisseph_wasm.wasm
+          ls -lh tests/swisseph-wasm/node_modules/swisseph-wasm/wsam/swisseph.wasm
+          ls -lh wasm/swisseph/pkg/swisseph_wasm_bg.wasm
+          echo ""
+          echo "=== lunisolar WASM ==="
+          ls -lh wasm/lunisolar/pkg/lunisolar_wasm_bg.wasm
+          ls -lh wasm/lunisolar-emcc/pkg/lunisolar_emcc.wasm
+          echo ""
+          echo "=== TypeScript package ==="
+          ls -lh pkg/dist/index.mjs
+
+      # ── 10. Run swisseph benchmark ─────────────────────────────────────────
+      - name: Run swisseph benchmark
+        working-directory: tests/swisseph-wasm
+        run: node benchmark.mjs
+
+      # ── 11. Run lunisolar burst benchmark ──────────────────────────────────
+      - name: Run lunisolar burst benchmark
+        working-directory: tests/lunisolar-wasm
+        run: node benchmark.mjs
+
+      # ── 12. Write results to step summary ──────────────────────────────────
+      - name: Write step summary
+        if: always()
+        run: |
+          echo "# WASM Implementations Benchmark" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Date:** $(date -u +%Y-%m-%d)" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+
+          # Part 1: Low-level — calc_ut throughput
+          if [ -f tests/swisseph-wasm/benchmark-report.md ]; then
+            cat tests/swisseph-wasm/benchmark-report.md >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          echo "---" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+
+          # Part 2: High-level — lunisolar pipeline throughput
+          if [ -f tests/lunisolar-wasm/lunisolar-benchmark-report.md ]; then
+            cat tests/lunisolar-wasm/lunisolar-benchmark-report.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      # ── 13. Upload reports ─────────────────────────────────────────────────
+      - name: Upload benchmark reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wasm-benchmark-reports
+          path: |
+            tests/swisseph-wasm/benchmark-report.md
+            tests/lunisolar-wasm/lunisolar-benchmark-report.md
+          retention-days: 30

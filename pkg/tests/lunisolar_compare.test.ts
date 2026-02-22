@@ -155,3 +155,48 @@ describe('Regression: conversion mismatch fix (Asia/Ho_Chi_Minh UTC+7)', () => {
     expect(res.hourStem + res.hourBranch).toBe(hm ? hm[1] : '');
   });
 });
+
+describe('Day ganzhi uses local date (not UTC) for timezone-correct day boundary', () => {
+  it('gives consistent day ganzhi across all hours of the same local date in UTC+7', async () => {
+    const { LunisolarCalendar, configure } = await import(resolve(__dirname, '..', 'dist', 'index.mjs'));
+    configure({ strategy: 'static' });
+
+    // Feb 22, 2025 at 03:00 UTC+7 (early morning — UTC date is Feb 21)
+    const early = dateFromICTLocal(2025, 2, 22, 3, 0);
+    const resEarly = await LunisolarCalendar.fromSolarDate(early, 'Asia/Ho_Chi_Minh');
+
+    // Feb 22, 2025 at 12:00 UTC+7 (noon — UTC date is Feb 22)
+    const noon = dateFromICTLocal(2025, 2, 22, 12, 0);
+    const resNoon = await LunisolarCalendar.fromSolarDate(noon, 'Asia/Ho_Chi_Minh');
+
+    // Both should produce the same day ganzhi for Feb 22 local
+    expect(resEarly.dayStem).toBe(resNoon.dayStem);
+    expect(resEarly.dayBranch).toBe(resNoon.dayBranch);
+  });
+
+  it('matches Python for early morning UTC+7 (03:00)', async () => {
+    const dateStr = '2025-02-22';
+    const timeStr = '03:00';
+    const root = resolve(__dirname, '..', '..');
+    const script = resolve(root, 'data', 'lunisolar_v2.py');
+    const pyRes = spawnSync('python', [script, '--date', dateStr, '--time', timeStr, '--tz', 'Asia/Ho_Chi_Minh'], {
+      encoding: 'utf-8',
+    });
+    if (pyRes.status !== 0) return; // Skip if Python not available
+
+    const out = pyRes.stdout.trim().split(/\r?\n/);
+    const get = (prefix: string) => out.find((l) => l.startsWith(prefix)) || '';
+    const dayL = get('Day: ');
+    const hourL = get('Hour: ');
+    const rgx = /: (..) .* \[(\d+)\]/;
+    const dm = dayL.match(rgx);
+    const hm = hourL.match(rgx);
+
+    const { LunisolarCalendar } = await import(resolve(__dirname, '..', 'dist', 'index.mjs'));
+    const jsDate = dateFromICTLocal(2025, 2, 22, 3, 0);
+    const res = await LunisolarCalendar.fromSolarDate(jsDate, 'Asia/Ho_Chi_Minh');
+
+    expect(res.dayStem + res.dayBranch).toBe(dm ? dm[1] : '');
+    expect(res.hourStem + res.hourBranch).toBe(hm ? hm[1] : '');
+  });
+});

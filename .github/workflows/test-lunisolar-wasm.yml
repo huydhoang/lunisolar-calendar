@@ -1,0 +1,115 @@
+name: "Test: lunisolar accuracy vs Python ground truth"
+
+on:
+  push:
+    paths:
+      - '.github/workflows/test-lunisolar-wasm.yml'
+      - 'tests/lunisolar-wasm/compare.mjs'
+      - 'tests/lunisolar-wasm/python_reference.py'
+      - 'wasm/lunisolar/**'
+      - 'wasm/lunisolar-emcc/**'
+      - 'pkg/src/**'
+  workflow_dispatch:
+
+jobs:
+  accuracy:
+    name: Accuracy vs Python (DE440s)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      # ── 1. Checkout (with git-lfs for DE440s ephemeris) ────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      # ── 2. Set up Node.js ────────────────────────────────────────────────
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # ── 3. Set up Python + skyfield ────────────────────────────────────
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Python dependencies
+        run: pip install skyfield pytz
+
+      # ── 4. Set up Rust ───────────────────────────────────────────────────
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install wasm-pack
+        run: curl -sSL https://rustwasm.github.io/wasm-pack/installer/init.sh | sh
+
+      # ── 5. Set up Emscripten ─────────────────────────────────────────────
+      - name: Set up Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 'latest'
+
+      - name: Verify emcc
+        run: emcc --version
+
+      # ── 6. Build TypeScript package ──────────────────────────────────────
+      - name: Install npm dependencies
+        working-directory: pkg
+        run: npm ci
+
+      - name: Build TypeScript package
+        working-directory: pkg
+        run: npm run build
+
+      # ── 7. Build Rust WASM package ───────────────────────────────────────
+      - name: Build lunisolar WASM (Rust / wasm-pack)
+        working-directory: wasm/lunisolar
+        run: wasm-pack build --target nodejs --release
+
+      # ── 8. Build Emscripten WASM package ─────────────────────────────────
+      - name: Build lunisolar WASM (Emscripten / emcc)
+        working-directory: wasm/lunisolar-emcc
+        run: bash build.sh
+
+      # ── 9. Verify build artifacts ────────────────────────────────────────
+      - name: Verify build artifacts
+        run: |
+          echo "=== DE440s ephemeris (git-lfs) ==="
+          ls -lh nasa/de440s.bsp
+          echo ""
+          echo "=== TypeScript package ==="
+          ls -lh pkg/dist/index.mjs pkg/dist/index.cjs
+          echo ""
+          echo "=== Rust WASM package ==="
+          ls -lh wasm/lunisolar/pkg/lunisolar_wasm.js wasm/lunisolar/pkg/lunisolar_wasm_bg.wasm
+          echo ""
+          echo "=== Emscripten WASM package ==="
+          ls -lh wasm/lunisolar-emcc/pkg/lunisolar_emcc.mjs wasm/lunisolar-emcc/pkg/lunisolar_emcc.wasm
+
+      # ── 10. Run accuracy comparison ──────────────────────────────────────
+      - name: Run accuracy comparison
+        working-directory: tests/lunisolar-wasm
+        run: node compare.mjs
+
+      # ── 11. Write results to step summary ────────────────────────────────
+      - name: Write step summary
+        if: always()
+        run: |
+          if [ -f tests/lunisolar-wasm/compare-report.md ]; then
+            cat tests/lunisolar-wasm/compare-report.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      # ── 12. Upload report artifact ──────────────────────────────────────
+      - name: Upload accuracy report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lunisolar-accuracy-report
+          path: tests/lunisolar-wasm/compare-report.md
+          retention-days: 30
