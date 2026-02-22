@@ -241,6 +241,8 @@ fn from_solar_date_core(
         .filter(|(_, idx)| idx % 2 == 0)
         .map(|(ts, idx)| {
             let utc_ms = ts * 1000.0;
+            // Map even-indexed solar terms to principal term numbers (Z1..Z12):
+            // idx 0→Z2, 2→Z3, ..., 18→Z11 (Winter Solstice), 20→Z12, 22→Z1
             let term_index_raw = (idx / 2) + 2;
             let term_index = if term_index_raw > 12 { term_index_raw - 12 } else { term_index_raw };
             let cst_date = cst_date_of(utc_ms, cst_offset);
@@ -366,6 +368,10 @@ fn from_solar_date_core(
         let (y, _, _, _, _, _) = utc_ms_to_date_parts(target_period.start_utc_ms, 0);
         y
     };
+    // Lunar year determination (mirrors Python logic):
+    // Months 1-10 (Yin through Xu) belong to the same Gregorian year as the period start.
+    // Months 11-12 (Zi and Chou) span across the Gregorian year boundary,
+    // so the lunar year is the next Gregorian year (period start year + 1).
     let lunar_year = if target_period.month_number >= 1 && target_period.month_number <= 10 {
         period_start_utc_year
     } else {
