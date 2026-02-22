@@ -76,12 +76,13 @@ function monthGanzhi(lunarYear: number, lunarMonth: number): [string, string, nu
   return [stemChar, branchChar, monthCycle];
 }
 
-function dayGanzhi(targetUtc: Date): [string, string, number] {
-  // Anchor: 4 AD-01-31 is Jiazi day (UTC)
+function dayGanzhi(targetUtc: Date, tzOffsetMs: number): [string, string, number] {
+  // Anchor: 4 AD-01-31 is Jiazi day
   const ref = new Date(Date.UTC(4, 0, 31, 0, 0, 0));
-  // Use the UTC date of the original moment (matching Python's ganzhi_day which
-  // converts local → UTC and uses target_utc.date() for day counting).
-  const days = Math.floor((Date.UTC(targetUtc.getUTCFullYear(), targetUtc.getUTCMonth(), targetUtc.getUTCDate()) - ref.getTime()) / 86400000);
+  // Use the provided timezone date for day counting.
+  const localMs = targetUtc.getTime() + tzOffsetMs;
+  const localDate = new Date(localMs);
+  const days = Math.floor((Date.UTC(localDate.getUTCFullYear(), localDate.getUTCMonth(), localDate.getUTCDate()) - ref.getTime()) / 86400000);
   const dayCycle = ((days % 60) + 60) % 60 + 1;
   const stem = HEAVENLY_STEMS[(dayCycle - 1) % 10];
   const branch = EARTHLY_BRANCHES[(dayCycle - 1) % 12];
@@ -319,13 +320,13 @@ export class LunisolarCalendar {
     else if (targetPeriod.monthNumber >= 2 && targetPeriod.monthNumber <= 10) lunarYear = targetPeriod.startUtc.getUTCFullYear();
     else lunarYear = targetPeriod.startUtc.getUTCFullYear() + 1;
 
-    // Sexagenary cycles using local wall time in provided timezone
-    // Construct a Date whose UTC components match local wall time in timezone
-    const localWall = userTz.convertToTimezone(targetUtc); // UTC fields reflect local wall time
+        // Sexagenary cycles using the provided timezone for day/hour ganzhi
+    const tzWall = userTz.convertToTimezone(targetUtc);
+    const tzOffsetMs = tzWall.getTime() - targetUtc.getTime();
     const [yStem, yBranch, yCycle] = yearGanzhi(lunarYear);
     const [mStem, mBranch, mCycle] = monthGanzhi(lunarYear, targetPeriod.monthNumber);
-    const [dStem, dBranch, dCycle] = dayGanzhi(targetUtc);
-    const [hStem, hBranch, hCycle] = hourGanzhi(localWall, dStem);
+    const [dStem, dBranch, dCycle] = dayGanzhi(targetUtc, tzOffsetMs);
+    const [hStem, hBranch, hCycle] = hourGanzhi(tzWall, dStem);
 
     const result: TLunisolarDate = {
       lunarYear,

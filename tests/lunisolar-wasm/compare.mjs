@@ -195,6 +195,7 @@ function randomTimestamps(count) {
 }
 
 const TZ = 'Asia/Shanghai';
+const CST_OFFSET_SEC = 28800; // fixed UTC+8
 
 // ── 9. Run comparison for 50 timestamps ─────────────────────────────────────
 
@@ -252,7 +253,7 @@ for (const tsMs of timestamps50) {
   const date = new Date(tsMs);
   const year = date.getUTCFullYear();
   const { newMoons, solarTerms } = loadDataForYears([year - 1, year, year + 1]);
-  const tzOffsetSec = getTzOffsetSeconds(tsMs, TZ);
+  const tzOffsetSec = CST_OFFSET_SEC;
 
   const pyRef = pyMap.get(tsMs) || { error: 'not found in Python output' };
 
@@ -337,8 +338,7 @@ const wasmStart = performance.now();
 let wasmSuccessCount = 0;
 for (const tsMs of timestamps500) {
   try {
-    const tzOff = getTzOffsetSeconds(tsMs, TZ);
-    wasm.fromSolarDate(tsMs, tzOff, bulkNewMoonsJson, bulkSolarTermsJson);
+    wasm.fromSolarDate(tsMs, CST_OFFSET_SEC, bulkNewMoonsJson, bulkSolarTermsJson);
     wasmSuccessCount++;
   } catch { /* count failures */ }
 }
@@ -349,8 +349,7 @@ const emccStart = performance.now();
 let emccSuccessCount = 0;
 for (const tsMs of timestamps500) {
   try {
-    const tzOff = getTzOffsetSeconds(tsMs, TZ);
-    const r = emccFromSolarDate(tsMs, tzOff, bulkData.newMoons, bulkData.solarTerms);
+    const r = emccFromSolarDate(tsMs, CST_OFFSET_SEC, bulkData.newMoons, bulkData.solarTerms);
     if (r) emccSuccessCount++;
   } catch { /* count failures */ }
 }
@@ -471,12 +470,16 @@ md += `| Errors | ${errorCount} |\n\n`;
 md += `## Comparison Table (50 Random Timestamps)\n\n`;
 md += `Reference values are from Python \`lunisolar_v2.py\` (DE440s).\n`;
 md += `Match columns show whether each implementation agrees with the Python reference.\n\n`;
-md += `| # | UTC Date | Lunar Date (Python) | Year Ganzhi | Month Ganzhi | Day Ganzhi | Hour Ganzhi | TS | Rust | Emcc |\n`;
-md += `|---|----------|---------------------|-------------|--------------|------------|-------------|----|----- |------|\n`;
+md += `| # | UTC Date | CST Date | Lunar Date (Python) | Year Ganzhi | Month Ganzhi | Day Ganzhi | Hour Ganzhi | TS | Rust | Emcc |\n`;
+md += `|---|----------|----------|---------------------|-------------|--------------|------------|-------------|----|----- |------|\n`;
 
 for (let i = 0; i < results.length; i++) {
   const r = results[i];
   const py = r.pyRef;
+
+  // CST date (UTC+8)
+  const cstDate = new Date(r.tsMs + CST_OFFSET_SEC * 1000);
+  const cstStr = cstDate.toISOString().slice(0, 19).replace('T', ' ');
 
   const lunarDate = py?.error
     ? `ERROR`
@@ -493,7 +496,7 @@ for (let i = 0; i < results.length; i++) {
   const rustIcon = r.rustMatch ? '✅' : (py?.error || r.wasmResult?.error) ? '⚠️' : '❌';
   const emccIcon = r.emccMatch ? '✅' : (py?.error || r.emccResult?.error) ? '⚠️' : '❌';
 
-  md += `| ${i + 1} | ${r.date.slice(0, 19)} | ${lunarDate} | ${yearG} | ${monthG} | ${dayG} | ${hourG} | ${tsIcon} | ${rustIcon} | ${emccIcon} |\n`;
+  md += `| ${i + 1} | ${r.date.slice(0, 19)} | ${cstStr} | ${lunarDate} | ${yearG} | ${monthG} | ${dayG} | ${hourG} | ${tsIcon} | ${rustIcon} | ${emccIcon} |\n`;
 }
 
 // Benchmark results
