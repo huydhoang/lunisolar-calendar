@@ -26,11 +26,11 @@ const ROOT = resolve(__dirname, '..', '..');
 // ── 1. Load implementations ────────────────────────────────────────────────
 
 const { LunisolarCalendar, configure } = await import(
-  resolve(ROOT, 'archive', 'pkg-ts', 'dist', 'index.mjs')
+  resolve(ROOT, 'ports', 'lunisolar-ts', 'dist', 'index.mjs')
 );
 configure({ strategy: 'static' });
 
-const wasm = await import(resolve(ROOT, 'wasm', 'lunisolar-rs', 'pkg', 'lunisolar_wasm.js'));
+const wasm = await import(resolve(ROOT, 'ports', 'lunisolar-rs', 'pkg', 'lunisolar_wasm.js'));
 
 const createLunisolarEmcc = (await import(resolve(ROOT, 'pkg', 'lunisolar_emcc.mjs'))).default;
 const emccModule = await createLunisolarEmcc();

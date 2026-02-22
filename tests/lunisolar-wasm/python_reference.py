@@ -16,9 +16,9 @@ import argparse
 from datetime import datetime, timezone
 import pytz
 
-# Set up path so we can import from data/
+# Set up path so we can import from lunisolar-python/
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
-sys.path.insert(0, os.path.join(REPO_ROOT, 'data'))
+sys.path.insert(0, os.path.join(REPO_ROOT, 'lunisolar-python'))
 
 # Override config BEFORE importing lunisolar_v2
 import config

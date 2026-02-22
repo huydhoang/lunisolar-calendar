@@ -40,7 +40,7 @@ The package will publish dist/data for years 1900–2100 so the default CDN path
 Goal: make JSON data available before Rollup runs so bundlers can include exactly what the app needs.
 
 - [ ] Create script: [scripts/copy-data-to-src.mjs](pkg/scripts/copy-data-to-src.mjs)
-  - Copies from root [output/json](output/json) to [pkg/src/data/precomputed](pkg/src/data/precomputed)
+  - Copies from root [output](output) to [pkg/src/data/precomputed](pkg/src/data/precomputed)
   - Directory layout:
     - precomputed/new_moons/{year}.json
     - precomputed/solar_terms/{year}.json
@@ -71,7 +71,7 @@ Goal: make JSON data available before Rollup runs so bundlers can include exactl
       ```
 
 - [ ] Ensure postbuild copy for CDN publishing: [scripts/copy-data.mjs](pkg/scripts/copy-data.mjs)
-  - Copies from root [output/json](output/json) to [pkg/dist/data](pkg/dist/data)
+  - Copies from root [output](output) to [pkg/dist/data](pkg/dist/data)
   - This guarantees npm tarball contains dist/data for all supported years (1900–2100)
 
 - [ ] Update NPM scripts in [package.json](pkg/package.json)

@@ -4,13 +4,13 @@
 
 A comprehensive, high-precision astronomical and astrological calculator focused on the traditional Chinese lunisolar calendar. The project includes:
 
-1. **Python Data Pipeline** (`data/`) — Generates high-precision astronomical data (moon phases, solar terms, planetary events) using NASA's JPL DE440 ephemeris via Skyfield.
-2. **WebAssembly Modules** (`wasm/`) — Three WASM implementations, all integrating with the Swiss Ephemeris for standalone operation:
+1. **Python Data Pipeline** (`lunisolar-python/`) — Generates high-precision astronomical data (moon phases, solar terms, planetary events) using NASA's JPL DE440 ephemeris via Skyfield.
+2. **WebAssembly Modules** (`ports/`) — Three WASM implementations, all integrating with the Swiss Ephemeris for standalone operation:
    - **`lunisolar-rs/`** — Rust port using wasm-pack / wasm-bindgen (depends on `swisseph-rs`)
    - **`lunisolar-emcc/`** — C port using Emscripten / emcc (main package, published to npm)
    - **`swisseph-rs/`** — Swiss Ephemeris Rust bindings (vendored C source + embedded `.se1` data)
 3. **npm Package** (`pkg/`) — The Emscripten-based `lunisolar-wasm` package published to npmjs
-4. **Archived TypeScript Port** (`archive/pkg-ts/`) — Previous TypeScript npm package (`lunisolar-ts`)
+4. **TypeScript Port** (`ports/lunisolar-ts/`) — TypeScript npm package (`lunisolar-ts`)
 
 ### Core Features
 
@@ -23,18 +23,19 @@ A comprehensive, high-precision astronomical and astrological calculator focused
 
 ```
 lunisolar-ts/
-├── archive/pkg-ts/         # Archived TypeScript npm package
-├── data/                    # Python data pipeline
+├── ports/                   # All language ports
+│   ├── lunisolar-ts/        # TypeScript npm package
+│   ├── lunisolar-rs/        # Rust WASM port (standalone with SE via swisseph-rs)
+│   ├── lunisolar-emcc/      # C WASM port (standalone with SE, builds to pkg/)
+│   └── swisseph-rs/         # Swiss Ephemeris Rust bindings + embedded .se1
+├── lunisolar-python/        # Python data pipeline
 ├── docs/                    # Documentation
 ├── nasa/                    # JPL ephemeris data
-├── output/                  # Generated data (JSON)
+├── output/                  # Generated data (CSV)
 ├── pkg/                     # npm package (lunisolar-wasm, Emscripten)
 ├── tests/                   # Integration tests
 ├── vendor/swisseph/         # Shared Swiss Ephemeris C source (v2.10)
-└── wasm/                    # WebAssembly implementations
-    ├── lunisolar-rs/        # Rust port (standalone with SE via swisseph-rs)
-    ├── lunisolar-emcc/      # C port (standalone with SE, builds to pkg/)
-    └── swisseph-rs/         # Swiss Ephemeris Rust bindings + embedded .se1
+└── ports/                   # WebAssembly implementations
 ```
 
 ## Building and Running
@@ -75,7 +76,7 @@ The project has two main entry points:
     **Usage:**
 
     ```bash
-    python data/main.py --start-date YYYY-MM-DD --end-date YYYY-MM-DD
+    python lunisolar-python/main.py --start-date YYYY-MM-DD --end-date YYYY-MM-DD
     ```
 
     - `--start-date`: The beginning of the calculation period.
@@ -90,7 +91,7 @@ The project has two main entry points:
     **Usage:**
 
     ```bash
-    python data/calculate_auspicious_days.py --year YYYY --timezone TZ
+    python lunisolar-python/calculate_auspicious_days.py --year YYYY --timezone TZ
     ```
 
     - `--year`: The year to analyze (e.g., 2025).
@@ -108,10 +109,10 @@ The project has two main entry points:
 
 ## Key Files
 
-- `data/main.py`: The main entry point for generating bulk astronomical data.
-- `data/huangdao_systems.py`: A comprehensive, standalone tool for calculating and displaying auspicious days based on the two traditional Chinese systems: Great Yellow Path (also referred to as the 12 Spirits) and the 12 Construction Stars (also referred to as the Lesser or Small Yellow Path).
-- `data/lunisolar_v2.py`: A clean, modular, and rule-compliant engine for converting solar dates to the full lunisolar representation, including the sexagenary cycles (Gan-Zhi). It depends on `data/timezone_handler.py` for timezone handling.
-- `data/config.py`: Contains all shared configuration variables and constants.
-- `data/*.py`: Other files in this directory (`celestial_events.py`, `moon_phases.py`, `solar_terms.py`, etc.) are specialized modules for specific calculations.
+- `lunisolar-python/main.py`: The main entry point for generating bulk astronomical data.
+- `lunisolar-python/huangdao_systems.py`: A comprehensive, standalone tool for calculating and displaying auspicious days based on the two traditional Chinese systems: Great Yellow Path (also referred to as the 12 Spirits) and the 12 Construction Stars (also referred to as the Lesser or Small Yellow Path).
+- `lunisolar-python/lunisolar_v2.py`: A clean, modular, and rule-compliant engine for converting solar dates to the full lunisolar representation, including the sexagenary cycles (Gan-Zhi). It depends on `lunisolar-python/timezone_handler.py` for timezone handling.
+- `lunisolar-python/config.py`: Contains all shared configuration variables and constants.
+- `lunisolar-python/*.py`: Other files in this directory (`celestial_events.py`, `moon_phases.py`, `solar_terms.py`, etc.) are specialized modules for specific calculations.
 - `docs/`: Contains essential documentation explaining the lunisolar calendar rules, including the two main Huangdao (Yellow Path) systems: the Great Yellow Path and the 12 Construction Stars.
 - `nasa/de440.bsp`: The JPL ephemeris data file, which is the core data source for all astronomical calculations.

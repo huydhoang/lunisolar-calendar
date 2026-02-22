@@ -121,7 +121,7 @@ async function main() {
   const fusionWasmPath = join(__dirname, 'node_modules/@fusionstrings/swisseph-wasm/esm/lib/swisseph_wasm.wasm');
   const prolaxuWasmPath = join(__dirname, 'node_modules/swisseph-wasm/wsam/swisseph.wasm');
   const prolaxuDataPath = join(__dirname, 'node_modules/swisseph-wasm/wsam/swisseph.data');
-  const oursWasmPath = join(__dirname, '../../wasm/swisseph-rs/pkg/swisseph_wasm_bg.wasm');
+  const oursWasmPath = join(__dirname, '../../ports/swisseph-rs/pkg/swisseph_wasm_bg.wasm');
 
   // ── Initialize all implementations ──────────────────────────────────────
   log('## Implementations');
@@ -158,7 +158,7 @@ async function main() {
   let ours = null;
   const oursInitStart = now();
   try {
-    ours = await import('../../wasm/swisseph-rs/pkg/swisseph_wasm.js');
+    ours = await import('../../ports/swisseph-rs/pkg/swisseph_wasm.js');
     const testJd = ours.swe_julday(2025, 1, 1, 12.0, 1);
     if (typeof testJd !== 'number' || testJd === 0) throw new Error('julday returned invalid result');
     const oursInitTime = now() - oursInitStart;

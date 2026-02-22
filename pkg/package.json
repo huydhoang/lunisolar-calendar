@@ -10,7 +10,7 @@
     "README.md"
   ],
   "scripts": {
-    "build": "bash ../wasm/lunisolar-emcc/build.sh",
+    "build": "bash ../ports/lunisolar-emcc/build.sh",
     "prepublishOnly": "npm run build"
   },
   "keywords": [

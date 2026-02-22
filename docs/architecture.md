@@ -17,7 +17,7 @@ The pipeline is composed of modular, single-responsibility Python scripts.
     -   **Function:** `run_pipeline(start_date, end_date)`
     -   **Responsibility:** Manages the entire data generation process. It uses a `ProcessPoolExecutor` to run individual calculator modules in parallel, maximizing efficiency. It takes a date range as input and coordinates the generation of all required data files.
 
--   **Astronomical Calculators (`data/*.py`):**
+-   **Astronomical Calculators (`lunisolar-python/*.py`):**
     -   Each module focuses on a specific type of calculation (e.g., `moon_phases.py`, `solar_terms.py`, `celestial_events.py`).
     -   **Naming Convention:** Functions are named `calculate_<data_type>(...)`, e.g., `calculate_moon_phases()`.
     -   **Input:** Each function takes a start and end `datetime` object.
@@ -41,9 +41,9 @@ The pipeline is composed of modular, single-responsibility Python scripts.
 
 To ensure the TypeScript package can lazy-load data efficiently, the pipeline will not generate a single monolithic JSON file. Instead, it will chunk the data, typically by year.
 
--   **Directory Structure:** `output/json/{data_type}/{year}.json`
-    -   `output/json/solar_terms/2025.json`
-    -   `output/json/new_moons/2025.json`
+-   **Directory Structure:** `output/{data_type}/{year}.json`
+    -   `output/solar_terms/2025.json`
+    -   `output/new_moons/2025.json`
 -   **Format:** The JSON files will contain arrays of timestamps or simple data objects, optimized for minimum file size.
     -   **Example (`new_moons/2025.json`):**
         ```json

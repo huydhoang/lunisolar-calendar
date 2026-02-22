@@ -11,7 +11,7 @@ graph LR
     subgraph Python Pipeline
         A[NASA JPL DE440<br/>Ephemeris] --> B[Skyfield Engine]
         B --> C[Calculator Modules]
-        C --> D[JSON Output<br/>by year]
+        C --> D[CSV Output<br/>by year]
     end
 
     subgraph WASM Modules
@@ -23,8 +23,8 @@ graph LR
     RS --> PKG[npm package<br/>lunisolar-wasm]
     EMCC --> PKG
 
-    subgraph Archived
-        D --> E[DataLoader<br/>CDN / static / fs]
+    subgraph TypeScript Port
+        E[DataLoader<br/>CDN / static / fs]
         E --> F[LunisolarCalendar TS]
     end
 
@@ -68,7 +68,7 @@ graph TD
     CE --> AT[antitransit.py]
 ```
 
-### Orchestrator (`data/main.py`)
+### Orchestrator (`lunisolar-python/main.py`)
 
 The orchestrator coordinates parallel computation and writes year-grouped JSON:
 
@@ -84,16 +84,16 @@ with ProcessPoolExecutor(max_workers=min(NUM_PROCESSES, 2)) as executor:
 Results are grouped by year and written to a directory tree:
 
 ```
-output/json/
+output/
 ├── new_moons/
-│   ├── 2024.json     # [unix_timestamp, ...]
-│   └── 2025.json
+│   ├── 2024.csv     # unix_timestamp per line
+│   └── 2025.csv
 ├── full_moons/
-│   ├── 2024.json
-│   └── 2025.json
+│   ├── 2024.csv
+│   └── 2025.csv
 └── solar_terms/
-    ├── 2024.json     # [[timestamp, index], ...]
-    └── 2025.json
+    ├── 2024.csv     # timestamp,index per line
+    └── 2025.csv
 ```
 
 ### Calculator Modules
@@ -123,7 +123,7 @@ def calculate_moon_phases(start_time, end_time):
 | `celestial_events.py` | Rise/set/transit for Sun, Moon, planets | Per event |
 | `tidal_data.py` | Tidal acceleration vectors + lunar mansion | Every 4 minutes |
 
-### Lunisolar Calendar Engine (`data/lunisolar_v2.py`)
+### Lunisolar Calendar Engine (`lunisolar-python/lunisolar_v2.py`)
 
 The core conversion engine is decomposed into nine service classes, each with a single responsibility:
 
@@ -149,7 +149,7 @@ graph TD
 - **Continuous day count** — the day cycle uses an unbroken count from the reference date 4 AD (Jiazi day), not month-relative offsets.
 - **Wu Shu Dun (五鼠遁)** — hour stems are derived from the day stem using the traditional mapping rule.
 
-### Huangdao Systems (`data/huangdao_systems_v2.py`)
+### Huangdao Systems (`lunisolar-python/huangdao_systems_v2.py`)
 
 Implements two traditional Chinese auspicious day systems:
 
@@ -174,7 +174,7 @@ graph LR
 
 ---
 
-## WebAssembly Modules (`wasm/`)
+## WebAssembly Modules (`ports/`)
 
 The project has three WASM implementations, all using the vendored Swiss Ephemeris C source (`vendor/swisseph/`) with embedded `.se1` data files for fully standalone operation.
 
@@ -182,9 +182,9 @@ The project has three WASM implementations, all using the vendored Swiss Ephemer
 
 | Directory | Language | Build Toolchain | Description |
 |-----------|----------|-----------------|-------------|
-| `wasm/lunisolar-rs/` | Rust | wasm-pack / wasm-bindgen | Lunisolar calendar in Rust |
-| `wasm/lunisolar-emcc/` | C | Emscripten / emcc | Lunisolar calendar in C |
-| `wasm/swisseph-rs/` | Rust | wasm-pack / wasm-bindgen | Swiss Ephemeris bindings |
+| `ports/lunisolar-rs/` | Rust | wasm-pack / wasm-bindgen | Lunisolar calendar in Rust |
+| `ports/lunisolar-emcc/` | C | Emscripten / emcc | Lunisolar calendar in C |
+| `ports/swisseph-rs/` | Rust | wasm-pack / wasm-bindgen | Swiss Ephemeris bindings |
 
 ### `lunisolar-rs/` — Rust WASM Port
 
@@ -413,7 +413,7 @@ mod._free(outPtr);
 
 ---
 
-## TypeScript NPM Package (`archive/pkg-ts/`) — Archived
+## TypeScript NPM Package (`ports/lunisolar-ts/`)
 
 ### Package Structure
 
@@ -511,7 +511,7 @@ graph LR
     ROLLUP --> CJS[dist/index.cjs]
     ROLLUP --> ESM[dist/index.mjs]
     ROLLUP --> DTS[dist/index.d.ts]
-    DATA[output/json/] --> DIST_DATA[dist/data/]
+    DATA[pre-computed data] --> DIST_DATA[dist/data/]
     DIST_DATA --> CDN[jsDelivr CDN]
 ```
 
@@ -542,7 +542,7 @@ For the archived TypeScript path (requires pre-computed data):
 sequenceDiagram
     participant Eph as NASA DE440 Ephemeris
     participant Py as Python Pipeline
-    participant JSON as JSON Files (by year)
+    participant Data as Data Files (by year)
     participant DL as TypeScript DataLoader
     participant Cal as LunisolarCalendar
     participant App as Consumer Application
@@ -550,11 +550,11 @@ sequenceDiagram
     Py->>Eph: Load ephemeris
     Py->>Py: calculate_moon_phases()
     Py->>Py: calculate_solar_terms()
-    Py->>JSON: Write year-chunked data
+    Py->>Data: Write year-chunked data
 
     App->>Cal: fromSolarDate(date, timezone)
     Cal->>DL: getNewMoons(year), getSolarTerms(year)
-    DL->>JSON: Fetch / import / read
+    DL->>Data: Fetch / import / read
     DL-->>Cal: Cached astronomical data
     Cal-->>App: LunisolarCalendar instance
 ```
@@ -565,27 +565,8 @@ sequenceDiagram
 
 ```
 lunisolar-ts/
-├── archive/                    # Archived implementations
-│   └── pkg-ts/                 # Previous TypeScript npm package (lunisolar-ts)
-├── data/                       # Python data pipeline
-│   ├── config.py               # Shared constants (ephemeris path, physics, location)
-│   ├── utils.py                # Logging, CSV/JSON I/O, argument parsing
-│   ├── timezone_handler.py     # IANA timezone conversions (pytz)
-│   ├── main.py                 # Orchestrator — parallel task runner
-│   ├── moon_phases.py          # New/Full Moon calculator
-│   ├── solar_terms.py          # 24 solar terms calculator
-│   ├── moon_illumination.py    # Moon illumination percentage
-│   ├── celestial_events.py     # Rise/set/transit events
-│   ├── antitransit.py          # Antitransit helper
-│   ├── tidal_data.py           # Tidal acceleration & lunar mansions
-│   ├── lunisolar_v2.py         # Core lunisolar calendar engine (9 services)
-│   └── huangdao_systems_v2.py  # Auspicious day systems
-├── pkg/                        # Main npm package (lunisolar-wasm, Emscripten)
-│   ├── package.json            # npm package metadata
-│   └── README.md               # Package documentation
-├── vendor/                     # Shared third-party source code
-│   └── swisseph/               # Swiss Ephemeris C source (v2.10.03)
-├── wasm/                       # WebAssembly implementations
+├── ports/                      # All language ports
+│   ├── lunisolar-ts/           # TypeScript npm package (lunisolar-ts)
 │   ├── lunisolar-rs/           # Rust wasm-pack port (standalone with SE)
 │   │   ├── Cargo.toml          # Depends on swisseph-wasm
 │   │   └── src/
@@ -603,6 +584,24 @@ lunisolar-ts/
 │       └── src/
 │           ├── lib.rs          # WASM exports + C stdlib shims + in-memory FS
 │           └── bindings.rs     # FFI bindings to SE C functions
+├── lunisolar-python/           # Python data pipeline
+│   ├── config.py               # Shared constants (ephemeris path, physics, location)
+│   ├── utils.py                # Logging, CSV/JSON I/O, argument parsing
+│   ├── timezone_handler.py     # IANA timezone conversions (pytz)
+│   ├── main.py                 # Orchestrator — parallel task runner
+│   ├── moon_phases.py          # New/Full Moon calculator
+│   ├── solar_terms.py          # 24 solar terms calculator
+│   ├── moon_illumination.py    # Moon illumination percentage
+│   ├── celestial_events.py     # Rise/set/transit events
+│   ├── antitransit.py          # Antitransit helper
+│   ├── tidal_data.py           # Tidal acceleration & lunar mansions
+│   ├── lunisolar_v2.py         # Core lunisolar calendar engine (9 services)
+│   └── huangdao_systems_v2.py  # Auspicious day systems
+├── pkg/                        # Main npm package (lunisolar-wasm, Emscripten)
+│   ├── package.json            # npm package metadata
+│   └── README.md               # Package documentation
+├── vendor/                     # Shared third-party source code
+│   └── swisseph/               # Swiss Ephemeris C source (v2.10.03)
 ├── tests/                      # Integration tests
 │   ├── lunisolar-wasm/         # Accuracy & benchmark tests
 │   └── swisseph-wasm/          # Swiss Ephemeris accuracy & benchmark tests
@@ -610,6 +609,5 @@ lunisolar-ts/
 ├── nasa/                       # JPL ephemeris data files
 │   └── de440.bsp
 ├── output/                     # Generated data (git-ignored)
-│   └── json/
 └── requirements.txt            # Python dependencies
 ```

@@ -1,4 +1,4 @@
-python data/main.py --start-date 1600-01-01 --end-date 2600-12-31
+python lunisolar-python/main.py --start-date 1600-01-01 --end-date 2600-12-31
 2025-10-07 12:59:56,154 - INFO -
 ================================================================================
 2025-10-07 12:59:56,154 - INFO - 🌙 ASTRONOMICAL DATA CALCULATOR
@@ -27,9 +27,9 @@ python data/main.py --start-date 1600-01-01 --end-date 2600-12-31
 2025-10-07 13:01:39,912 - INFO - ✓ Solar terms: 24024 terms calculated
 2025-10-07 13:01:39,950 - INFO -
 💾 Building JSON output chunks...
-C:\Users\Huy\Downloads\code\lunisolar-ts\data\main.py:127: DeprecationWarning: datetime.datetime.utcfromtimestamp() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.fromtimestamp(timestamp, datetime.UTC).
+C:\Users\Huy\Downloads\code\lunisolar-ts\lunisolar-python\main.py:127: DeprecationWarning: datetime.datetime.utcfromtimestamp() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.fromtimestamp(timestamp, datetime.UTC).
 return datetime.utcfromtimestamp(int(ts)).year
-C:\Users\Huy\Downloads\code\lunisolar-ts\data\main.py:129: DeprecationWarning: datetime.datetime.utcfromtimestamp() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.fromtimestamp(timestamp, datetime.UTC).
+C:\Users\Huy\Downloads\code\lunisolar-ts\lunisolar-python\main.py:129: DeprecationWarning: datetime.datetime.utcfromtimestamp() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.fromtimestamp(timestamp, datetime.UTC).
 return datetime.utcfromtimestamp(int(float(ts))).year
 2025-10-07 13:01:39,950 - ERROR -
 ❌ Error during calculation: [Errno 22] Invalid argument
