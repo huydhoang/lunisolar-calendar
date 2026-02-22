@@ -20,7 +20,7 @@ const ROOT = resolve(__dirname, '..', '..');
 
 // ── 1. Load the TypeScript package ──────────────────────────────────────────
 
-const { LunisolarCalendar, configure } = await import(
+const { LunisolarCalendar, ConstructionStars, GreatYellowPath, configure } = await import(
   resolve(ROOT, 'pkg', 'dist', 'index.mjs')
 );
 configure({ strategy: 'static' });
@@ -247,6 +247,17 @@ function ganzhiMatch(ref, cand) {
   );
 }
 
+// Helper: compare huangdao fields (construction star + great yellow path)
+function huangdaoMatch(ref, cand) {
+  if (!ref || !cand || ref.error || cand.error) return false;
+  if (!ref.constructionStar || !cand.constructionStar) return false;
+  return (
+    ref.constructionStar === cand.constructionStar &&
+    ref.gypSpirit === cand.gypSpirit &&
+    ref.gypPathType === cand.gypPathType
+  );
+}
+
 for (const tsMs of timestamps50) {
   const date = new Date(tsMs);
   const year = date.getUTCFullYear();
@@ -266,6 +277,11 @@ for (const tsMs of timestamps50) {
     const mc = cycleFromChars(cal.monthStem, cal.monthBranch);
     const dc = cycleFromChars(cal.dayStem, cal.dayBranch);
     const hc = cycleFromChars(cal.hourStem, cal.hourBranch);
+
+    // Construction star + Great Yellow Path
+    const cs = new ConstructionStars(cal).getStar();
+    const gyp = new GreatYellowPath(cal).getSpirit();
+
     tsResult = {
       lunarYear: cal.lunarYear, lunarMonth: cal.lunarMonth, lunarDay: cal.lunarDay,
       isLeapMonth: cal.isLeapMonth,
@@ -273,6 +289,9 @@ for (const tsMs of timestamps50) {
       monthStem: cal.monthStem, monthBranch: cal.monthBranch, monthCycle: mc,
       dayStem: cal.dayStem, dayBranch: cal.dayBranch, dayCycle: dc,
       hourStem: cal.hourStem, hourBranch: cal.hourBranch, hourCycle: hc,
+      constructionStar: cs.name,
+      gypSpirit: gyp.name,
+      gypPathType: gyp.type === 'Yellow Path' ? '黄道' : '黑道',
     };
   } catch (e) {
     tsResult = { error: e.message };
@@ -298,8 +317,11 @@ for (const tsMs of timestamps50) {
   const tsMatch = ganzhiMatch(pyRef, tsResult);
   const rustMatch = ganzhiMatch(pyRef, wasmResult);
   const emccMatch = ganzhiMatch(pyRef, emccResult);
+  const tsHuangdaoMatch = huangdaoMatch(pyRef, tsResult);
+  const rustHuangdaoMatch = huangdaoMatch(pyRef, wasmResult);
+  const emccHuangdaoMatch = huangdaoMatch(pyRef, emccResult);
 
-  results.push({ tsMs, date: date.toISOString(), pyRef, tsResult, wasmResult, emccResult, tsMatch, rustMatch, emccMatch });
+  results.push({ tsMs, date: date.toISOString(), pyRef, tsResult, wasmResult, emccResult, tsMatch, rustMatch, emccMatch, tsHuangdaoMatch, rustHuangdaoMatch, emccHuangdaoMatch });
 }
 
 // ── 10. Generate markdown report ────────────────────────────────────────────
@@ -307,17 +329,21 @@ for (const tsMs of timestamps50) {
 const tsMatchCount = results.filter((r) => r.tsMatch).length;
 const rustMatchCount = results.filter((r) => r.rustMatch).length;
 const emccMatchCount = results.filter((r) => r.emccMatch).length;
+const tsHuangdaoMatchCount = results.filter((r) => r.tsHuangdaoMatch).length;
+const rustHuangdaoMatchCount = results.filter((r) => r.rustHuangdaoMatch).length;
+const emccHuangdaoMatchCount = results.filter((r) => r.emccHuangdaoMatch).length;
 const errorCount = results.filter(
   (r) => r.pyRef?.error || r.wasmResult?.error || r.emccResult?.error || r.tsResult?.error,
 ).length;
 
 let md = `# Lunisolar Accuracy — Python Reference (DE440s) vs JS/WASM Implementations\n\n`;
 md += `**Date**: ${new Date().toISOString()}\n\n`;
-md += `**Reference**: Python \`lunisolar_v2.py\` with JPL DE440s ephemeris (ground truth).\n`;
+md += `**Reference**: Python \`lunisolar_v2.py\` + \`huangdao_systems_v2.py\` with JPL DE440s ephemeris (ground truth).\n`;
 md += `All three implementations are compared against this reference.\n\n`;
 
 // Summary
 md += `## Summary\n\n`;
+md += `### Ganzhi (Sexagenary Cycle)\n\n`;
 md += `| Implementation | Match vs Python (DE440s) |\n`;
 md += `|----------------|------------------------:|\n`;
 md += `| TypeScript pkg | ${tsMatchCount}/${results.length} |\n`;
@@ -325,8 +351,15 @@ md += `| Rust WASM (wasm-pack) | ${rustMatchCount}/${results.length} |\n`;
 md += `| Emscripten WASM (emcc) | ${emccMatchCount}/${results.length} |\n`;
 md += `| Errors | ${errorCount} |\n\n`;
 
+md += `### Huangdao (Construction Stars + Great Yellow Path)\n\n`;
+md += `| Implementation | Match vs Python (DE440s) |\n`;
+md += `|----------------|------------------------:|\n`;
+md += `| TypeScript pkg | ${tsHuangdaoMatchCount}/${results.length} |\n`;
+md += `| Rust WASM (wasm-pack) | ${rustHuangdaoMatchCount}/${results.length} |\n`;
+md += `| Emscripten WASM (emcc) | ${emccHuangdaoMatchCount}/${results.length} |\n\n`;
+
 // Comparison table: Python reference values with match status for all three implementations
-md += `## Comparison Table (50 Random Timestamps)\n\n`;
+md += `## Ganzhi Comparison Table (50 Random Timestamps)\n\n`;
 md += `Reference values are from Python \`lunisolar_v2.py\` (DE440s).\n`;
 md += `Match columns show whether each implementation agrees with the Python reference.\n\n`;
 md += `| # | UTC Date | CST Date | Lunar Date (Python) | Year Ganzhi | Month Ganzhi | Day Ganzhi | Hour Ganzhi | TS | Rust | Emcc |\n`;
@@ -358,15 +391,41 @@ for (let i = 0; i < results.length; i++) {
   md += `| ${i + 1} | ${r.date.slice(0, 19)} | ${cstStr} | ${lunarDate} | ${yearG} | ${monthG} | ${dayG} | ${hourG} | ${tsIcon} | ${rustIcon} | ${emccIcon} |\n`;
 }
 
+// Huangdao comparison table
+md += `\n## Huangdao Comparison Table (50 Random Timestamps)\n\n`;
+md += `| # | UTC Date | Lunar Month | Day Branch | Star (Python) | Spirit (Python) | Path | TS | Rust | Emcc |\n`;
+md += `|---|----------|-------------|------------|---------------|-----------------|------|----|------|------|\n`;
+
+for (let i = 0; i < results.length; i++) {
+  const r = results[i];
+  const py = r.pyRef;
+
+  const star = py?.constructionStar || '-';
+  const spirit = py?.gypSpirit || '-';
+  const path = py?.gypPathType || '-';
+  const lm = py?.lunarMonth ?? '-';
+  const db = py?.dayBranch || '-';
+
+  const tsIcon = r.tsHuangdaoMatch ? '✅' : (py?.error || r.tsResult?.error) ? '⚠️' : '❌';
+  const rustIcon = r.rustHuangdaoMatch ? '✅' : (py?.error || r.wasmResult?.error) ? '⚠️' : '❌';
+  const emccIcon = r.emccHuangdaoMatch ? '✅' : (py?.error || r.emccResult?.error) ? '⚠️' : '❌';
+
+  md += `| ${i + 1} | ${r.date.slice(0, 19)} | ${lm} | ${db} | ${star} | ${spirit} | ${path} | ${tsIcon} | ${rustIcon} | ${emccIcon} |\n`;
+}
+
 md += `\n## Notes\n\n`;
-md += `- **Reference**: Python \`lunisolar_v2.py\` with JPL DE440s ephemeris.\n`;
+md += `- **Reference**: Python \`lunisolar_v2.py\` + \`huangdao_systems_v2.py\` with JPL DE440s ephemeris.\n`;
 md += `- **Timezone offset** is computed dynamically per timestamp via \`Intl.DateTimeFormat\` (handles China DST 1986–1991).\n`;
-md += `- **Day ganzhi** uses UTC date for day counting (matching the Python implementation).\n`;
+md += `- **Day ganzhi** uses local wall-clock date for day counting (day boundary at local midnight).\n`;
 md += `- **Hour ganzhi** uses local wall time from the dynamic timezone offset for the hour branch/stem.\n`;
+md += `- **Construction Stars** use base calculation (lunar month building branch + day branch offset).\n`;
+md += `- **Great Yellow Path** uses Azure Dragon monthly start position + day branch offset.\n`;
 md += `- All four ganzhi (year, month, day, hour) with cycle indices are compared field-by-field.\n`;
+md += `- Huangdao fields (construction star, GYP spirit, path type) are compared across all implementations.\n`;
 
 // Write report
 const reportPath = resolve(__dirname, 'compare-report.md');
 writeFileSync(reportPath, md);
 console.log(`\nReport written to ${reportPath}`);
-console.log(`\nMatch vs Python (DE440s): TS=${tsMatchCount}/${results.length}, Rust=${rustMatchCount}/${results.length}, Emcc=${emccMatchCount}/${results.length}`);
+console.log(`\nGanzhi match vs Python (DE440s): TS=${tsMatchCount}/${results.length}, Rust=${rustMatchCount}/${results.length}, Emcc=${emccMatchCount}/${results.length}`);
+console.log(`Huangdao match vs Python (DE440s): TS=${tsHuangdaoMatchCount}/${results.length}, Rust=${rustHuangdaoMatchCount}/${results.length}, Emcc=${emccHuangdaoMatchCount}/${results.length}`);

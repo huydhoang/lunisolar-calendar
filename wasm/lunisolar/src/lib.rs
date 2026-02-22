@@ -6,6 +6,25 @@ use serde::{Deserialize, Serialize};
 const HEAVENLY_STEMS: [&str; 10] = ["甲", "乙", "丙", "丁", "戊", "己", "庚", "辛", "壬", "癸"];
 const EARTHLY_BRANCHES: [&str; 12] = ["子", "丑", "寅", "卯", "辰", "巳", "午", "未", "申", "酉", "戌", "亥"];
 
+// Construction Stars (十二建星)
+const CONSTRUCTION_STARS: [&str; 12] = ["建", "除", "满", "平", "定", "执", "破", "危", "成", "收", "开", "闭"];
+// Building branch for each lunar month (index 0 unused; 1..12)
+const BUILDING_BRANCH: [usize; 13] = [
+    0, // placeholder for index 0
+    2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 0, 1,
+    // month 1→寅(2), 2→卯(3), ..., 11→子(0), 12→丑(1)
+];
+
+// Great Yellow Path (大黄道) spirit names and Azure Dragon monthly start branch indices
+const GYP_SPIRITS: [&str; 12] = ["青龙", "明堂", "天刑", "朱雀", "金匮", "天德", "白虎", "玉堂", "天牢", "玄武", "司命", "勾陈"];
+const GYP_AUSPICIOUS: [bool; 12] = [true, true, false, false, true, true, false, true, false, false, true, false];
+// Azure Dragon start branch index by lunar month (index 0 unused; 1..12)
+const AZURE_START: [usize; 13] = [
+    0, // placeholder
+    0, 2, 4, 6, 8, 10, 0, 2, 4, 6, 8, 10,
+    // month 1→子(0), 2→寅(2), ..., 7→子(0), 8→寅(2), ...
+];
+
 // ── Date helpers ─────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Copy)]
@@ -123,7 +142,7 @@ fn day_ganzhi(timestamp_ms: f64) -> (&'static str, &'static str, usize) {
     // Anchor: 4 AD-01-31 is Jiazi day (cycle 1)
     let ref_days = days_from_civil(4, 1, 31);
 
-    // Use UTC date for day counting (matches Python ground truth).
+    // Use local wall-clock date for day counting (day boundary at local midnight).
     let total_s = (timestamp_ms / 1000.0).floor() as i64;
     let day_from_epoch = total_s.div_euclid(86400);
 
@@ -173,6 +192,24 @@ fn hour_ganzhi(local_date_utc_ms: f64, base_day_stem: &str) -> (&'static str, &'
     (stem_char, branch_char, cycle)
 }
 
+// ── Huangdao helpers ──────────────────────────────────────────────────────────
+
+/// Construction Star (十二建星) base calculation from lunar month and day branch index.
+fn construction_star(lunar_month: u32, day_branch_idx: usize) -> &'static str {
+    let building = BUILDING_BRANCH[lunar_month as usize];
+    // Double modulo to handle negative differences correctly
+    let star_idx = ((day_branch_idx as isize - building as isize) % 12 + 12) % 12;
+    CONSTRUCTION_STARS[star_idx as usize]
+}
+
+/// Great Yellow Path spirit from lunar month and day branch index.
+fn gyp_spirit(lunar_month: u32, day_branch_idx: usize) -> (&'static str, bool) {
+    let start = AZURE_START[lunar_month as usize];
+    // Double modulo to handle negative differences correctly
+    let idx = ((day_branch_idx as isize - start as isize) % 12 + 12) % 12;
+    (GYP_SPIRITS[idx as usize], GYP_AUSPICIOUS[idx as usize])
+}
+
 // ── Core structures ──────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone)]
@@ -214,6 +251,9 @@ pub struct LunisolarResult {
     pub hour_stem: String,
     pub hour_branch: String,
     pub hour_cycle: usize,
+    pub construction_star: String,
+    pub gyp_spirit: String,
+    pub gyp_path_type: String,
 }
 
 // ── Main conversion function ─────────────────────────────────────────────────
@@ -387,11 +427,17 @@ fn from_solar_date_core(
         + wmin as f64 * 60000.0
         + ws as f64 * 1000.0;
 
-    // Sexagenary cycles (use provided timezone offset for day/hour ganzhi)
+    // Sexagenary cycles (use local wall time for day ganzhi so day boundary is at local midnight)
     let (y_stem, y_branch, y_cycle) = year_ganzhi(lunar_year);
     let (m_stem, m_branch, m_cycle) = month_ganzhi(lunar_year, target_period.month_number);
-    let (d_stem, d_branch, d_cycle) = day_ganzhi(timestamp_ms);
+    let (d_stem, d_branch, d_cycle) = day_ganzhi(wall_ms);
     let (h_stem, h_branch, h_cycle) = hour_ganzhi(wall_ms, d_stem);
+
+    // Huangdao: Construction Star + Great Yellow Path
+    let day_branch_idx = EARTHLY_BRANCHES.iter().position(|&b| b == d_branch)
+        .expect("day_ganzhi returned an invalid branch character");
+    let cs = construction_star(target_period.month_number, day_branch_idx);
+    let (spirit, spirit_auspicious) = gyp_spirit(target_period.month_number, day_branch_idx);
 
     Ok(LunisolarResult {
         lunar_year,
@@ -410,6 +456,9 @@ fn from_solar_date_core(
         hour_stem: h_stem.to_string(),
         hour_branch: h_branch.to_string(),
         hour_cycle: h_cycle,
+        construction_star: cs.to_string(),
+        gyp_spirit: spirit.to_string(),
+        gyp_path_type: if spirit_auspicious { "黄道".to_string() } else { "黑道".to_string() },
     })
 }
 
@@ -475,7 +524,7 @@ mod tests {
 
     #[test]
     fn test_day_ganzhi_reference() {
-        // 4 AD-01-31 should be Jiazi (cycle 1) — uses UTC date for day counting
+        // 4 AD-01-31 should be Jiazi (cycle 1) — anchor day for sexagenary cycle
         let ref_ms = days_from_civil(4, 1, 31) as f64 * 86400000.0;
         let (stem, branch, cycle) = day_ganzhi(ref_ms);
         assert_eq!(stem, "甲");
@@ -493,5 +542,29 @@ mod tests {
         // Same timestamp in CST (UTC+8)
         let (y, m, d, h, min, s) = utc_ms_to_date_parts(ms, 28800);
         assert_eq!((y, m, d, h, min, s), (2025, 6, 21, 20, 0, 0));
+    }
+
+    #[test]
+    fn test_construction_star() {
+        // Lunar month 5, day branch 酉(9) → building branch 午(6)
+        // star_idx = (9 - 6) % 12 = 3 → "平"
+        assert_eq!(construction_star(5, 9), "平");
+        // Lunar month 1, day branch 寅(2) → building branch 寅(2)
+        // star_idx = (2 - 2) % 12 = 0 → "建"
+        assert_eq!(construction_star(1, 2), "建");
+    }
+
+    #[test]
+    fn test_gyp_spirit() {
+        // Lunar month 5, day branch 酉(9) → Azure start 申(8)
+        // spirit_idx = (9 - 8) % 12 = 1 → "明堂" (auspicious)
+        let (spirit, auspicious) = gyp_spirit(5, 9);
+        assert_eq!(spirit, "明堂");
+        assert!(auspicious);
+        // Lunar month 8, day branch 戌(10) → Azure start 寅(2)
+        // spirit_idx = (10 - 2) % 12 = 8 → "天牢" (not auspicious)
+        let (spirit, auspicious) = gyp_spirit(8, 10);
+        assert_eq!(spirit, "天牢");
+        assert!(!auspicious);
     }
 }

@@ -507,11 +507,9 @@ class SexagenaryEngine:
         # Anchor: January 31, 4 AD (Jiazi day), defined in UTC for consistency.
         reference_date_utc = datetime(4, 1, 31, tzinfo=timezone.utc)
         
-        # Convert the local target datetime to UTC to ensure correct day counting.
-        target_utc = self.tz_service.local_to_utc(target_local)
-        
-        # Calculate the difference in days at the UTC level.
-        days_diff = (target_utc.date() - reference_date_utc.date()).days
+        # Use the local date for day counting so that the day ganzhi matches
+        # the paper calendar in the user's timezone (day boundary at local midnight).
+        days_diff = (target_local.date() - reference_date_utc.date()).days
         
         # The cycle calculation remains the same.
         day_cycle = (days_diff % 60) + 1

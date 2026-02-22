@@ -37,6 +37,50 @@ static const char *EARTHLY_BRANCHES[] = {
     "\xe7\x94\xb3", "\xe9\x85\x89", "\xe6\x88\x8c", "\xe4\xba\xa5"};
 /* 子 丑 寅 卯 辰 巳 午 未 申 酉 戌 亥 */
 
+/* ── Huangdao constants ────────────────────────────────────────────────────── */
+
+/* Construction Stars (十二建星) */
+static const char *CONSTRUCTION_STARS[] = {
+    "\xe5\xbb\xba", "\xe9\x99\xa4", "\xe6\xbb\xa1", "\xe5\xb9\xb3",
+    "\xe5\xae\x9a", "\xe6\x89\xa7", "\xe7\xa0\xb4", "\xe5\x8d\xb1",
+    "\xe6\x88\x90", "\xe6\x94\xb6", "\xe5\xbc\x80", "\xe9\x97\xad"};
+/* 建 除 满 平 定 执 破 危 成 收 开 闭 */
+
+/* Building branch index by lunar month (1..12) */
+/* month 1→寅(2), 2→卯(3), 3→辰(4), 4→巳(5), 5→午(6), 6→未(7),
+   month 7→申(8), 8→酉(9), 9→戌(10), 10→亥(11), 11→子(0), 12→丑(1) */
+static const unsigned BUILDING_BRANCH[] = {
+    0, /* unused index 0 */
+    2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 0, 1};
+
+/* Great Yellow Path (大黄道) spirits */
+static const char *GYP_SPIRITS[] = {
+    "\xe9\x9d\x92\xe9\xbe\x99",     /* 青龙 */
+    "\xe6\x98\x8e\xe5\xa0\x82",     /* 明堂 */
+    "\xe5\xa4\xa9\xe5\x88\x91",     /* 天刑 */
+    "\xe6\x9c\xb1\xe9\x9b\x80",     /* 朱雀 */
+    "\xe9\x87\x91\xe5\x8c\xae",     /* 金匮 */
+    "\xe5\xa4\xa9\xe5\xbe\xb7",     /* 天德 */
+    "\xe7\x99\xbd\xe8\x99\x8e",     /* 白虎 */
+    "\xe7\x8e\x89\xe5\xa0\x82",     /* 玉堂 */
+    "\xe5\xa4\xa9\xe7\x89\xa2",     /* 天牢 */
+    "\xe7\x8e\x84\xe6\xad\xa6",     /* 玄武 */
+    "\xe5\x8f\xb8\xe5\x91\xbd",     /* 司命 */
+    "\xe5\x8b\xbe\xe9\x99\x88"};    /* 勾陈 */
+
+static const int GYP_AUSPICIOUS[] = {1,1,0,0,1,1,0,1,0,0,1,0};
+
+/* Azure Dragon start branch index by lunar month (1..12) */
+/* month 1→子(0), 2→寅(2), 3→辰(4), 4→午(6), 5→申(8), 6→戌(10),
+   month 7→子(0), 8→寅(2), 9→辰(4), 10→午(6), 11→申(8), 12→戌(10) */
+static const unsigned AZURE_START[] = {
+    0, /* unused index 0 */
+    0, 2, 4, 6, 8, 10, 0, 2, 4, 6, 8, 10};
+
+/* Yellow/Black path type strings */
+static const char *GYP_PATH_YELLOW = "\xe9\xbb\x84\xe9\x81\x93"; /* 黄道 */
+static const char *GYP_PATH_BLACK  = "\xe9\xbb\x91\xe9\x81\x93"; /* 黑道 */
+
 /* ── Date-only helper ──────────────────────────────────────────────────────── */
 
 typedef struct {
@@ -162,7 +206,7 @@ static void month_ganzhi(int lunar_year, unsigned lunar_month,
 static void day_ganzhi(double timestamp_ms,
                        unsigned *stem_idx, unsigned *branch_idx,
                        unsigned *cycle) {
-    /* Use UTC date for day counting (matches Python ground truth). */
+    /* Use local wall-clock date for day counting (day boundary at local midnight). */
     long long ref_days = days_from_civil(4, 1, 31);
     long long total_s = (long long)floor(timestamp_ms / 1000.0);
     long long day_from_epoch;
@@ -462,7 +506,7 @@ int from_solar_date(double timestamp_ms, int tz_offset_seconds,
                    + (double)wmin * 60000.0
                    + (double)ws * 1000.0;
 
-    /* Ganzhi (use provided timezone offset for day/hour ganzhi) */
+    /* Ganzhi (use local wall time for day ganzhi so day boundary is at local midnight) */
     unsigned ys, yb, ycc;
     year_ganzhi(lunar_year, &ys, &yb, &ycc);
 
@@ -470,10 +514,15 @@ int from_solar_date(double timestamp_ms, int tz_offset_seconds,
     month_ganzhi(lunar_year, tp->month_number, &ms, &mb, &mcc);
 
     unsigned ds, db, dcc;
-    day_ganzhi(timestamp_ms, &ds, &db, &dcc);
+    day_ganzhi(wall_ms, &ds, &db, &dcc);
 
     unsigned hs, hb, hcc;
     hour_ganzhi(wall_ms, ds, &hs, &hb, &hcc);
+
+    /* Huangdao: Construction Star + Great Yellow Path */
+    /* Double modulo to handle negative differences correctly */
+    unsigned cs_idx = (unsigned)(((int)db - (int)BUILDING_BRANCH[tp->month_number]) % 12 + 12) % 12;
+    unsigned gyp_idx = (unsigned)(((int)db - (int)AZURE_START[tp->month_number]) % 12 + 12) % 12;
 
     /* Serialize to JSON */
     int n = snprintf(out_buf, (size_t)out_buf_len,
@@ -482,13 +531,17 @@ int from_solar_date(double timestamp_ms, int tz_offset_seconds,
         "\"yearStem\":\"%s\",\"yearBranch\":\"%s\",\"yearCycle\":%u,"
         "\"monthStem\":\"%s\",\"monthBranch\":\"%s\",\"monthCycle\":%u,"
         "\"dayStem\":\"%s\",\"dayBranch\":\"%s\",\"dayCycle\":%u,"
-        "\"hourStem\":\"%s\",\"hourBranch\":\"%s\",\"hourCycle\":%u}",
+        "\"hourStem\":\"%s\",\"hourBranch\":\"%s\",\"hourCycle\":%u,"
+        "\"constructionStar\":\"%s\",\"gypSpirit\":\"%s\",\"gypPathType\":\"%s\"}",
         lunar_year, tp->month_number, lunar_day_raw,
         tp->is_leap ? "true" : "false",
         HEAVENLY_STEMS[ys], EARTHLY_BRANCHES[yb], ycc,
         HEAVENLY_STEMS[ms], EARTHLY_BRANCHES[mb], mcc,
         HEAVENLY_STEMS[ds], EARTHLY_BRANCHES[db], dcc,
-        HEAVENLY_STEMS[hs], EARTHLY_BRANCHES[hb], hcc);
+        HEAVENLY_STEMS[hs], EARTHLY_BRANCHES[hb], hcc,
+        CONSTRUCTION_STARS[cs_idx],
+        GYP_SPIRITS[gyp_idx],
+        GYP_AUSPICIOUS[gyp_idx] ? GYP_PATH_YELLOW : GYP_PATH_BLACK);
 
     free(nm_ms);
     free(pts);
