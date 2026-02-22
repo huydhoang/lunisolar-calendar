@@ -25,6 +25,7 @@ import config
 config.EPHEMERIS_FILE = os.path.join(REPO_ROOT, 'nasa', 'de440s.bsp')
 
 from lunisolar_v2 import solar_to_lunisolar
+from huangdao_systems_v2 import HuangdaoCalculator
 
 
 def main():
@@ -36,6 +37,8 @@ def main():
     timestamps_ms = json.loads(sys.stdin.read())
     results = []
 
+    huangdao = HuangdaoCalculator(args.tz)
+
     for ts_ms in timestamps_ms:
         # Convert UTC timestamp to local date/time in the target timezone
         dt_utc = datetime.fromtimestamp(ts_ms / 1000, tz=timezone.utc)
@@ -45,6 +48,11 @@ def main():
 
         try:
             r = solar_to_lunisolar(date_str, time_str, args.tz, quiet=True)
+
+            # Huangdao: construction star + great yellow path
+            date_obj = datetime(dt_local.year, dt_local.month, dt_local.day)
+            info = huangdao.calculate_day_info(date_obj, r)
+
             results.append({
                 'tsMs': ts_ms,
                 'lunarYear': r.year,
@@ -63,6 +71,9 @@ def main():
                 'hourStem': r.hour_stem,
                 'hourBranch': r.hour_branch,
                 'hourCycle': r.hour_cycle,
+                'constructionStar': info['star'],
+                'gypSpirit': info['gyp_spirit'],
+                'gypPathType': info['gyp_path_type'],
             })
         except Exception as e:
             results.append({'tsMs': ts_ms, 'error': str(e)})

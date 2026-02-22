@@ -158,7 +158,8 @@ describe('Regression: conversion mismatch fix (Asia/Ho_Chi_Minh UTC+7)', () => {
 
 describe('Day ganzhi uses local date (not UTC) for timezone-correct day boundary', () => {
   it('gives consistent day ganzhi across all hours of the same local date in UTC+7', async () => {
-    const { LunisolarCalendar } = await import(resolve(__dirname, '..', 'dist', 'index.mjs'));
+    const { LunisolarCalendar, configure } = await import(resolve(__dirname, '..', 'dist', 'index.mjs'));
+    configure({ strategy: 'static' });
 
     // Feb 22, 2025 at 03:00 UTC+7 (early morning — UTC date is Feb 21)
     const early = dateFromICTLocal(2025, 2, 22, 3, 0);
