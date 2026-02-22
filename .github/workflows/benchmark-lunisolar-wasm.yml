@@ -19,9 +19,11 @@ jobs:
       contents: read
 
     steps:
-      # ── 1. Checkout ──────────────────────────────────────────────────────
+      # ── 1. Checkout (with git-lfs for DE440s ephemeris) ────────────────
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          lfs: true
 
       # ── 2. Set up Node.js ────────────────────────────────────────────────
       - name: Set up Node.js
@@ -29,7 +31,16 @@ jobs:
         with:
           node-version: '22'
 
-      # ── 3. Set up Rust ───────────────────────────────────────────────────
+      # ── 3. Set up Python + skyfield ────────────────────────────────────
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install skyfield
+        run: pip install skyfield
+
+      # ── 4. Set up Rust ───────────────────────────────────────────────────
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -38,7 +49,7 @@ jobs:
       - name: Install wasm-pack
         run: curl -sSL https://rustwasm.github.io/wasm-pack/installer/init.sh | sh
 
-      # ── 4. Set up Emscripten ─────────────────────────────────────────────
+      # ── 5. Set up Emscripten ─────────────────────────────────────────────
       - name: Set up Emscripten
         uses: mymindstorm/setup-emsdk@v14
         with:
@@ -47,7 +58,7 @@ jobs:
       - name: Verify emcc
         run: emcc --version
 
-      # ── 5. Build TypeScript package ──────────────────────────────────────
+      # ── 6. Build TypeScript package ──────────────────────────────────────
       - name: Install npm dependencies
         working-directory: pkg
         run: npm ci
@@ -56,17 +67,17 @@ jobs:
         working-directory: pkg
         run: npm run build
 
-      # ── 6. Build Rust WASM package ───────────────────────────────────────
+      # ── 7. Build Rust WASM package ───────────────────────────────────────
       - name: Build lunisolar WASM (Rust / wasm-pack)
         working-directory: wasm/lunisolar
         run: wasm-pack build --target nodejs --release
 
-      # ── 7. Build Emscripten WASM package ─────────────────────────────────
+      # ── 8. Build Emscripten WASM package ─────────────────────────────────
       - name: Build lunisolar WASM (Emscripten / emcc)
         working-directory: wasm/lunisolar-emcc
         run: bash build.sh
 
-      # ── 8. Build vendored swisseph WASM + install npm swisseph packages ─
+      # ── 9. Build vendored swisseph WASM + install npm swisseph packages ─
       - name: Build swisseph WASM (vendored C source)
         working-directory: wasm/swisseph
         run: wasm-pack build --target nodejs --release
@@ -77,9 +88,12 @@ jobs:
           echo '{"type":"module","name":"lunisolar-wasm-benchmark"}' > package.json
           npm install swisseph-wasm @fusionstrings/swisseph-wasm
 
-      # ── 9. Verify build artifacts ────────────────────────────────────────
+      # ── 10. Verify build artifacts ───────────────────────────────────────
       - name: Verify build artifacts
         run: |
+          echo "=== DE440s ephemeris (git-lfs) ==="
+          ls -lh nasa/de440s.bsp
+          echo ""
           echo "=== TypeScript package ==="
           ls -lh pkg/dist/index.mjs pkg/dist/index.cjs
           echo ""
@@ -96,12 +110,12 @@ jobs:
           ls -lh tests/lunisolar-wasm/node_modules/@fusionstrings/swisseph-wasm/esm/lib/swisseph_wasm.wasm
           ls -lh tests/lunisolar-wasm/node_modules/swisseph-wasm/wsam/swisseph.wasm
 
-      # ── 10. Run comparison and benchmark ─────────────────────────────────
+      # ── 11. Run comparison and benchmark ─────────────────────────────────
       - name: Run comparison and benchmark
         working-directory: tests/lunisolar-wasm
         run: node compare.mjs
 
-      # ── 11. Write results to step summary ───────────────────────────────
+      # ── 12. Write results to step summary ───────────────────────────────
       - name: Write step summary
         if: always()
         run: |
@@ -109,7 +123,7 @@ jobs:
             cat tests/lunisolar-wasm/compare-report.md >> "$GITHUB_STEP_SUMMARY"
           fi
 
-      # ── 12. Upload report artifact ──────────────────────────────────────
+      # ── 13. Upload report artifact ──────────────────────────────────────
       - name: Upload comparison report
         if: always()
         uses: actions/upload-artifact@v4

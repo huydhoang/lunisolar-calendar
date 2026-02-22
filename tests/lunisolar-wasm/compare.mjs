@@ -1,10 +1,11 @@
 /**
- * Lunisolar WASM vs TypeScript Comparison & Benchmark
+ * Lunisolar WASM vs Python Reference — Comparison & Benchmark
  *
- * 1. Generates 50 random timestamps and compares results from the Rust WASM,
- *    Emscripten WASM, and TypeScript implementations in a markdown table.
- *    Comparison includes year ganzhi, month ganzhi, day ganzhi, and hour ganzhi.
- * 2. Runs a burst of 500 requests to compare speed between all three.
+ * 1. Generates 50 random timestamps and computes results from the Python
+ *    reference implementation (DE440s), Rust WASM, Emscripten WASM, and
+ *    TypeScript package.  Compares all three JS/WASM variants against
+ *    the Python ground truth in a markdown table.
+ * 2. Runs a burst of 500 requests to compare speed between TS / Rust / Emcc.
  *
  * Usage:  node compare.mjs
  * Outputs: compare-report.md
@@ -14,6 +15,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { performance } from 'node:perf_hooks';
+import { execFileSync } from 'node:child_process';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..', '..');
@@ -197,9 +199,54 @@ const TZ = 'Asia/Shanghai';
 // ── 9. Run comparison for 50 timestamps ─────────────────────────────────────
 
 const timestamps50 = randomTimestamps(50);
-const results = [];
+
+console.log('Generating Python reference results (DE440s) for 50 timestamps...');
+
+// Call Python batch reference script
+const pyScript = resolve(__dirname, 'python_reference.py');
+let pyResults;
+try {
+  const pyOut = execFileSync('python3', [pyScript, '--tz', TZ], {
+    input: JSON.stringify(timestamps50),
+    maxBuffer: 10 * 1024 * 1024,
+    timeout: 120_000,
+  });
+  pyResults = JSON.parse(pyOut.toString());
+} catch (e) {
+  console.error('Python reference failed:', e.message);
+  process.exit(1);
+}
+
+// Build a map of Python results by timestamp
+const pyMap = new Map();
+for (const r of pyResults) pyMap.set(r.tsMs, r);
 
 console.log('Running comparison for 50 random timestamps...');
+
+const results = [];
+
+// Helper: compare all ganzhi fields between a reference and a candidate
+function ganzhiMatch(ref, cand) {
+  if (!ref || !cand || ref.error || cand.error) return false;
+  return (
+    ref.lunarYear === cand.lunarYear &&
+    ref.lunarMonth === cand.lunarMonth &&
+    ref.lunarDay === cand.lunarDay &&
+    ref.isLeapMonth === cand.isLeapMonth &&
+    ref.yearCycle === cand.yearCycle &&
+    ref.monthCycle === cand.monthCycle &&
+    ref.dayCycle === cand.dayCycle &&
+    ref.hourCycle === cand.hourCycle &&
+    ref.yearStem === cand.yearStem &&
+    ref.yearBranch === cand.yearBranch &&
+    ref.monthStem === cand.monthStem &&
+    ref.monthBranch === cand.monthBranch &&
+    ref.dayStem === cand.dayStem &&
+    ref.dayBranch === cand.dayBranch &&
+    ref.hourStem === cand.hourStem &&
+    ref.hourBranch === cand.hourBranch
+  );
+}
 
 for (const tsMs of timestamps50) {
   const date = new Date(tsMs);
@@ -207,38 +254,26 @@ for (const tsMs of timestamps50) {
   const { newMoons, solarTerms } = loadDataForYears([year - 1, year, year + 1]);
   const tzOffsetSec = getTzOffsetSeconds(tsMs, TZ);
 
+  const pyRef = pyMap.get(tsMs) || { error: 'not found in Python output' };
+
   let tsResult = null;
   let wasmResult = null;
   let emccResult = null;
-  let match = false;
 
-  // TypeScript (TS returns only character strings; compute cycle indices here)
+  // TypeScript
   try {
     const cal = await LunisolarCalendar.fromSolarDate(date, TZ);
     const yc = cycleFromChars(cal.yearStem, cal.yearBranch);
     const mc = cycleFromChars(cal.monthStem, cal.monthBranch);
     const dc = cycleFromChars(cal.dayStem, cal.dayBranch);
     const hc = cycleFromChars(cal.hourStem, cal.hourBranch);
-    if (yc < 0 || mc < 0 || dc < 0 || hc < 0) {
-      console.warn(`  ⚠️ Encoding issue at ${date.toISOString()}: cycle lookup failed (y=${yc} m=${mc} d=${dc} h=${hc})`);
-    }
     tsResult = {
-      lunarYear: cal.lunarYear,
-      lunarMonth: cal.lunarMonth,
-      lunarDay: cal.lunarDay,
+      lunarYear: cal.lunarYear, lunarMonth: cal.lunarMonth, lunarDay: cal.lunarDay,
       isLeapMonth: cal.isLeapMonth,
-      yearStem: cal.yearStem,
-      yearBranch: cal.yearBranch,
-      yearCycle: yc,
-      monthStem: cal.monthStem,
-      monthBranch: cal.monthBranch,
-      monthCycle: mc,
-      dayStem: cal.dayStem,
-      dayBranch: cal.dayBranch,
-      dayCycle: dc,
-      hourStem: cal.hourStem,
-      hourBranch: cal.hourBranch,
-      hourCycle: hc,
+      yearStem: cal.yearStem, yearBranch: cal.yearBranch, yearCycle: yc,
+      monthStem: cal.monthStem, monthBranch: cal.monthBranch, monthCycle: mc,
+      dayStem: cal.dayStem, dayBranch: cal.dayBranch, dayCycle: dc,
+      hourStem: cal.hourStem, hourBranch: cal.hourBranch, hourCycle: hc,
     };
   } catch (e) {
     tsResult = { error: e.message };
@@ -246,12 +281,7 @@ for (const tsMs of timestamps50) {
 
   // Rust WASM
   try {
-    const json = wasm.fromSolarDate(
-      tsMs,
-      tzOffsetSec,
-      JSON.stringify(newMoons),
-      JSON.stringify(solarTerms),
-    );
+    const json = wasm.fromSolarDate(tsMs, tzOffsetSec, JSON.stringify(newMoons), JSON.stringify(solarTerms));
     wasmResult = JSON.parse(json);
   } catch (e) {
     wasmResult = { error: e.message };
@@ -265,33 +295,12 @@ for (const tsMs of timestamps50) {
     emccResult = { error: e.message };
   }
 
-  // Helper: compare all ganzhi fields between TS pkg result and a WASM result
-  function ganzhiMatch(ts, w) {
-    if (!ts || !w || ts.error || w.error) return false;
-    return (
-      ts.lunarYear === w.lunarYear &&
-      ts.lunarMonth === w.lunarMonth &&
-      ts.lunarDay === w.lunarDay &&
-      ts.isLeapMonth === w.isLeapMonth &&
-      ts.yearCycle === w.yearCycle &&
-      ts.monthCycle === w.monthCycle &&
-      ts.dayCycle === w.dayCycle &&
-      ts.hourCycle === w.hourCycle &&
-      ts.yearStem === w.yearStem &&
-      ts.yearBranch === w.yearBranch &&
-      ts.monthStem === w.monthStem &&
-      ts.monthBranch === w.monthBranch &&
-      ts.dayStem === w.dayStem &&
-      ts.dayBranch === w.dayBranch &&
-      ts.hourStem === w.hourStem &&
-      ts.hourBranch === w.hourBranch
-    );
-  }
+  // Compare each variant against the Python reference
+  const tsMatch = ganzhiMatch(pyRef, tsResult);
+  const rustMatch = ganzhiMatch(pyRef, wasmResult);
+  const emccMatch = ganzhiMatch(pyRef, emccResult);
 
-  const rustMatch = ganzhiMatch(tsResult, wasmResult);
-  const emccMatch = ganzhiMatch(tsResult, emccResult);
-
-  results.push({ tsMs, date: date.toISOString(), tsResult, wasmResult, emccResult, rustMatch, emccMatch });
+  results.push({ tsMs, date: date.toISOString(), pyRef, tsResult, wasmResult, emccResult, tsMatch, rustMatch, emccMatch });
 }
 
 // ── 10. Run burst benchmark (500 requests) ──────────────────────────────────
@@ -437,74 +446,54 @@ if (prolaxuSweph && typeof prolaxuSweph.close === 'function') {
 
 // ── 12. Generate markdown report ────────────────────────────────────────────
 
+const tsMatchCount = results.filter((r) => r.tsMatch).length;
 const rustMatchCount = results.filter((r) => r.rustMatch).length;
 const emccMatchCount = results.filter((r) => r.emccMatch).length;
 const errorCount = results.filter(
-  (r) => r.tsResult?.error || r.wasmResult?.error || r.emccResult?.error,
+  (r) => r.pyRef?.error || r.wasmResult?.error || r.emccResult?.error || r.tsResult?.error,
 ).length;
 
-let md = `# Lunisolar WASM vs TypeScript — Comparison Report\n\n`;
+let md = `# Lunisolar Accuracy — Python Reference (DE440s) vs JS/WASM Implementations\n\n`;
 md += `**Date**: ${new Date().toISOString()}\n\n`;
-md += `**Reference**: TypeScript package (\`pkg/\`) — the original pure-TS implementation.\n`;
-md += `Both WASM ports are compared against this reference.\n\n`;
+md += `**Reference**: Python \`lunisolar_v2.py\` with JPL DE440s ephemeris (ground truth).\n`;
+md += `All three implementations are compared against this reference.\n\n`;
 
 // Summary
 md += `## Summary\n\n`;
-md += `| Metric | Value |\n`;
-md += `|--------|-------|\n`;
-md += `| Total comparisons | ${results.length} |\n`;
-md += `| Rust WASM vs TS pkg — match | ${rustMatchCount}/${results.length} |\n`;
-md += `| Emscripten WASM vs TS pkg — match | ${emccMatchCount}/${results.length} |\n`;
+md += `| Implementation | Match vs Python (DE440s) |\n`;
+md += `|----------------|------------------------:|\n`;
+md += `| TypeScript pkg | ${tsMatchCount}/${results.length} |\n`;
+md += `| Rust WASM (wasm-pack) | ${rustMatchCount}/${results.length} |\n`;
+md += `| Emscripten WASM (emcc) | ${emccMatchCount}/${results.length} |\n`;
 md += `| Errors | ${errorCount} |\n\n`;
 
-// Comparison table: TS pkg reference values with per-field match for both WASM ports
+// Comparison table: Python reference values with match status for all three implementations
 md += `## Comparison Table (50 Random Timestamps)\n\n`;
-md += `Reference values are from the TypeScript package (\`pkg/\`).\n`;
-md += `Each ganzhi shows characters + cycle index and per-field match icons for Rust WASM (R) and Emscripten WASM (E).\n\n`;
-md += `| # | UTC Date | Lunar Date (TS pkg) | Year Ganzhi (TS pkg) | Month Ganzhi (TS pkg) | Day Ganzhi (TS pkg) | Hour Ganzhi (TS pkg) | Rust | Emcc |\n`;
-md += `|---|----------|---------------------|----------------------|-----------------------|---------------------|----------------------|------|------|\n`;
+md += `Reference values are from Python \`lunisolar_v2.py\` (DE440s).\n`;
+md += `Match columns show whether each implementation agrees with the Python reference.\n\n`;
+md += `| # | UTC Date | Lunar Date (Python) | Year Ganzhi | Month Ganzhi | Day Ganzhi | Hour Ganzhi | TS | Rust | Emcc |\n`;
+md += `|---|----------|---------------------|-------------|--------------|------------|-------------|----|----- |------|\n`;
 
 for (let i = 0; i < results.length; i++) {
   const r = results[i];
-  const ts = r.tsResult;
-  const w = r.wasmResult;
-  const e = r.emccResult;
+  const py = r.pyRef;
 
-  const lunarDate = ts?.error
+  const lunarDate = py?.error
     ? `ERROR`
-    : `${ts.lunarYear}-${ts.lunarMonth}-${ts.lunarDay}${ts.isLeapMonth ? '(闰)' : ''}`;
+    : `${py.lunarYear}-${py.lunarMonth}-${py.lunarDay}${py.isLeapMonth ? '(闰)' : ''}`;
 
-  // Show characters with cycle index: e.g. "甲子(1)"
   const fmtG = (stem, branch, cycle) => `${stem}${branch}(${cycle})`;
 
-  const yearG = ts?.error ? '-' : fmtG(ts.yearStem, ts.yearBranch, ts.yearCycle);
-  const monthG = ts?.error ? '-' : fmtG(ts.monthStem, ts.monthBranch, ts.monthCycle);
-  const dayG = ts?.error ? '-' : fmtG(ts.dayStem, ts.dayBranch, ts.dayCycle);
-  const hourG = ts?.error ? '-' : fmtG(ts.hourStem, ts.hourBranch, ts.hourCycle);
+  const yearG = py?.error ? '-' : fmtG(py.yearStem, py.yearBranch, py.yearCycle);
+  const monthG = py?.error ? '-' : fmtG(py.monthStem, py.monthBranch, py.monthCycle);
+  const dayG = py?.error ? '-' : fmtG(py.dayStem, py.dayBranch, py.dayCycle);
+  const hourG = py?.error ? '-' : fmtG(py.hourStem, py.hourBranch, py.hourCycle);
 
-  // Per-field match icons for Rust WASM vs TS pkg
-  const fieldMatch = (ts, w, field) => {
-    if (ts?.error || w?.error) return '⚠️';
-    return ts[field] === w[field] ? '✅' : '❌';
-  };
-  const rustYM = !ts?.error && !w?.error && ts.yearCycle === w.yearCycle && ts.yearStem === w.yearStem && ts.yearBranch === w.yearBranch;
-  const rustMM = !ts?.error && !w?.error && ts.monthCycle === w.monthCycle && ts.monthStem === w.monthStem && ts.monthBranch === w.monthBranch;
-  const rustDM = !ts?.error && !w?.error && ts.dayCycle === w.dayCycle && ts.dayStem === w.dayStem && ts.dayBranch === w.dayBranch;
-  const rustHM = !ts?.error && !w?.error && ts.hourCycle === w.hourCycle && ts.hourStem === w.hourStem && ts.hourBranch === w.hourBranch;
+  const tsIcon = r.tsMatch ? '✅' : (py?.error || r.tsResult?.error) ? '⚠️' : '❌';
+  const rustIcon = r.rustMatch ? '✅' : (py?.error || r.wasmResult?.error) ? '⚠️' : '❌';
+  const emccIcon = r.emccMatch ? '✅' : (py?.error || r.emccResult?.error) ? '⚠️' : '❌';
 
-  // Per-field match icons for Emscripten WASM vs TS pkg
-  const emccYM = !ts?.error && !e?.error && ts.yearCycle === e.yearCycle && ts.yearStem === e.yearStem && ts.yearBranch === e.yearBranch;
-  const emccMM = !ts?.error && !e?.error && ts.monthCycle === e.monthCycle && ts.monthStem === e.monthStem && ts.monthBranch === e.monthBranch;
-  const emccDM = !ts?.error && !e?.error && ts.dayCycle === e.dayCycle && ts.dayStem === e.dayStem && ts.dayBranch === e.dayBranch;
-  const emccHM = !ts?.error && !e?.error && ts.hourCycle === e.hourCycle && ts.hourStem === e.hourStem && ts.hourBranch === e.hourBranch;
-
-  const rustIcon = r.rustMatch ? '✅' : (ts?.error || w?.error) ? '⚠️' : '❌';
-  const emccIcon = r.emccMatch ? '✅' : (ts?.error || e?.error) ? '⚠️' : '❌';
-
-  // Show per-field detail in ganzhi columns: R✅E✅ means Rust matches, Emcc matches
-  const fieldIcon = (rOk, eOk) => `R${rOk ? '✅' : '❌'}E${eOk ? '✅' : '❌'}`;
-
-  md += `| ${i + 1} | ${r.date.slice(0, 19)} | ${lunarDate} | ${yearG} ${fieldIcon(rustYM, emccYM)} | ${monthG} ${fieldIcon(rustMM, emccMM)} | ${dayG} ${fieldIcon(rustDM, emccDM)} | ${hourG} ${fieldIcon(rustHM, emccHM)} | ${rustIcon} | ${emccIcon} |\n`;
+  md += `| ${i + 1} | ${r.date.slice(0, 19)} | ${lunarDate} | ${yearG} | ${monthG} | ${dayG} | ${hourG} | ${tsIcon} | ${rustIcon} | ${emccIcon} |\n`;
 }
 
 // Benchmark results
@@ -548,17 +537,18 @@ if (sweCalcResults.length > 0) {
 }
 
 md += `\n## Notes\n\n`;
+md += `- **Reference**: Python \`lunisolar_v2.py\` with JPL DE440s ephemeris.\n`;
 md += `- The Rust WASM build uses \`wasm-pack\` + \`wasm-bindgen\` (JSON string interface).\n`;
 md += `- The Emscripten WASM build uses \`emcc\` from C source (pre-parsed array interface via linear memory).\n`;
 md += `- Both WASM variants receive the actual timezone offset computed via \`Intl.DateTimeFormat\`,\n`;
 md += `  matching the TypeScript implementation's DST-aware behavior.\n`;
-md += `- All four ganzhi (year, month, day, hour) are compared field-by-field.\n`;
+md += `- All four ganzhi (year, month, day, hour) with cycle indices are compared field-by-field.\n`;
 
 // Write report
 const reportPath = resolve(__dirname, 'compare-report.md');
 writeFileSync(reportPath, md);
 console.log(`\nReport written to ${reportPath}`);
-console.log(`\nMatch rate: ${matchCount}/${results.length}`);
+console.log(`\nMatch vs Python (DE440s): TS=${tsMatchCount}/${results.length}, Rust=${rustMatchCount}/${results.length}, Emcc=${emccMatchCount}/${results.length}`);
 console.log(`TS:   ${tsElapsed.toFixed(1)}ms for 500 requests (${(tsElapsed / 500).toFixed(3)}ms/req)`);
 console.log(`WASM: ${wasmElapsed.toFixed(1)}ms for 500 requests (${(wasmElapsed / 500).toFixed(3)}ms/req)`);
 console.log(`EMCC: ${emccElapsed.toFixed(1)}ms for 500 requests (${(emccElapsed / 500).toFixed(3)}ms/req)`);
