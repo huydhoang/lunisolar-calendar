@@ -478,16 +478,16 @@ int from_solar_date(double timestamp_ms, int tz_offset_seconds,
     int n = snprintf(out_buf, (size_t)out_buf_len,
         "{\"lunarYear\":%d,\"lunarMonth\":%u,\"lunarDay\":%d,"
         "\"isLeapMonth\":%s,"
-        "\"yearStem\":\"%s\",\"yearBranch\":\"%s\","
-        "\"monthStem\":\"%s\",\"monthBranch\":\"%s\","
-        "\"dayStem\":\"%s\",\"dayBranch\":\"%s\","
-        "\"hourStem\":\"%s\",\"hourBranch\":\"%s\"}",
+        "\"yearStem\":\"%s\",\"yearBranch\":\"%s\",\"yearCycle\":%u,"
+        "\"monthStem\":\"%s\",\"monthBranch\":\"%s\",\"monthCycle\":%u,"
+        "\"dayStem\":\"%s\",\"dayBranch\":\"%s\",\"dayCycle\":%u,"
+        "\"hourStem\":\"%s\",\"hourBranch\":\"%s\",\"hourCycle\":%u}",
         lunar_year, tp->month_number, lunar_day_raw,
         tp->is_leap ? "true" : "false",
-        HEAVENLY_STEMS[ys], EARTHLY_BRANCHES[yb],
-        HEAVENLY_STEMS[ms], EARTHLY_BRANCHES[mb],
-        HEAVENLY_STEMS[ds], EARTHLY_BRANCHES[db],
-        HEAVENLY_STEMS[hs], EARTHLY_BRANCHES[hb]);
+        HEAVENLY_STEMS[ys], EARTHLY_BRANCHES[yb], ycc,
+        HEAVENLY_STEMS[ms], EARTHLY_BRANCHES[mb], mcc,
+        HEAVENLY_STEMS[ds], EARTHLY_BRANCHES[db], dcc,
+        HEAVENLY_STEMS[hs], EARTHLY_BRANCHES[hb], hcc);
 
     free(nm_ms);
     free(pts);

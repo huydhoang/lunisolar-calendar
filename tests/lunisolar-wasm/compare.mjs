@@ -57,7 +57,26 @@ function loadDataForYears(years) {
   return { newMoons, solarTerms };
 }
 
-// ── 5. Timezone offset helper ───────────────────────────────────────────────
+// ── 5. Ganzhi cycle helpers ─────────────────────────────────────────────────
+
+const STEMS = ['甲', '乙', '丙', '丁', '戊', '己', '庚', '辛', '壬', '癸'];
+const BRANCHES = ['子', '丑', '寅', '卯', '辰', '巳', '午', '未', '申', '酉', '戌', '亥'];
+
+/**
+ * Compute sexagenary cycle number (1–60) from stem and branch characters.
+ * Returns -1 if the character is not found (encoding mismatch).
+ */
+function cycleFromChars(stem, branch) {
+  const s = STEMS.indexOf(stem);
+  const b = BRANCHES.indexOf(branch);
+  if (s < 0 || b < 0) return -1;
+  for (let c = 1; c <= 60; c++) {
+    if ((c - 1) % 10 === s && (c - 1) % 12 === b) return c;
+  }
+  return -1;
+}
+
+// ── 6. Timezone offset helper ───────────────────────────────────────────────
 
 /**
  * Compute the actual UTC offset in seconds for a given timestamp in a timezone.
@@ -100,7 +119,7 @@ function getTzOffsetSeconds(dateMs, tz) {
   return Math.round((localMs - utcMs) / 1000);
 }
 
-// ── 6. Emscripten WASM wrapper ──────────────────────────────────────────────
+// ── 7. Emscripten WASM wrapper ──────────────────────────────────────────────
 
 /**
  * Call the Emscripten-compiled from_solar_date function.
@@ -147,7 +166,7 @@ function emccFromSolarDate(timestampMs, tzOffsetSeconds, newMoons, solarTerms) {
   return json ? JSON.parse(json) : null;
 }
 
-// ── 7. Generate random timestamps ──────────────────────────────────────────
+// ── 8. Generate random timestamps ──────────────────────────────────────────
 
 // Use a simple seeded RNG for reproducibility
 function mulberry32(seed) {
@@ -175,7 +194,7 @@ function randomTimestamps(count) {
 
 const TZ = 'Asia/Shanghai';
 
-// ── 8. Run comparison for 50 timestamps ─────────────────────────────────────
+// ── 9. Run comparison for 50 timestamps ─────────────────────────────────────
 
 const timestamps50 = randomTimestamps(50);
 const results = [];
@@ -193,7 +212,7 @@ for (const tsMs of timestamps50) {
   let emccResult = null;
   let match = false;
 
-  // TypeScript
+  // TypeScript (TS returns only character strings; compute cycle indices here)
   try {
     const cal = await LunisolarCalendar.fromSolarDate(date, TZ);
     tsResult = {
@@ -203,12 +222,16 @@ for (const tsMs of timestamps50) {
       isLeapMonth: cal.isLeapMonth,
       yearStem: cal.yearStem,
       yearBranch: cal.yearBranch,
+      yearCycle: cycleFromChars(cal.yearStem, cal.yearBranch),
       monthStem: cal.monthStem,
       monthBranch: cal.monthBranch,
+      monthCycle: cycleFromChars(cal.monthStem, cal.monthBranch),
       dayStem: cal.dayStem,
       dayBranch: cal.dayBranch,
+      dayCycle: cycleFromChars(cal.dayStem, cal.dayBranch),
       hourStem: cal.hourStem,
       hourBranch: cal.hourBranch,
+      hourCycle: cycleFromChars(cal.hourStem, cal.hourBranch),
     };
   } catch (e) {
     tsResult = { error: e.message };
@@ -235,13 +258,17 @@ for (const tsMs of timestamps50) {
     emccResult = { error: e.message };
   }
 
-  // Compare TS vs Rust WASM (all four ganzhi)
+  // Compare TS vs Rust WASM (all four ganzhi — characters AND cycle indices)
   if (tsResult && wasmResult && !tsResult.error && !wasmResult.error) {
     match =
       tsResult.lunarYear === wasmResult.lunarYear &&
       tsResult.lunarMonth === wasmResult.lunarMonth &&
       tsResult.lunarDay === wasmResult.lunarDay &&
       tsResult.isLeapMonth === wasmResult.isLeapMonth &&
+      tsResult.yearCycle === wasmResult.yearCycle &&
+      tsResult.monthCycle === wasmResult.monthCycle &&
+      tsResult.dayCycle === wasmResult.dayCycle &&
+      tsResult.hourCycle === wasmResult.hourCycle &&
       tsResult.yearStem === wasmResult.yearStem &&
       tsResult.yearBranch === wasmResult.yearBranch &&
       tsResult.monthStem === wasmResult.monthStem &&
@@ -255,7 +282,7 @@ for (const tsMs of timestamps50) {
   results.push({ tsMs, date: date.toISOString(), tsResult, wasmResult, emccResult, match });
 }
 
-// ── 9. Run burst benchmark (500 requests) ───────────────────────────────────
+// ── 10. Run burst benchmark (500 requests) ──────────────────────────────────
 
 console.log('Running burst benchmark (500 requests)...');
 
@@ -308,7 +335,7 @@ for (const tsMs of timestamps500) {
 }
 const emccElapsed = performance.now() - emccStart;
 
-// ── 10. Generate markdown report ────────────────────────────────────────────
+// ── 11. Generate markdown report ────────────────────────────────────────────
 
 const matchCount = results.filter((r) => r.match).length;
 const errorCount = results.filter(
@@ -327,7 +354,7 @@ md += `| Matching results (TS vs Rust WASM) | ${matchCount} |\n`;
 md += `| Mismatches | ${results.length - matchCount - errorCount} |\n`;
 md += `| Errors | ${errorCount} |\n\n`;
 
-// Comparison table with all four ganzhi
+// Comparison table with all four ganzhi (characters + cycle indices)
 md += `## Comparison Table (50 Random Timestamps)\n\n`;
 md += `| # | UTC Date | Lunar Date | Year Ganzhi | Month Ganzhi | Day Ganzhi | Hour Ganzhi | Match |\n`;
 md += `|---|----------|------------|-------------|--------------|------------|-------------|-------|\n`;
@@ -341,20 +368,34 @@ for (let i = 0; i < results.length; i++) {
     ? `ERROR`
     : `${ts.lunarYear}-${ts.lunarMonth}-${ts.lunarDay}${ts.isLeapMonth ? '(闰)' : ''}`;
 
-  const yearG = ts?.error ? '-' : `${ts.yearStem}${ts.yearBranch}`;
-  const monthG = ts?.error ? '-' : `${ts.monthStem}${ts.monthBranch}`;
-  const dayG = ts?.error ? '-' : `${ts.dayStem}${ts.dayBranch}`;
-  const hourG = ts?.error ? '-' : `${ts.hourStem}${ts.hourBranch}`;
+  // Show characters with cycle index: e.g. "甲子(1)"
+  const fmtG = (stem, branch, cycle) => `${stem}${branch}(${cycle})`;
 
-  // Per-field match indicators
-  const yMatch = !ts?.error && !w?.error && ts.yearStem === w.yearStem && ts.yearBranch === w.yearBranch;
-  const mMatch = !ts?.error && !w?.error && ts.monthStem === w.monthStem && ts.monthBranch === w.monthBranch;
-  const dMatch = !ts?.error && !w?.error && ts.dayStem === w.dayStem && ts.dayBranch === w.dayBranch;
-  const hMatch = !ts?.error && !w?.error && ts.hourStem === w.hourStem && ts.hourBranch === w.hourBranch;
+  const yearG = ts?.error ? '-' : fmtG(ts.yearStem, ts.yearBranch, ts.yearCycle);
+  const monthG = ts?.error ? '-' : fmtG(ts.monthStem, ts.monthBranch, ts.monthCycle);
+  const dayG = ts?.error ? '-' : fmtG(ts.dayStem, ts.dayBranch, ts.dayCycle);
+  const hourG = ts?.error ? '-' : fmtG(ts.hourStem, ts.hourBranch, ts.hourCycle);
+
+  // Per-field match: compare BOTH characters AND cycle indices
+  const yCharMatch = !ts?.error && !w?.error && ts.yearStem === w.yearStem && ts.yearBranch === w.yearBranch;
+  const yIdxMatch = !ts?.error && !w?.error && ts.yearCycle === w.yearCycle;
+  const mCharMatch = !ts?.error && !w?.error && ts.monthStem === w.monthStem && ts.monthBranch === w.monthBranch;
+  const mIdxMatch = !ts?.error && !w?.error && ts.monthCycle === w.monthCycle;
+  const dCharMatch = !ts?.error && !w?.error && ts.dayStem === w.dayStem && ts.dayBranch === w.dayBranch;
+  const dIdxMatch = !ts?.error && !w?.error && ts.dayCycle === w.dayCycle;
+  const hCharMatch = !ts?.error && !w?.error && ts.hourStem === w.hourStem && ts.hourBranch === w.hourBranch;
+  const hIdxMatch = !ts?.error && !w?.error && ts.hourCycle === w.hourCycle;
+
+  // Show ✅ if both match, ⚠️ if only index matches (encoding issue), ❌ if neither
+  const matchIcon = (charOk, idxOk) => charOk && idxOk ? '✅' : idxOk ? '⚠️' : '❌';
+  const yIcon = matchIcon(yCharMatch, yIdxMatch);
+  const mIcon = matchIcon(mCharMatch, mIdxMatch);
+  const dIcon = matchIcon(dCharMatch, dIdxMatch);
+  const hIcon = matchIcon(hCharMatch, hIdxMatch);
 
   const icon = r.match ? '✅' : r.tsResult?.error || r.wasmResult?.error ? '⚠️' : '❌';
 
-  md += `| ${i + 1} | ${r.date.slice(0, 19)} | ${lunarDate} | ${yearG} ${yMatch ? '✅' : '❌'} | ${monthG} ${mMatch ? '✅' : '❌'} | ${dayG} ${dMatch ? '✅' : '❌'} | ${hourG} ${hMatch ? '✅' : '❌'} | ${icon} |\n`;
+  md += `| ${i + 1} | ${r.date.slice(0, 19)} | ${lunarDate} | ${yearG} ${yIcon} | ${monthG} ${mIcon} | ${dayG} ${dIcon} | ${hourG} ${hIcon} | ${icon} |\n`;
 }
 
 // Benchmark results

@@ -206,12 +206,16 @@ pub struct LunisolarResult {
     pub is_leap_month: bool,
     pub year_stem: String,
     pub year_branch: String,
+    pub year_cycle: usize,
     pub month_stem: String,
     pub month_branch: String,
+    pub month_cycle: usize,
     pub day_stem: String,
     pub day_branch: String,
+    pub day_cycle: usize,
     pub hour_stem: String,
     pub hour_branch: String,
+    pub hour_cycle: usize,
 }
 
 // ── Main conversion function ─────────────────────────────────────────────────
@@ -386,10 +390,10 @@ fn from_solar_date_core(
         + ls as f64 * 1000.0;
 
     // Sexagenary cycles
-    let (y_stem, y_branch, _) = year_ganzhi(lunar_year);
-    let (m_stem, m_branch, _) = month_ganzhi(lunar_year, target_period.month_number);
-    let (d_stem, d_branch, _) = day_ganzhi(local_wall_ms);
-    let (h_stem, h_branch, _) = hour_ganzhi(local_wall_ms, d_stem);
+    let (y_stem, y_branch, y_cycle) = year_ganzhi(lunar_year);
+    let (m_stem, m_branch, m_cycle) = month_ganzhi(lunar_year, target_period.month_number);
+    let (d_stem, d_branch, d_cycle) = day_ganzhi(local_wall_ms);
+    let (h_stem, h_branch, h_cycle) = hour_ganzhi(local_wall_ms, d_stem);
 
     Ok(LunisolarResult {
         lunar_year,
@@ -398,12 +402,16 @@ fn from_solar_date_core(
         is_leap_month: target_period.is_leap,
         year_stem: y_stem.to_string(),
         year_branch: y_branch.to_string(),
+        year_cycle: y_cycle,
         month_stem: m_stem.to_string(),
         month_branch: m_branch.to_string(),
+        month_cycle: m_cycle,
         day_stem: d_stem.to_string(),
         day_branch: d_branch.to_string(),
+        day_cycle: d_cycle,
         hour_stem: h_stem.to_string(),
         hour_branch: h_branch.to_string(),
+        hour_cycle: h_cycle,
     })
 }
 
