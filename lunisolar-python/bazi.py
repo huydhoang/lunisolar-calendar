@@ -931,8 +931,12 @@ def generate_narrative(
 # ============================================================
 
 if __name__ == "__main__":
-    # Demo with cycle number input (甲子=1, 乙丑=2, 丙寅=3, 丁巳=54)
-    chart = build_chart(1, 2, 3, 54, "male")
+    solar_date = input("Enter solar date (YYYY-MM-DD): ")
+    solar_time = input("Enter solar time (HH:MM, default 12:00): ").strip() or "12:00"
+    gender = input("Enter gender (male/female): ")
+
+    dto = solar_to_lunisolar(solar_date, solar_time)
+    chart = build_chart(dto.year_cycle, dto.month_cycle, dto.day_cycle, dto.hour_cycle, gender)
 
     score, strength = score_day_master(chart)
     interactions = detect_branch_interactions(chart)
