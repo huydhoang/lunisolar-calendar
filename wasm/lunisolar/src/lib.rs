@@ -475,7 +475,7 @@ mod tests {
 
     #[test]
     fn test_day_ganzhi_reference() {
-        // 4 AD-01-31 should be Jiazi (cycle 1) — uses UTC date for day counting
+        // 4 AD-01-31 should be Jiazi (cycle 1) — anchor day for sexagenary cycle
         let ref_ms = days_from_civil(4, 1, 31) as f64 * 86400000.0;
         let (stem, branch, cycle) = day_ganzhi(ref_ms);
         assert_eq!(stem, "甲");
