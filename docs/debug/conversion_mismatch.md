@@ -1,5 +1,5 @@
 ```bash
-$python data/lunisolar_v2.py --date 2025-10-08 --time 11:00
+$python lunisolar-python/lunisolar_v2.py --date 2025-10-08 --time 11:00
 2025-10-08 13:35:42,118 - INFO - Using China Standard Time (CST, UTC+8) for calculations
 2025-10-08 13:35:42,119 - INFO - Converting 2025-10-08 11:00 to lunisolar
 2025-10-08 13:35:42,315 - INFO - Conversion completed: 2025-8-17
@@ -16,7 +16,7 @@ Hour: 甲午 (jiǎwǔ) [7] -- Incorrect, should have been 壬午 renwu (correct 
 
 Based on the provided files, here is the explanation for the incorrect day and hour results:
 
-The root cause of the error lies in the incorrect handling of timezones within the `ganzhi_day` method in `data/lunisolar_v2.py`. This initial error then cascades, causing the subsequent error in the hour calculation.
+The root cause of the error lies in the incorrect handling of timezones within the `ganzhi_day` method in `lunisolar-python/lunisolar_v2.py`. This initial error then cascades, causing the subsequent error in the hour calculation.
 
 ### 1. Incorrect Day Calculation (`ganzhi_day`)
 
@@ -25,7 +25,7 @@ The `SexagenaryEngine.ganzhi_day` method is responsible for calculating the day'
 -   **The Flaw:** The method receives a timezone-aware datetime object for the local time (CST, UTC+8). However, it immediately strips this crucial timezone information by calling `.replace(tzinfo=None)`.
 
     ```python
-    # from data/lunisolar_v2.py in SexagenaryEngine.ganzhi_day
+    # from lunisolar-python/lunisolar_v2.py in SexagenaryEngine.ganzhi_day
     if target_local.tzinfo is not None:
         target_date = target_local.replace(tzinfo=None) # This line is the error
     ```

@@ -6,9 +6,9 @@ on:
       - '.github/workflows/test-lunisolar-wasm.yml'
       - 'tests/lunisolar-wasm/compare.mjs'
       - 'tests/lunisolar-wasm/python_reference.py'
-      - 'wasm/lunisolar-rs/**'
-      - 'wasm/lunisolar-emcc/**'
-      - 'archive/pkg-ts/src/**'
+      - 'ports/lunisolar-rs/**'
+      - 'ports/lunisolar-emcc/**'
+      - 'ports/lunisolar-ts/src/**'
   workflow_dispatch:
 
 jobs:
@@ -60,21 +60,21 @@ jobs:
 
       # ── 6. Build TypeScript package (archived, for accuracy comparison) ───
       - name: Install npm dependencies
-        working-directory: archive/pkg-ts
+        working-directory: ports/lunisolar-ts
         run: npm ci
 
       - name: Build TypeScript package
-        working-directory: archive/pkg-ts
+        working-directory: ports/lunisolar-ts
         run: npm run build
 
       # ── 7. Build Rust WASM package ───────────────────────────────────────
       - name: Build lunisolar WASM (Rust / wasm-pack)
-        working-directory: wasm/lunisolar-rs
+        working-directory: ports/lunisolar-rs
         run: wasm-pack build --target nodejs --release
 
       # ── 8. Build Emscripten WASM package ─────────────────────────────────
       - name: Build lunisolar WASM (Emscripten / emcc)
-        working-directory: wasm/lunisolar-emcc
+        working-directory: ports/lunisolar-emcc
         run: bash build.sh
 
       # ── 9. Verify build artifacts ────────────────────────────────────────
@@ -83,11 +83,11 @@ jobs:
           echo "=== DE440s ephemeris (git-lfs) ==="
           ls -lh nasa/de440s.bsp
           echo ""
-          echo "=== TypeScript package (archived) ==="
-          ls -lh archive/pkg-ts/dist/index.mjs archive/pkg-ts/dist/index.cjs
+          echo "=== TypeScript package ==="
+          ls -lh ports/lunisolar-ts/dist/index.mjs ports/lunisolar-ts/dist/index.cjs
           echo ""
           echo "=== Rust WASM package ==="
-          ls -lh wasm/lunisolar-rs/pkg/lunisolar_wasm.js wasm/lunisolar-rs/pkg/lunisolar_wasm_bg.wasm
+          ls -lh ports/lunisolar-rs/pkg/lunisolar_wasm.js ports/lunisolar-rs/pkg/lunisolar_wasm_bg.wasm
           echo ""
           echo "=== Emscripten WASM package ==="
           ls -lh pkg/lunisolar_emcc.mjs pkg/lunisolar_emcc.wasm

@@ -230,9 +230,9 @@ tests/lunisolar-wasm/package.json
 tests/lunisolar-wasm/package-lock.json
 
 # Rust / WASM build artifacts
-wasm/*/target/
-wasm/*/pkg/
-wasm/*/Cargo.lock
+ports/*/target/
+ports/*/pkg/
+ports/*/Cargo.lock
 
 # Emscripten build artifacts (output to root pkg/)
 pkg/lunisolar_emcc.mjs

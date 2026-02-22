@@ -6,7 +6,7 @@ on:
       - main
     paths:
       - 'pkg/**'
-      - 'wasm/lunisolar-emcc/**'
+      - 'ports/lunisolar-emcc/**'
   workflow_dispatch:
 
 jobs:
@@ -27,7 +27,7 @@ jobs:
           version: 'latest'
 
       - name: Build WASM
-        run: bash wasm/lunisolar-emcc/build.sh
+        run: bash ports/lunisolar-emcc/build.sh
 
       - name: Publish to npm
         env:

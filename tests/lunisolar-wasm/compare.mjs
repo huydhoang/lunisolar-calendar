@@ -21,13 +21,13 @@ const ROOT = resolve(__dirname, '..', '..');
 // ── 1. Load the TypeScript package ──────────────────────────────────────────
 
 const { LunisolarCalendar, ConstructionStars, GreatYellowPath, configure } = await import(
-  resolve(ROOT, 'archive', 'pkg-ts', 'dist', 'index.mjs')
+  resolve(ROOT, 'ports', 'lunisolar-ts', 'dist', 'index.mjs')
 );
 configure({ strategy: 'static' });
 
 // ── 2. Load the Rust WASM package ───────────────────────────────────────────
 
-const wasm = await import(resolve(ROOT, 'wasm', 'lunisolar-rs', 'pkg', 'lunisolar_wasm.js'));
+const wasm = await import(resolve(ROOT, 'ports', 'lunisolar-rs', 'pkg', 'lunisolar_wasm.js'));
 
 // ── 3. Load the Emscripten WASM package ─────────────────────────────────────
 

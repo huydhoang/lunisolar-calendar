@@ -9,7 +9,7 @@
 
 ## 1. What We Built
 
-Our vendored WASM package lives at `wasm/swisseph/`. It compiles the official
+Our vendored WASM package lives at `ports/swisseph-rs/`. It compiles the official
 Swiss Ephemeris C source (v2.10.03 from [aloistr/swisseph](https://github.com/aloistr/swisseph))
 to `wasm32-unknown-unknown` using the Rust `cc` crate, with wasm-bindgen for
 typed JS/TypeScript interop. The `.se1` ephemeris data files are embedded
@@ -33,15 +33,9 @@ directly in the binary — no external data download is needed at runtime.
 ### 2.1 Package layout
 
 ```
-wasm/swisseph/
+ports/swisseph-rs/
 ├── Cargo.toml            # cdylib + rlib; deps: wasm-bindgen, cc, libm
 ├── build.rs              # cc crate compiles C source; sets WASM-specific flags
-├── vendor/
-│   └── swisseph/         # Vendored SE C source (v2.10.03 from aloistr/swisseph)
-│       ├── swecl.c
-│       ├── swedate.c
-│       ├── sweph.c       # ... 9 core C files
-│       └── *.h
 ├── ephe/
 │   ├── sepl_18.se1       # Swiss Ephemeris Sun/planets data file (~1.3 MB)
 │   └── semo_18.se1       # Swiss Ephemeris Moon data file (~0.7 MB)
@@ -135,7 +129,7 @@ generates thin, typed JS/TS bindings.
 ### 3.3 Advantages of wasm-bindgen
 
 1. **No Emscripten SDK in CI** — `rustup` and `wasm-pack` install in seconds,
-   not gigabytes. Both WASM modules in this repo (`wasm/swisseph/` and `wasm/`)
+   not gigabytes. Both WASM modules in this repo (`ports/swisseph-rs/` and `ports/`)
    use the same toolchain.
 
 2. **Typed JS/TS bindings** — wasm-bindgen auto-generates `.d.ts` files.
@@ -148,8 +142,8 @@ generates thin, typed JS/TS bindings.
 4. **Smaller JS surface** — ~10 KB wasm-bindgen glue vs ~500 KB Emscripten
    runtime.
 
-5. **Unified Rust ecosystem** — both the ephemeris engine (`wasm/swisseph/`)
-   and the calendar logic (`wasm/`) share the same build flags, target, and
+5. **Unified Rust ecosystem** — both the ephemeris engine (`ports/swisseph-rs/`)
+   and the calendar logic (`ports/`) share the same build flags, target, and
    `wasm-pack` workflow.
 
 6. **Control over what gets compiled** — we vendor only the 9 core SE C files
@@ -288,7 +282,7 @@ maintained by Alois Treindl, co-author of Swiss Ephemeris).
 **Chosen approach: Vendored copy + scheduled CI version check.**
 
 1. The 9 core C files + headers are vendored from `aloistr/swisseph` at tag
-   `v2.10.03` into `wasm/swisseph/vendor/swisseph/`.
+   `v2.10.03` into `vendor/swisseph/`.
 2. A scheduled CI workflow (`.github/workflows/check-swisseph-update.yml`)
    runs weekly, fetches the latest tag, compares it to the vendored version
    string in `sweph.h`, and opens a GitHub issue if a newer version is

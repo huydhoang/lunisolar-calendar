@@ -4,7 +4,7 @@ This document outlines the root cause of the incorrect day and hour calculations
 
 ## 1. The Core Problem
 
-The bug originates in the `SexagenaryEngine.ganzhi_day` method within `data/lunisolar_v2.py`.
+The bug originates in the `SexagenaryEngine.ganzhi_day` method within `lunisolar-python/lunisolar_v2.py`.
 
 1.  **Incorrect Timezone Handling**: The method receives a timezone-aware local datetime object but immediately strips its timezone information by calling `.replace(tzinfo=None)`. This treats the local time as a naive datetime, leading to an incorrect day count when comparing it against the fixed historical anchor.
 2.  **Cascading Error**: The incorrect day stem calculated by `ganzhi_day` is then fed into the `ganzhi_hour` method. Since the hour stem calculation (Wu Shu Dun rule) is dependent on the day stem, this error cascades, resulting in an incorrect hour stem.
@@ -23,7 +23,7 @@ The day and hour calculations must be performed in a consistent timezone (UTC) t
 
 The `ganzhi_day` method should convert the local datetime to UTC before performing calculations.
 
-**Original Code (`data/lunisolar_v2.py`):**
+**Original Code (`lunisolar-python/lunisolar_v2.py`):**
 ```python
 def ganzhi_day(self, target_local: datetime) -> Tuple[str, str, int]:
     """Day cycle using continuous count and documented historical anchors.
@@ -71,7 +71,7 @@ def ganzhi_day(self, target_local: datetime) -> Tuple[str, str, int]:
 
 This method should also be adjusted to handle timezones correctly, especially for the 23:00 hour crossover.
 
-**Original Code (`data/lunisolar_v2.py`):**
+**Original Code (`lunisolar-python/lunisolar_v2.py`):**
 ```python
 def ganzhi_hour(self, target_local_solar_time: datetime, base_day_stem: str) -> Tuple[str, str, int]:
     """Apply Wu Shu Dun; for 23:00–23:59, advance day before computing hour stem/branch.
@@ -133,9 +133,9 @@ To support IANA timezones like `Asia/Ho_Chi_Minh`, we will use the `pytz` librar
 
 **Instructions:**
 1.  Ensure `pytz` is in your `requirements.txt` file and installed.
-2.  Replace the entire content of `data/timezone_handler.py` with the code below.
+2.  Replace the entire content of `lunisolar-python/timezone_handler.py` with the code below.
 
-**New `data/timezone_handler.py`:**
+**New `lunisolar-python/timezone_handler.py`:**
 ```python
 #!/usr/bin/env python3
 """
@@ -239,7 +239,7 @@ class TimezoneHandler:
 
 Finally, update the main function to accept a timezone name.
 
-**Change in `data/lunisolar_v2.py`:**
+**Change in `lunisolar-python/lunisolar_v2.py`:**
 ```python
 def solar_to_lunisolar(
     solar_date: str,
@@ -263,7 +263,7 @@ def solar_to_lunisolar(
 
 And update the command-line interface to accept a timezone.
 
-**Change in `if __name__ == "__main__"` block in `data/lunisolar_v2.py`:**
+**Change in `if __name__ == "__main__"` block in `lunisolar-python/lunisolar_v2.py`:**
 ```python
 if __name__ == "__main__":
     import argparse
