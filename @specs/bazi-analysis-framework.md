@@ -138,9 +138,16 @@ polarity to Day Master; **偏 (Piān / Indirect)** = same polarity as Day Master
 - 财生官杀 — Wealth produces Officer/Killing → money brings power
 - 杀印相生 — Killing produces Resource → pressure transforms into wisdom
 
+> *(Note: whether a chain is beneficial depends on Day-Master strength,
+> month-position/rooting, and branch/stem interactions — the chains are
+> heuristics, not unconditional rules.)*
+
 **Gender conventions**:
 - **Men**: 正财 = wife, 偏财 = lovers / windfall wealth, 官杀 = children, 印 = mother
 - **Women**: 正官 = husband, 七杀 = lovers / pressure, 食伤 = children, 印 = mother
+
+> *These are conventional correspondences; exact family-role mapping should be
+> confirmed by context (pillar position, strength, and combinations).*
 
 ---
 
@@ -173,9 +180,9 @@ composition. These are classified by strength:
 | 戌 (Xū) | Dog | 戊 (Wù) Earth | 辛 (Xīn) Metal | 丁 (Dīng) Fire |
 | 亥 (Hài) | Pig | 壬 (Rén) Water | 甲 (Jiǎ) Wood | — |
 
-> **Mnemonic pattern**: The four cardinal branches (子, 卯, 午, 酉) contain only
-> one or two stems. The four corner/storage branches (丑, 辰, 未, 戌) and the
-> four traveling branches (寅, 巳, 申, 亥) contain two or three stems each.
+> **Mnemonic pattern**: The four cardinal branches (子, 卯, 午, 酉) each contain
+> a single main hidden stem (本气); the other branches (丑、辰、未、戌、寅、巳、申、亥)
+> include 2–3 stems (中气/余气).
 
 ### 2.3 Usage
 
