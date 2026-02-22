@@ -180,20 +180,18 @@ class ConstructionStars:
         self._solar_term_cache[date_key] = is_term
         return is_term
 
-    def _star_index_from_branches(self, building_branch: str, day_branch: str) -> int:
+    def _star_index_from_branches(self, building_branch_index: int, day_branch_index: int) -> int:
         """Calculate star index: (day_branch_index - building_branch_index) mod 12"""
-        b_idx = BRANCH_INDEX[building_branch]
-        d_idx = BRANCH_INDEX[day_branch]
-        return (d_idx - b_idx) % 12
+        return (day_branch_index - building_branch_index) % 12
 
     def get_construction_star(self, date_obj: datetime, dto: LunisolarDateDTO,
-                              prev_star: str = None) -> str:
+                              prev_star_index: int = None) -> str:
         """Get construction star for date (with solar term repeat rule)
         
         Args:
             date_obj: Target date
             dto: Lunisolar date data for target
-            prev_star: Star from previous day (for sequential tracking)
+            prev_star_index: 0-based index of the previous day's star (for sequential tracking)
         """
         date_str = date_obj.strftime("%Y-%m-%d")
         is_solar_term = self._is_principal_solar_term_day(date_obj)
@@ -202,35 +200,19 @@ class ConstructionStars:
 
         # The base calculation is what the star *would* be without sequential logic.
         # We can use it for comparison and for the first day.
-        base_star_index = self._star_index_from_branches(building_branch, dto.day_branch)
+        base_star_index = self._star_index_from_branches(BRANCH_INDEX[building_branch], BRANCH_INDEX[dto.day_branch])
         base_star = self.CONSTRUCTION_STARS[base_star_index]
 
-        if prev_star is None:
+        if prev_star_index is None:
             # First day of a sequence, use the base calculation.
             actual_star = base_star
-            # print(f"\n  📅 Date: {date_str} (Sequence Start)")
-            # print(f"     Lunar month: {dto.month} ({'閏' if dto.is_leap_month else ''})")
-            # print(f"     Building branch: {building_branch} (index {BRANCH_INDEX[building_branch]})")
-            # print(f"     Day branch: {dto.day_branch} (index {BRANCH_INDEX[dto.day_branch]})")
-            # print(f"     Star calculation: ({BRANCH_INDEX[dto.day_branch]} - {BRANCH_INDEX[building_branch]}) % 12 = {base_star_index}")
-            # print(f"     Star: {actual_star}")
         elif is_solar_term:
             # Solar term day: repeat previous day's star
-            actual_star = prev_star
-            # print(f"\n  🔄 SOLAR TERM DAY: {date_str}")
-            # print(f"     Repeating previous day's star: {prev_star}")
-            # print(f"     (Base calculation would be: {base_star})")
+            actual_star = self.CONSTRUCTION_STARS[prev_star_index]
         else:
             # Normal day: increment from the previous day's star
-            prev_star_index = self.CONSTRUCTION_STARS.index(prev_star)
             actual_star_index = (prev_star_index + 1) % 12
             actual_star = self.CONSTRUCTION_STARS[actual_star_index]
-            # print(f"\n  ➡️  Date: {date_str} (Sequential)")
-            # print(f"     Previous star: {prev_star} (index {prev_star_index})")
-            # print(f"     Continuing sequence: ({prev_star_index} + 1) % 12 = {actual_star_index}")
-            # print(f"     Star: {actual_star}")
-            # if actual_star != base_star:
-            #     print(f"     (Base calculation would be: {base_star})")
 
         return actual_star
 
@@ -242,11 +224,10 @@ class ConstructionStars:
 class GreatYellowPath:
     """Great Yellow Path (大黄道) Calculator"""
 
-    def calculate_spirit(self, lunar_month: int, day_branch_char: str) -> GreatYellowPathSpirit:
+    def calculate_spirit(self, lunar_month: int, day_branch_index: int) -> GreatYellowPathSpirit:
         """Calculate spirit for the day"""
-        day_branch_idx = BRANCH_INDEX[day_branch_char]
         azure_start = AZURE_DRAGON_MONTHLY_START[lunar_month]
-        spirit_index = (day_branch_idx - azure_start.index) % 12
+        spirit_index = (day_branch_index - azure_start.index) % 12
         return SPIRIT_SEQUENCE[spirit_index]
 
 
@@ -263,13 +244,13 @@ class HuangdaoCalculator:
         self.great_yellow_path = GreatYellowPath()
 
     def calculate_day_info(self, date_obj: datetime, dto: LunisolarDateDTO = None,
-                          prev_star: str = None) -> Dict:
+                          prev_star_index: int = None) -> Dict:
         """Calculate complete information for a single day
         
         Args:
             date_obj: Target date
             dto: Lunisolar data (optional, will fetch if not provided)
-            prev_star: Star from previous day for sequential tracking
+            prev_star_index: 0-based index of the previous day's star for sequential tracking
         """
         # Get lunisolar data (use provided DTO if available, otherwise fetch)
         if dto is None:
@@ -279,11 +260,11 @@ class HuangdaoCalculator:
         is_solar_term = self.construction_stars._is_principal_solar_term_day(date_obj)
         
         # Construction Star with sequential tracking
-        star = self.construction_stars.get_construction_star(date_obj, dto, prev_star)
+        star = self.construction_stars.get_construction_star(date_obj, dto, prev_star_index)
         ausp = self.construction_stars.AUSPICIOUSNESS[star]
         
         # Great Yellow Path
-        spirit = self.great_yellow_path.calculate_spirit(dto.month, dto.day_branch)
+        spirit = self.great_yellow_path.calculate_spirit(dto.month, BRANCH_INDEX[dto.day_branch])
         
         return {
             "date": date_obj.strftime("%Y-%m-%d"),
@@ -335,14 +316,14 @@ class HuangdaoCalculator:
         print(f"{'-'*150}")
         
         # Calculate and print each day using batched results with sequential tracking
-        prev_star = None
+        prev_star_index = None
         
         for day, dto in enumerate(lunisolar_results, start=1):
             date_obj = datetime(year, month, day)
-            info = self.calculate_day_info(date_obj, dto, prev_star)
+            info = self.calculate_day_info(date_obj, dto, prev_star_index)
             
             # Update tracking variables for next iteration
-            prev_star = info["star"]
+            prev_star_index = self.construction_stars.CONSTRUCTION_STARS.index(info["star"])
             
             date_str = f"{day:02d}"
             star = info["star"]

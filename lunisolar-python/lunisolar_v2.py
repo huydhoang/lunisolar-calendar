@@ -943,19 +943,17 @@ def solar_to_lunisolar(
             logger.setLevel(original_level)
 
 
-def get_stem_pinyin(stem_char: str) -> str:
-    """Get pinyin for a heavenly stem character."""
-    for char, pinyin, _, _ in HEAVENLY_STEMS:
-        if char == stem_char:
-            return pinyin
+def get_stem_pinyin(stem_index: int) -> str:
+    """Get pinyin for a heavenly stem by 0-based index (0=甲 … 9=癸)."""
+    if 0 <= stem_index < len(HEAVENLY_STEMS):
+        return HEAVENLY_STEMS[stem_index][1]
     return ""
 
 
-def get_branch_pinyin(branch_char: str) -> str:
-    """Get pinyin for an earthly branch character."""
-    for char, pinyin, *_ in EARTHLY_BRANCHES:
-        if char == branch_char:
-            return pinyin
+def get_branch_pinyin(branch_index: int) -> str:
+    """Get pinyin for an earthly branch by 0-based index (0=子 … 11=亥)."""
+    if 0 <= branch_index < len(EARTHLY_BRANCHES):
+        return EARTHLY_BRANCHES[branch_index][1]
     return ""
 
 
@@ -974,15 +972,15 @@ if __name__ == "__main__":
         # Pass the timezone to the main function
         result = solar_to_lunisolar(args.date, args.time, args.tz)
         
-        # Get pinyin for each component
-        year_stem_pinyin = get_stem_pinyin(result.year_stem)
-        year_branch_pinyin = get_branch_pinyin(result.year_branch)
-        month_stem_pinyin = get_stem_pinyin(result.month_stem)
-        month_branch_pinyin = get_branch_pinyin(result.month_branch)
-        day_stem_pinyin = get_stem_pinyin(result.day_stem)
-        day_branch_pinyin = get_branch_pinyin(result.day_branch)
-        hour_stem_pinyin = get_stem_pinyin(result.hour_stem)
-        hour_branch_pinyin = get_branch_pinyin(result.hour_branch)
+        # Get pinyin for each component (stem index = (cycle-1)%10, branch index = (cycle-1)%12)
+        year_stem_pinyin = get_stem_pinyin((result.year_cycle - 1) % 10)
+        year_branch_pinyin = get_branch_pinyin((result.year_cycle - 1) % 12)
+        month_stem_pinyin = get_stem_pinyin((result.month_cycle - 1) % 10)
+        month_branch_pinyin = get_branch_pinyin((result.month_cycle - 1) % 12)
+        day_stem_pinyin = get_stem_pinyin((result.day_cycle - 1) % 10)
+        day_branch_pinyin = get_branch_pinyin((result.day_cycle - 1) % 12)
+        hour_stem_pinyin = get_stem_pinyin((result.hour_cycle - 1) % 10)
+        hour_branch_pinyin = get_branch_pinyin((result.hour_cycle - 1) % 12)
         
         print(f"Solar: {args.date} {args.time}")
         print(f"Lunisolar: {result.year}-{result.month}-{result.day} {result.hour}:00")
