@@ -162,8 +162,7 @@ static void month_ganzhi(int lunar_year, unsigned lunar_month,
 static void day_ganzhi(double timestamp_ms, int tz_offset_seconds,
                        unsigned *stem_idx, unsigned *branch_idx,
                        unsigned *cycle) {
-    /* Use the CST date of the moment for day counting
-       (Chinese calendar convention: ganzhi is always CST-based). */
+    /* Use date in the provided timezone for day counting. */
     long long ref_days = days_from_civil(4, 1, 31);
     long long total_s = (long long)floor(timestamp_ms / 1000.0) + tz_offset_seconds;
     long long day_from_epoch;

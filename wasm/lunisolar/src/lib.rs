@@ -123,7 +123,7 @@ fn day_ganzhi(timestamp_ms: f64, tz_offset_seconds: i32) -> (&'static str, &'sta
     // Anchor: 4 AD-01-31 is Jiazi day (cycle 1)
     let ref_days = days_from_civil(4, 1, 31);
 
-    // Use CST date of the moment for day counting (Chinese calendar convention).
+    // Use date in the provided timezone for day counting.
     let total_s = (timestamp_ms / 1000.0).floor() as i64 + tz_offset_seconds as i64;
     let day_from_epoch = total_s.div_euclid(86400);
 
