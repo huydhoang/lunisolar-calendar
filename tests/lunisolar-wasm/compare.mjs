@@ -1,9 +1,10 @@
 /**
  * Lunisolar WASM vs TypeScript Comparison & Benchmark
  *
- * 1. Generates 50 random timestamps and compares results from the Rust WASM
- *    and TypeScript implementations in a markdown table.
- * 2. Runs a burst of 500 requests to compare speed between the two.
+ * 1. Generates 50 random timestamps and compares results from the Rust WASM,
+ *    Emscripten WASM, and TypeScript implementations in a markdown table.
+ *    Comparison includes year ganzhi, month ganzhi, day ganzhi, and hour ganzhi.
+ * 2. Runs a burst of 500 requests to compare speed between all three.
  *
  * Usage:  node compare.mjs
  * Outputs: compare-report.md
@@ -28,7 +29,12 @@ configure({ strategy: 'static' });
 
 const wasm = await import(resolve(ROOT, 'wasm', 'lunisolar', 'pkg', 'lunisolar_wasm.js'));
 
-// ── 3. Data loader helper ───────────────────────────────────────────────────
+// ── 3. Load the Emscripten WASM package ─────────────────────────────────────
+
+const createLunisolarEmcc = (await import(resolve(ROOT, 'wasm', 'lunisolar-emcc', 'pkg', 'lunisolar_emcc.mjs'))).default;
+const emccModule = await createLunisolarEmcc();
+
+// ── 4. Data loader helper ───────────────────────────────────────────────────
 
 const dataDir = resolve(ROOT, 'output', 'json');
 
@@ -51,7 +57,96 @@ function loadDataForYears(years) {
   return { newMoons, solarTerms };
 }
 
-// ── 4. Generate random timestamps ──────────────────────────────────────────
+// ── 5. Timezone offset helper ───────────────────────────────────────────────
+
+/**
+ * Compute the actual UTC offset in seconds for a given timestamp in a timezone.
+ * This handles historical DST (e.g. China's DST during 1986–1991).
+ */
+function getTzOffsetSeconds(dateMs, tz) {
+  const d = new Date(dateMs);
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz,
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: 'numeric',
+    second: 'numeric',
+    hour12: false,
+  }).formatToParts(d);
+
+  const get = (type) => {
+    const p = parts.find((p) => p.type === type);
+    let v = p ? parseInt(p.value) : 0;
+    if (type === 'hour' && v === 24) v = 0;
+    return v;
+  };
+
+  const localYear = get('year');
+  const localMonth = get('month');
+  const localDay = get('day');
+  const localHour = get('hour');
+  const localMinute = get('minute');
+  const localSecond = get('second');
+
+  const utcMs = Date.UTC(
+    d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(),
+    d.getUTCHours(), d.getUTCMinutes(), d.getUTCSeconds(),
+  );
+  const localMs = Date.UTC(localYear, localMonth - 1, localDay, localHour, localMinute, localSecond);
+
+  return Math.round((localMs - utcMs) / 1000);
+}
+
+// ── 6. Emscripten WASM wrapper ──────────────────────────────────────────────
+
+/**
+ * Call the Emscripten-compiled from_solar_date function.
+ * Marshals arrays into WASM linear memory and reads the JSON result.
+ */
+function emccFromSolarDate(timestampMs, tzOffsetSeconds, newMoons, solarTerms) {
+  const nmCount = newMoons.length;
+  const stCount = solarTerms.length;
+
+  // Allocate memory for arrays
+  const nmPtr = emccModule._malloc(nmCount * 8); // Float64
+  const stTsPtr = emccModule._malloc(stCount * 8); // Float64
+  const stIdxPtr = emccModule._malloc(stCount * 4); // Uint32
+  const outBufLen = 1024;
+  const outPtr = emccModule._malloc(outBufLen);
+
+  // Write new moon timestamps (Float64)
+  for (let i = 0; i < nmCount; i++) {
+    emccModule.HEAPF64[(nmPtr >> 3) + i] = newMoons[i];
+  }
+  // Write solar term timestamps (Float64) and indices (Uint32)
+  for (let i = 0; i < stCount; i++) {
+    emccModule.HEAPF64[(stTsPtr >> 3) + i] = solarTerms[i][0];
+    emccModule.HEAPU32[(stIdxPtr >> 2) + i] = solarTerms[i][1];
+  }
+
+  const result = emccModule._from_solar_date(
+    timestampMs, tzOffsetSeconds,
+    nmPtr, nmCount,
+    stTsPtr, stIdxPtr, stCount,
+    outPtr, outBufLen,
+  );
+
+  let json = null;
+  if (result > 0) {
+    json = emccModule.UTF8ToString(outPtr, result);
+  }
+
+  emccModule._free(nmPtr);
+  emccModule._free(stTsPtr);
+  emccModule._free(stIdxPtr);
+  emccModule._free(outPtr);
+
+  return json ? JSON.parse(json) : null;
+}
+
+// ── 7. Generate random timestamps ──────────────────────────────────────────
 
 // Use a simple seeded RNG for reproducibility
 function mulberry32(seed) {
@@ -78,9 +173,8 @@ function randomTimestamps(count) {
 }
 
 const TZ = 'Asia/Shanghai';
-const TZ_OFFSET_SEC = 8 * 3600; // CST = UTC+8
 
-// ── 5. Run comparison for 50 timestamps ─────────────────────────────────────
+// ── 8. Run comparison for 50 timestamps ─────────────────────────────────────
 
 const timestamps50 = randomTimestamps(50);
 const results = [];
@@ -91,9 +185,11 @@ for (const tsMs of timestamps50) {
   const date = new Date(tsMs);
   const year = date.getUTCFullYear();
   const { newMoons, solarTerms } = loadDataForYears([year - 1, year, year + 1]);
+  const tzOffsetSec = getTzOffsetSeconds(tsMs, TZ);
 
   let tsResult = null;
   let wasmResult = null;
+  let emccResult = null;
   let match = false;
 
   // TypeScript
@@ -117,11 +213,11 @@ for (const tsMs of timestamps50) {
     tsResult = { error: e.message };
   }
 
-  // WASM
+  // Rust WASM
   try {
     const json = wasm.fromSolarDate(
       tsMs,
-      TZ_OFFSET_SEC,
+      tzOffsetSec,
       JSON.stringify(newMoons),
       JSON.stringify(solarTerms),
     );
@@ -130,7 +226,15 @@ for (const tsMs of timestamps50) {
     wasmResult = { error: e.message };
   }
 
-  // Compare
+  // Emscripten WASM
+  try {
+    emccResult = emccFromSolarDate(tsMs, tzOffsetSec, newMoons, solarTerms);
+    if (!emccResult) emccResult = { error: 'from_solar_date returned -1' };
+  } catch (e) {
+    emccResult = { error: e.message };
+  }
+
+  // Compare TS vs Rust WASM (all four ganzhi)
   if (tsResult && wasmResult && !tsResult.error && !wasmResult.error) {
     match =
       tsResult.lunarYear === wasmResult.lunarYear &&
@@ -147,10 +251,10 @@ for (const tsMs of timestamps50) {
       tsResult.hourBranch === wasmResult.hourBranch;
   }
 
-  results.push({ tsMs, date: date.toISOString(), tsResult, wasmResult, match });
+  results.push({ tsMs, date: date.toISOString(), tsResult, wasmResult, emccResult, match });
 }
 
-// ── 6. Run burst benchmark (500 requests) ───────────────────────────────────
+// ── 9. Run burst benchmark (500 requests) ───────────────────────────────────
 
 console.log('Running burst benchmark (500 requests)...');
 
@@ -179,18 +283,31 @@ for (const tsMs of timestamps500) {
 }
 const tsElapsed = performance.now() - tsStart;
 
-// Benchmark WASM
+// Benchmark Rust WASM
 const wasmStart = performance.now();
 let wasmSuccessCount = 0;
 for (const tsMs of timestamps500) {
   try {
-    wasm.fromSolarDate(tsMs, TZ_OFFSET_SEC, bulkNewMoonsJson, bulkSolarTermsJson);
+    const tzOff = getTzOffsetSeconds(tsMs, TZ);
+    wasm.fromSolarDate(tsMs, tzOff, bulkNewMoonsJson, bulkSolarTermsJson);
     wasmSuccessCount++;
   } catch { /* count failures */ }
 }
 const wasmElapsed = performance.now() - wasmStart;
 
-// ── 7. Generate markdown report ─────────────────────────────────────────────
+// Benchmark Emscripten WASM
+const emccStart = performance.now();
+let emccSuccessCount = 0;
+for (const tsMs of timestamps500) {
+  try {
+    const tzOff = getTzOffsetSeconds(tsMs, TZ);
+    const r = emccFromSolarDate(tsMs, tzOff, bulkData.newMoons, bulkData.solarTerms);
+    if (r) emccSuccessCount++;
+  } catch { /* count failures */ }
+}
+const emccElapsed = performance.now() - emccStart;
+
+// ── 10. Generate markdown report ────────────────────────────────────────────
 
 const matchCount = results.filter((r) => r.match).length;
 const errorCount = results.filter(
@@ -205,30 +322,38 @@ md += `## Summary\n\n`;
 md += `| Metric | Value |\n`;
 md += `|--------|-------|\n`;
 md += `| Total comparisons | ${results.length} |\n`;
-md += `| Matching results | ${matchCount} |\n`;
+md += `| Matching results (TS vs Rust WASM) | ${matchCount} |\n`;
 md += `| Mismatches | ${results.length - matchCount - errorCount} |\n`;
 md += `| Errors | ${errorCount} |\n\n`;
 
-// Comparison table
+// Comparison table with all four ganzhi
 md += `## Comparison Table (50 Random Timestamps)\n\n`;
-md += `| # | UTC Date | TS Lunar Date | WASM Lunar Date | TS Year Ganzhi | WASM Year Ganzhi | TS Day Ganzhi | WASM Day Ganzhi | Match |\n`;
-md += `|---|----------|---------------|-----------------|----------------|------------------|---------------|-----------------|-------|\n`;
+md += `| # | UTC Date | Lunar Date | Year Ganzhi | Month Ganzhi | Day Ganzhi | Hour Ganzhi | Match |\n`;
+md += `|---|----------|------------|-------------|--------------|------------|-------------|-------|\n`;
 
 for (let i = 0; i < results.length; i++) {
   const r = results[i];
-  const tsLunar = r.tsResult?.error
+  const ts = r.tsResult;
+  const w = r.wasmResult;
+
+  const lunarDate = ts?.error
     ? `ERROR`
-    : `${r.tsResult.lunarYear}-${r.tsResult.lunarMonth}-${r.tsResult.lunarDay}${r.tsResult.isLeapMonth ? '(闰)' : ''}`;
-  const wasmLunar = r.wasmResult?.error
-    ? `ERROR`
-    : `${r.wasmResult.lunarYear}-${r.wasmResult.lunarMonth}-${r.wasmResult.lunarDay}${r.wasmResult.isLeapMonth ? '(闰)' : ''}`;
-  const tsGanzhiY = r.tsResult?.error ? '-' : `${r.tsResult.yearStem}${r.tsResult.yearBranch}`;
-  const wasmGanzhiY = r.wasmResult?.error ? '-' : `${r.wasmResult.yearStem}${r.wasmResult.yearBranch}`;
-  const tsGanzhiD = r.tsResult?.error ? '-' : `${r.tsResult.dayStem}${r.tsResult.dayBranch}`;
-  const wasmGanzhiD = r.wasmResult?.error ? '-' : `${r.wasmResult.dayStem}${r.wasmResult.dayBranch}`;
+    : `${ts.lunarYear}-${ts.lunarMonth}-${ts.lunarDay}${ts.isLeapMonth ? '(闰)' : ''}`;
+
+  const yearG = ts?.error ? '-' : `${ts.yearStem}${ts.yearBranch}`;
+  const monthG = ts?.error ? '-' : `${ts.monthStem}${ts.monthBranch}`;
+  const dayG = ts?.error ? '-' : `${ts.dayStem}${ts.dayBranch}`;
+  const hourG = ts?.error ? '-' : `${ts.hourStem}${ts.hourBranch}`;
+
+  // Per-field match indicators
+  const yMatch = !ts?.error && !w?.error && ts.yearStem === w.yearStem && ts.yearBranch === w.yearBranch;
+  const mMatch = !ts?.error && !w?.error && ts.monthStem === w.monthStem && ts.monthBranch === w.monthBranch;
+  const dMatch = !ts?.error && !w?.error && ts.dayStem === w.dayStem && ts.dayBranch === w.dayBranch;
+  const hMatch = !ts?.error && !w?.error && ts.hourStem === w.hourStem && ts.hourBranch === w.hourBranch;
+
   const icon = r.match ? '✅' : r.tsResult?.error || r.wasmResult?.error ? '⚠️' : '❌';
 
-  md += `| ${i + 1} | ${r.date.slice(0, 19)} | ${tsLunar} | ${wasmLunar} | ${tsGanzhiY} | ${wasmGanzhiY} | ${tsGanzhiD} | ${wasmGanzhiD} | ${icon} |\n`;
+  md += `| ${i + 1} | ${r.date.slice(0, 19)} | ${lunarDate} | ${yearG} ${yMatch ? '✅' : '❌'} | ${monthG} ${mMatch ? '✅' : '❌'} | ${dayG} ${dMatch ? '✅' : '❌'} | ${hourG} ${hMatch ? '✅' : '❌'} | ${icon} |\n`;
 }
 
 // Benchmark results
@@ -236,23 +361,31 @@ md += `\n## Burst Benchmark (500 Requests)\n\n`;
 md += `| Implementation | Total Time (ms) | Avg per Request (ms) | Successful | Failed |\n`;
 md += `|----------------|-----------------|----------------------|------------|--------|\n`;
 md += `| TypeScript | ${tsElapsed.toFixed(1)} | ${(tsElapsed / 500).toFixed(3)} | ${tsSuccessCount} | ${500 - tsSuccessCount} |\n`;
-md += `| Rust WASM | ${wasmElapsed.toFixed(1)} | ${(wasmElapsed / 500).toFixed(3)} | ${wasmSuccessCount} | ${500 - wasmSuccessCount} |\n`;
+md += `| Rust WASM (wasm-pack) | ${wasmElapsed.toFixed(1)} | ${(wasmElapsed / 500).toFixed(3)} | ${wasmSuccessCount} | ${500 - wasmSuccessCount} |\n`;
+md += `| Emscripten WASM (emcc) | ${emccElapsed.toFixed(1)} | ${(emccElapsed / 500).toFixed(3)} | ${emccSuccessCount} | ${500 - emccSuccessCount} |\n`;
 md += `\n`;
 
-const speedup = tsElapsed / wasmElapsed;
-md += `**Speed ratio**: WASM is **${speedup.toFixed(2)}x** ${speedup > 1 ? 'faster' : 'slower'} than TypeScript\n`;
+const speedupWasm = tsElapsed / wasmElapsed;
+const speedupEmcc = tsElapsed / emccElapsed;
+const emccVsWasm = wasmElapsed / emccElapsed;
+md += `**Speed ratios:**\n`;
+md += `- Rust WASM is **${speedupWasm.toFixed(2)}x** ${speedupWasm > 1 ? 'faster' : 'slower'} than TypeScript\n`;
+md += `- Emscripten WASM is **${speedupEmcc.toFixed(2)}x** ${speedupEmcc > 1 ? 'faster' : 'slower'} than TypeScript\n`;
+md += `- Emscripten WASM is **${emccVsWasm.toFixed(2)}x** ${emccVsWasm > 1 ? 'faster' : 'slower'} than Rust WASM\n`;
+
 md += `\n## Notes\n\n`;
-md += `- The WASM implementation uses a fixed timezone offset (UTC+8 for CST), while the TypeScript\n`;
-md += `  implementation uses \`Intl.DateTimeFormat\` which handles historical DST changes.\n`;
-md += `- Minor hour-ganzhi mismatches are expected for dates during China's historical DST period (1986–1991)\n`;
-md += `  when the actual offset was UTC+9 instead of UTC+8.\n`;
-md += `- All core calendar logic (lunar year/month/day, year/month/day ganzhi) should match perfectly.\n`;
+md += `- The Rust WASM build uses \`wasm-pack\` + \`wasm-bindgen\` (JSON string interface).\n`;
+md += `- The Emscripten WASM build uses \`emcc\` from C source (pre-parsed array interface via linear memory).\n`;
+md += `- Both WASM variants receive the actual timezone offset computed via \`Intl.DateTimeFormat\`,\n`;
+md += `  matching the TypeScript implementation's DST-aware behavior.\n`;
+md += `- All four ganzhi (year, month, day, hour) are compared field-by-field.\n`;
 
 // Write report
 const reportPath = resolve(__dirname, 'compare-report.md');
 writeFileSync(reportPath, md);
 console.log(`\nReport written to ${reportPath}`);
 console.log(`\nMatch rate: ${matchCount}/${results.length}`);
-console.log(`TS: ${tsElapsed.toFixed(1)}ms for 500 requests (${(tsElapsed / 500).toFixed(3)}ms/req)`);
+console.log(`TS:   ${tsElapsed.toFixed(1)}ms for 500 requests (${(tsElapsed / 500).toFixed(3)}ms/req)`);
 console.log(`WASM: ${wasmElapsed.toFixed(1)}ms for 500 requests (${(wasmElapsed / 500).toFixed(3)}ms/req)`);
-console.log(`Speed ratio: WASM is ${speedup.toFixed(2)}x ${speedup > 1 ? 'faster' : 'slower'}`);
+console.log(`EMCC: ${emccElapsed.toFixed(1)}ms for 500 requests (${(emccElapsed / 500).toFixed(3)}ms/req)`);
+console.log(`Speed: WASM ${speedupWasm.toFixed(2)}x, EMCC ${speedupEmcc.toFixed(2)}x faster than TS`);

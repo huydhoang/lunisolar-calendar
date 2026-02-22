@@ -6,12 +6,13 @@ on:
       - '.github/workflows/benchmark-lunisolar-wasm.yml'
       - 'tests/lunisolar-wasm/**'
       - 'wasm/lunisolar/**'
+      - 'wasm/lunisolar-emcc/**'
       - 'pkg/src/**'
   workflow_dispatch:
 
 jobs:
   benchmark:
-    name: Rust WASM vs TypeScript comparison
+    name: Rust WASM vs Emscripten WASM vs TypeScript
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -36,7 +37,16 @@ jobs:
       - name: Install wasm-pack
         run: curl -sSL https://rustwasm.github.io/wasm-pack/installer/init.sh | sh
 
-      # ── 4. Build TypeScript package ──────────────────────────────────────
+      # ── 4. Set up Emscripten ─────────────────────────────────────────────
+      - name: Set up Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 'latest'
+
+      - name: Verify emcc
+        run: emcc --version
+
+      # ── 5. Build TypeScript package ──────────────────────────────────────
       - name: Install npm dependencies
         working-directory: pkg
         run: npm ci
@@ -45,12 +55,17 @@ jobs:
         working-directory: pkg
         run: npm run build
 
-      # ── 5. Build Rust WASM package ───────────────────────────────────────
-      - name: Build lunisolar WASM
+      # ── 6. Build Rust WASM package ───────────────────────────────────────
+      - name: Build lunisolar WASM (Rust / wasm-pack)
         working-directory: wasm/lunisolar
         run: wasm-pack build --target nodejs --release
 
-      # ── 6. Verify build artifacts ────────────────────────────────────────
+      # ── 7. Build Emscripten WASM package ─────────────────────────────────
+      - name: Build lunisolar WASM (Emscripten / emcc)
+        working-directory: wasm/lunisolar-emcc
+        run: bash build.sh
+
+      # ── 8. Verify build artifacts ────────────────────────────────────────
       - name: Verify build artifacts
         run: |
           echo "=== TypeScript package ==="
@@ -58,12 +73,15 @@ jobs:
           echo ""
           echo "=== Rust WASM package ==="
           ls -lh wasm/lunisolar/pkg/lunisolar_wasm.js wasm/lunisolar/pkg/lunisolar_wasm_bg.wasm
+          echo ""
+          echo "=== Emscripten WASM package ==="
+          ls -lh wasm/lunisolar-emcc/pkg/lunisolar_emcc.mjs wasm/lunisolar-emcc/pkg/lunisolar_emcc.wasm
 
-      # ── 7. Run comparison and benchmark ──────────────────────────────────
+      # ── 9. Run comparison and benchmark ──────────────────────────────────
       - name: Run comparison and benchmark
         run: node tests/lunisolar-wasm/compare.mjs
 
-      # ── 8. Write results to step summary ─────────────────────────────────
+      # ── 10. Write results to step summary ────────────────────────────────
       - name: Write step summary
         if: always()
         run: |
@@ -71,7 +89,7 @@ jobs:
             cat tests/lunisolar-wasm/compare-report.md >> "$GITHUB_STEP_SUMMARY"
           fi
 
-      # ── 9. Upload report artifact ────────────────────────────────────────
+      # ── 11. Upload report artifact ───────────────────────────────────────
       - name: Upload comparison report
         if: always()
         uses: actions/upload-artifact@v4
