@@ -9,7 +9,7 @@ on:
       - 'wasm/swisseph/**'
       - 'wasm/lunisolar/**'
       - 'wasm/lunisolar-emcc/**'
-      - 'pkg/src/**'
+      - 'vendor/swisseph/**'
   workflow_dispatch:
 
 jobs:
@@ -59,13 +59,13 @@ jobs:
         working-directory: wasm/swisseph
         run: wasm-pack build --target nodejs --release
 
-      # ── 6. Build TypeScript package ────────────────────────────────────────
+      # ── 6. Build TypeScript package (archived, for benchmark comparison) ────
       - name: Install TS dependencies
-        working-directory: pkg
+        working-directory: archive/pkg-ts
         run: npm ci
 
       - name: Build TypeScript package
-        working-directory: pkg
+        working-directory: archive/pkg-ts
         run: npm run build
 
       # ── 7. Build lunisolar Rust WASM ───────────────────────────────────────
@@ -88,10 +88,10 @@ jobs:
           echo ""
           echo "=== lunisolar WASM ==="
           ls -lh wasm/lunisolar/pkg/lunisolar_wasm_bg.wasm
-          ls -lh wasm/lunisolar-emcc/pkg/lunisolar_emcc.wasm
+          ls -lh pkg/lunisolar_emcc.wasm
           echo ""
-          echo "=== TypeScript package ==="
-          ls -lh pkg/dist/index.mjs
+          echo "=== TypeScript package (archived) ==="
+          ls -lh archive/pkg-ts/dist/index.mjs
 
       # ── 10. Run swisseph benchmark ─────────────────────────────────────────
       - name: Run swisseph benchmark

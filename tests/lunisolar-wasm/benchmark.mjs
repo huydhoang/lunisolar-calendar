@@ -26,13 +26,13 @@ const ROOT = resolve(__dirname, '..', '..');
 // ── 1. Load implementations ────────────────────────────────────────────────
 
 const { LunisolarCalendar, configure } = await import(
-  resolve(ROOT, 'pkg', 'dist', 'index.mjs')
+  resolve(ROOT, 'archive', 'pkg-ts', 'dist', 'index.mjs')
 );
 configure({ strategy: 'static' });
 
 const wasm = await import(resolve(ROOT, 'wasm', 'lunisolar', 'pkg', 'lunisolar_wasm.js'));
 
-const createLunisolarEmcc = (await import(resolve(ROOT, 'wasm', 'lunisolar-emcc', 'pkg', 'lunisolar_emcc.mjs'))).default;
+const createLunisolarEmcc = (await import(resolve(ROOT, 'pkg', 'lunisolar_emcc.mjs'))).default;
 const emccModule = await createLunisolarEmcc();
 
 // ── 2. Data loader ─────────────────────────────────────────────────────────

@@ -21,7 +21,7 @@ const ROOT = resolve(__dirname, '..', '..');
 // ── 1. Load the TypeScript package ──────────────────────────────────────────
 
 const { LunisolarCalendar, ConstructionStars, GreatYellowPath, configure } = await import(
-  resolve(ROOT, 'pkg', 'dist', 'index.mjs')
+  resolve(ROOT, 'archive', 'pkg-ts', 'dist', 'index.mjs')
 );
 configure({ strategy: 'static' });
 
@@ -31,7 +31,7 @@ const wasm = await import(resolve(ROOT, 'wasm', 'lunisolar', 'pkg', 'lunisolar_w
 
 // ── 3. Load the Emscripten WASM package ─────────────────────────────────────
 
-const createLunisolarEmcc = (await import(resolve(ROOT, 'wasm', 'lunisolar-emcc', 'pkg', 'lunisolar_emcc.mjs'))).default;
+const createLunisolarEmcc = (await import(resolve(ROOT, 'pkg', 'lunisolar_emcc.mjs'))).default;
 const emccModule = await createLunisolarEmcc();
 
 // ── 4. Data loader helper ───────────────────────────────────────────────────

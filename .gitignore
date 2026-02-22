@@ -234,5 +234,9 @@ wasm/*/target/
 wasm/*/pkg/
 wasm/*/Cargo.lock
 
+# Emscripten build artifacts (output to root pkg/)
+pkg/lunisolar_emcc.mjs
+pkg/lunisolar_emcc.wasm
+
 # CodeQL
 _codeql_detected_source_root

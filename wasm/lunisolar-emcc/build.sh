@@ -4,9 +4,11 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$SCRIPT_DIR"
 
-mkdir -p pkg
+OUT_DIR="$ROOT_DIR/pkg"
+mkdir -p "$OUT_DIR"
 
 emcc lunisolar.c \
   -O3 \
@@ -18,7 +20,7 @@ emcc lunisolar.c \
   -s ALLOW_MEMORY_GROWTH=1 \
   -s ENVIRONMENT="node" \
   -s EXPORT_ES6=1 \
-  -o pkg/lunisolar_emcc.mjs
+  -o "$OUT_DIR/lunisolar_emcc.mjs"
 
-echo "Built: pkg/lunisolar_emcc.mjs + pkg/lunisolar_emcc.wasm"
-ls -lh pkg/lunisolar_emcc.mjs pkg/lunisolar_emcc.wasm
+echo "Built: $OUT_DIR/lunisolar_emcc.mjs + $OUT_DIR/lunisolar_emcc.wasm"
+ls -lh "$OUT_DIR/lunisolar_emcc.mjs" "$OUT_DIR/lunisolar_emcc.wasm"

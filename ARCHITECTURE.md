@@ -1,6 +1,6 @@
 # Architecture
 
-This document describes the architecture of the **Lunisolar-TS** project — a two-component system consisting of a **Python data pipeline** for high-precision astronomical calculations and a **TypeScript npm package** that delivers those results through a modern, type-safe API.
+This document describes the architecture of the **Lunisolar-TS** project — a multi-component system consisting of a **Python data pipeline** for high-precision astronomical calculations, **WebAssembly modules** for calendar conversion, and an **npm package** (`lunisolar-wasm`) for distribution.
 
 ---
 
@@ -166,7 +166,7 @@ graph LR
 
 ---
 
-## TypeScript NPM Package (`pkg/`)
+## TypeScript NPM Package (`archive/pkg-ts/`) — Archived
 
 ### Package Structure
 
@@ -302,6 +302,8 @@ sequenceDiagram
 
 ```
 lunisolar-ts/
+├── archive/                    # Archived implementations
+│   └── pkg-ts/                 # Previous TypeScript npm package (lunisolar-ts)
 ├── data/                       # Python data pipeline
 │   ├── config.py               # Shared constants (ephemeris path, physics, location)
 │   ├── utils.py                # Logging, CSV/JSON I/O, argument parsing
@@ -315,34 +317,19 @@ lunisolar-ts/
 │   ├── tidal_data.py           # Tidal acceleration & lunar mansions
 │   ├── lunisolar_v2.py         # Core lunisolar calendar engine (9 services)
 │   └── huangdao_systems_v2.py  # Auspicious day systems
-├── pkg/                        # TypeScript npm package
-│   ├── src/
-│   │   ├── index.ts            # Public API barrel export
-│   │   ├── config.ts           # Global configuration (strategy, CDN)
-│   │   ├── types.ts            # Type definitions
-│   │   ├── core/
-│   │   │   └── LunisolarCalendar.ts   # Gregorian → Lunisolar conversion
-│   │   ├── data/
-│   │   │   ├── DataLoader.ts   # Lazy-loading with cache
-│   │   │   └── manifest.ts     # Static import map (generated)
-│   │   ├── timezone/
-│   │   │   └── TimezoneHandler.ts     # Intl-based timezone handling
-│   │   └── huangdao/
-│   │       ├── ConstructionStars.ts   # 12 Construction Stars (十二建星)
-│   │       └── GreatYellowPath.ts     # Great Yellow Path (大黄道)
-│   ├── package.json
-│   ├── tsconfig.json
-│   └── rollup.config.mjs
+├── pkg/                        # Main npm package (lunisolar-wasm, Emscripten)
+│   ├── package.json            # npm package metadata
+│   └── README.md               # Package documentation
+├── vendor/                     # Shared third-party source code
+│   └── swisseph/               # Swiss Ephemeris C source (v2.10.03)
+├── wasm/                       # WebAssembly implementations
+│   ├── lunisolar/              # Rust wasm-pack port
+│   ├── lunisolar-emcc/         # Emscripten C source (builds to pkg/)
+│   └── swisseph/               # Swiss Ephemeris Rust + wasm-bindgen bindings
+├── tests/                      # Integration tests
+│   ├── lunisolar-wasm/         # Accuracy & benchmark tests
+│   └── swisseph-wasm/          # Swiss Ephemeris accuracy & benchmark tests
 ├── docs/                       # Detailed documentation
-│   ├── lunisolar_calendar_rules.md
-│   ├── 12_construction_stars.md
-│   ├── great_yellow_path.md
-│   ├── huangdao_systems.md
-│   ├── timezone.md
-│   ├── serverless.md
-│   ├── ci_cd.md
-│   ├── debug/                  # Troubleshooting notes
-│   └── plans/                  # Development roadmaps
 ├── nasa/                       # JPL ephemeris data files
 │   └── de440.bsp
 ├── output/                     # Generated data (git-ignored)
