@@ -28,6 +28,7 @@ Usage::
     score, strength = score_day_master(chart)
 """
 
+import argparse
 from collections import Counter
 from typing import Dict, List, Optional, Tuple, Union
 
@@ -931,9 +932,14 @@ def generate_narrative(
 # ============================================================
 
 if __name__ == "__main__":
-    solar_date = input("Enter solar date (YYYY-MM-DD): ")
-    solar_time = input("Enter solar time (HH:MM, default 12:00): ").strip() or "12:00"
-    gender = input("Enter gender (male/female): ")
+    parser = argparse.ArgumentParser(description="Bazi (Four Pillars) chart analysis")
+    parser.add_argument("-d", "--date", required=True, help="Solar date (YYYY-MM-DD)")
+    parser.add_argument("-t", "--time", default="12:00", help="Solar time (HH:MM, default 12:00)")
+    parser.add_argument("-g", "--gender", required=True, help="Gender (male/female)")
+    args = parser.parse_args()
+    solar_date = args.date
+    solar_time = args.time
+    gender = args.gender
 
     dto = solar_to_lunisolar(solar_date, solar_time)
     chart = build_chart(dto.year_cycle, dto.month_cycle, dto.day_cycle, dto.hour_cycle, gender)
