@@ -38,7 +38,8 @@ const emccModule = await createLunisolarEmcc();
 // ── 2. Emscripten WASM range wrapper ───────────────────────────────────────
 
 function emccFromSolarDateRange(sy, sm, sd, ey, em, ed, tzOffsetSeconds) {
-  const outBufLen = 512 * 1024; // 512 KB should be enough for a year
+  // 512 KB — fits ~365 results × ~600 bytes JSON each, with headroom
+  const outBufLen = 512 * 1024;
   const outPtr = emccModule._malloc(outBufLen);
 
   const result = emccModule._from_solar_date_range(

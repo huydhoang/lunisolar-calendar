@@ -623,6 +623,7 @@ int from_solar_date_range(int start_y, int start_m, int start_d,
     if (n < 0 || n >= remaining) return -1;
     cursor += n; remaining -= n; total += n;
 
+    /* Per-date JSON is ~600 bytes; 1024 gives comfortable headroom */
     char single_buf[1024];
     int first = 1;
 

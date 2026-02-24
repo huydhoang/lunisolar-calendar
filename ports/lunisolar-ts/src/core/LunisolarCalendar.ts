@@ -222,20 +222,23 @@ export class LunisolarCalendar {
       }
     }
 
+    // Pre-compute Z11 (Winter Solstice) terms — constant for the entire range
+    const z11 = principalTerms.filter((t) => t.termIndex === 11);
+    if (z11.length === 0) throw new Error('No Winter Solstice (Z11) found');
+
     // Iterate each day in the range and convert
     const results: LunisolarCalendar[] = [];
     const startMs = startDate.getTime();
     const endMs = endDate.getTime();
     const dayMs = 86400000;
 
+    // Cache: only re-assign month numbers when the anchor solstice changes
+    let lastAnchorMs = -1;
+
     for (let ms = startMs; ms <= endMs; ms += dayMs) {
       const targetUtc = new Date(ms);
       const localParts = userTz.utcToTimezoneDate(targetUtc);
       const targetYear = localParts.year;
-
-      // Z11 and month numbering per date
-      const z11 = principalTerms.filter((t) => t.termIndex === 11);
-      if (z11.length === 0) throw new Error('No Winter Solstice (Z11) found');
 
       const currentYearZ11 = z11.find((t) => t.instantUtc.getUTCFullYear() === targetYear)
         || z11.reduce((prev, curr) =>
@@ -245,36 +248,40 @@ export class LunisolarCalendar {
         ? currentYearZ11.instantUtc
         : (z11.find((t) => t.instantUtc.getUTCFullYear() === targetYear - 1)?.instantUtc || currentYearZ11.instantUtc);
 
-      // Reset month numbers for this anchor
-      for (const p of periods) { p.monthNumber = 0; p.isLeap = false; }
+      // Only recalculate month numbering when the anchor changes
+      if (anchorSolstice.getTime() !== lastAnchorMs) {
+        lastAnchorMs = anchorSolstice.getTime();
 
-      const ziIndex = periods.findIndex((p) => p.startUtc <= anchorSolstice && anchorSolstice < p.endUtc);
-      if (ziIndex === -1) throw new Error('Failed to locate Zi-month');
+        for (const p of periods) { p.monthNumber = 0; p.isLeap = false; }
 
-      periods[ziIndex].monthNumber = 11;
-      periods[ziIndex].isLeap = false;
+        const ziIndex = periods.findIndex((p) => p.startUtc <= anchorSolstice && anchorSolstice < p.endUtc);
+        if (ziIndex === -1) throw new Error('Failed to locate Zi-month');
 
-      let current = 11;
-      for (let i = ziIndex + 1; i < periods.length; i++) {
-        if (periods[i].hasPrincipal) {
-          current = (current % 12) + 1;
-          periods[i].monthNumber = current;
-          periods[i].isLeap = false;
-        } else {
-          periods[i].monthNumber = current;
-          periods[i].isLeap = true;
-        }
-      }
-      if (ziIndex > 0) {
-        current = 11;
-        for (let i = ziIndex - 1; i >= 0; i--) {
-          current = current > 1 ? current - 1 : 12;
+        periods[ziIndex].monthNumber = 11;
+        periods[ziIndex].isLeap = false;
+
+        let current = 11;
+        for (let i = ziIndex + 1; i < periods.length; i++) {
           if (periods[i].hasPrincipal) {
+            current = (current % 12) + 1;
             periods[i].monthNumber = current;
             periods[i].isLeap = false;
           } else {
             periods[i].monthNumber = current;
             periods[i].isLeap = true;
+          }
+        }
+        if (ziIndex > 0) {
+          current = 11;
+          for (let i = ziIndex - 1; i >= 0; i--) {
+            current = current > 1 ? current - 1 : 12;
+            if (periods[i].hasPrincipal) {
+              periods[i].monthNumber = current;
+              periods[i].isLeap = false;
+            } else {
+              periods[i].monthNumber = current;
+              periods[i].isLeap = true;
+            }
           }
         }
       }
