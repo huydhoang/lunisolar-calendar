@@ -1,0 +1,104 @@
+name: "Benchmark: Lunisolar ports"
+
+on:
+  push:
+    paths:
+      - '.github/workflows/benchmark-lunisolar-ports.yml'
+      - 'tests/lunisolar-wasm/benchmark-range.mjs'
+      - 'ports/lunisolar-rs/**'
+      - 'ports/lunisolar-emcc/**'
+      - 'ports/lunisolar-ts/**'
+      - 'vendor/swisseph/**'
+  workflow_dispatch:
+
+jobs:
+  benchmark:
+    name: lunisolar range throughput
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      # ── 1. Source code ────────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── 2. Runtimes ───────────────────────────────────────────────────────
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install wasm-pack
+        run: curl -sSL https://rustwasm.github.io/wasm-pack/installer/init.sh | sh
+
+      # ── 3. Set up Emscripten ──────────────────────────────────────────────
+      - name: Set up Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 'latest'
+
+      - name: Verify emcc
+        run: emcc --version
+
+      # ── 4. Build TypeScript package ───────────────────────────────────────
+      - name: Install TS dependencies
+        working-directory: ports/lunisolar-ts
+        run: npm ci
+
+      - name: Build TypeScript package
+        working-directory: ports/lunisolar-ts
+        run: npm run build
+
+      # ── 5. Build lunisolar Rust WASM ──────────────────────────────────────
+      - name: Build lunisolar WASM (Rust / wasm-pack)
+        working-directory: ports/lunisolar-rs
+        run: wasm-pack build --target nodejs --release
+
+      # ── 6. Build lunisolar Emscripten WASM ────────────────────────────────
+      - name: Build lunisolar WASM (Emscripten / emcc)
+        working-directory: ports/lunisolar-emcc
+        run: bash build.sh
+
+      # ── 7. Verify WASM files ──────────────────────────────────────────────
+      - name: Verify WASM files
+        run: |
+          echo "=== lunisolar WASM ==="
+          ls -lh ports/lunisolar-rs/pkg/lunisolar_wasm_bg.wasm
+          ls -lh pkg/lunisolar_emcc.wasm
+          echo ""
+          echo "=== TypeScript package ==="
+          ls -lh ports/lunisolar-ts/dist/index.mjs
+
+      # ── 8. Run lunisolar range benchmark ──────────────────────────────────
+      - name: Run lunisolar range benchmark
+        working-directory: tests/lunisolar-wasm
+        run: node benchmark-range.mjs
+
+      # ── 9. Write results to step summary ──────────────────────────────────
+      - name: Write step summary
+        if: always()
+        run: |
+          echo "# Lunisolar Ports — Range Benchmark" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Date:** $(date -u +%Y-%m-%d)" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+
+          if [ -f tests/lunisolar-wasm/lunisolar-range-benchmark-report.md ]; then
+            cat tests/lunisolar-wasm/lunisolar-range-benchmark-report.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      # ── 10. Upload reports ────────────────────────────────────────────────
+      - name: Upload benchmark reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lunisolar-range-benchmark-reports
+          path: |
+            tests/lunisolar-wasm/lunisolar-range-benchmark-report.md
+          retention-days: 30
