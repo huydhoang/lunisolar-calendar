@@ -23,7 +23,6 @@ import logging
 from datetime import datetime, timedelta, date, timezone
 from typing import List, Tuple, Optional
 from dataclasses import dataclass
-import logging
 from skyfield.api import utc, load
 from skyfield import almanac
 
@@ -639,29 +638,33 @@ class LunarMonthResolver:
         days_diff = (target_cst_date - period.start_cst_date).days + 1
         return max(1, min(30, days_diff))
     
-    def calculate_lunar_year(self, target_period: MonthPeriod, anchor_solstice_utc: datetime) -> int:
-        """Calculate the correct lunar year based on the target period and anchor solstice.
+    def calculate_lunar_year(self, target_period: MonthPeriod) -> int:
+        """Calculate the correct lunar year based on the target period.
         
         The lunar year follows this logic:
         - Month 1 (Lunar New Year) starts a new lunar year
         - The lunar year number is the Gregorian year when Month 1 occurs
-        - Months 11-12 belong to the lunar year that will start with the next Month 1
         - Months 1-10 belong to the lunar year that started with the current Month 1
-        """
-        # Ensure timezone-naive comparison
-        period_start = target_period.start_utc.replace(tzinfo=None) if target_period.start_utc.tzinfo else target_period.start_utc
-        anchor_naive = anchor_solstice_utc.replace(tzinfo=None) if anchor_solstice_utc.tzinfo else anchor_solstice_utc
+        - Months 11-12 belong to the SAME lunar year (not the next one)
         
-        if target_period.month_number == 1:
-            # Month 1 (Lunar New Year) - the lunar year is the Gregorian year when this month occurs
+        For months 11-12, the lunar year equals the Gregorian year in which
+        Month 1 of that year occurred:
+        - Month 11 always starts in Nov/Dec → period_start.year is correct
+        - Month 12 may start in Dec (same year) or Jan (next Gregorian year),
+          so we check and subtract 1 when the period starts in Jan/Feb
+        """
+        period_start = target_period.start_utc.replace(tzinfo=None) if target_period.start_utc.tzinfo else target_period.start_utc
+        
+        if target_period.month_number <= 11:
+            # Months 1-11 always start in the same Gregorian year as Month 1
             return period_start.year
-        elif target_period.month_number in [2, 3, 4, 5, 6, 7, 8, 9, 10]:
-            # Months 2-10 - belong to the same lunar year as Month 1 that preceded them
+        else:  # month 12
+            # Month 12 is ~11 lunar months (~324 days) after Month 1.
+            # Since Month 1 falls in Jan/Feb, Month 12 starts in Dec or Jan.
+            # When it starts in Jan/Feb (next Gregorian year), subtract 1.
+            if period_start.month <= 2:
+                return period_start.year - 1
             return period_start.year
-        else:  # months 11, 12
-            # Months 11-12 - belong to the lunar year that will start with the next Month 1
-            # The next Month 1 typically occurs in the next Gregorian year
-            return period_start.year + 1
 
 
 class ResultAssembler:
@@ -801,7 +804,7 @@ def solar_to_lunisolar_batch(
             # Find target month period
             target_period = month_resolver.find_period_for_datetime(periods, target_utc)
             lunar_day = month_resolver.calculate_lunar_day(target_utc, target_period)
-            lunar_year = month_resolver.calculate_lunar_year(target_period, anchor_solstice)
+            lunar_year = month_resolver.calculate_lunar_year(target_period)
             
             # Calculate sexagenary cycles
             year_ganzhi = sexagenary_engine.ganzhi_year(lunar_year)
@@ -909,7 +912,7 @@ def solar_to_lunisolar(
         lunar_day = month_resolver.calculate_lunar_day(target_utc, target_period)
         
         # Calculate lunar year based on month periods and their numbering
-        lunar_year = month_resolver.calculate_lunar_year(target_period, anchor_solstice)
+        lunar_year = month_resolver.calculate_lunar_year(target_period)
         
         # Calculate sexagenary cycles
         year_ganzhi = sexagenary_engine.ganzhi_year(lunar_year)
