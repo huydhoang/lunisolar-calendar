@@ -1,61 +1,61 @@
-cycle_index,cycle_id,chinese,pinyin,vietnamese,stem_num,branch_num,nayin_num,nayin_element,nayin_chinese,nayin_vietnamese,nayin_english,nayin_song,nayin_symbolism,stem_polarity,stem_element,branch_polarity,branch_element,stem_stage,stem_power
-1,N0101,甲子,jiǎzǐ,Giáp Tý,1,1,2,Metal (金),海中金,Hải Trung Kim,Sea Metal,"Gold in the ocean deep, hidden secrets keep.","Hidden strength, like gold in the ocean depths",Yang,Wood,Yang,Water,Mu Yu (沐浴),3
-2,N0202,乙丑,yǐchǒu,Ất Sửu,1,1,2,Metal (金),海中金,Hải Trung Kim,Sea Metal,"Gold in the ocean deep, hidden secrets keep.","Hidden strength, like gold in the ocean depths",Yin,Wood,Yin,Earth,Mu Yu (沐浴),3
-3,N0303,丙寅,bǐngyín,Bính Dần,2,2,4,Fire (火),爐中火,Lư Trung Hỏa,Furnace Fire,"Flames in the furnace bright, transforming with might.",Contained transformative energy (like a forge),Yang,Fire,Yang,Wood,Shuai (衰),4
-4,N0404,丁卯,dīngmǎo,Đinh Mão,2,2,4,Fire (火),爐中火,Lư Trung Hỏa,Furnace Fire,"Flames in the furnace bright, transforming with might.",Contained transformative energy (like a forge),Yin,Fire,Yin,Wood,Shuai (衰),4
-5,N0505,戊辰,wùchén,Mậu Thìn,3,3,1,Wood (木),大林木,Đại Lâm Mộc,Great Forest Wood,"Forest trees tall and grand, rooted in the land.","Strong, communal growth (tall trees)",Yang,Earth,Yang,Earth,Chang Sheng (长生),2
-6,N0606,己巳,jǐsì,Kỷ Tỵ,3,3,1,Wood (木),大林木,Đại Lâm Mộc,Great Forest Wood,"Forest trees tall and grand, rooted in the land.","Strong, communal growth (tall trees)",Yin,Earth,Yin,Fire,Chang Sheng (长生),2
-7,N0707,庚午,gēngwǔ,Canh Ngọ,4,1,5,Earth (土),路旁土,Lộ Bàng Thổ,Roadside Earth,"Earth by the roadside laid, where travelers wade.",Earth trodden by travelers (accessibility),Yang,Metal,Yang,Fire,Jue (绝),0
-8,N0808,辛未,xīnwèi,Tân Mùi,4,1,5,Earth (土),路旁土,Lộ Bàng Thổ,Roadside Earth,"Earth by the roadside laid, where travelers wade.",Earth trodden by travelers (accessibility),Yin,Metal,Yin,Earth,Jue (绝),0
-9,N0909,壬申,rénshēn,Nhâm Thân,5,2,2,Metal (金),劍鋒金,Kiếm Phong Kim,Sword-Point Metal,"Metal sharp as a blade, by the sword's edge made.","Sharp, refined (weapons, blades)",Yang,Water,Yang,Metal,Yang (养),1
-10,N1010,癸酉,guǐyǒu,Quý Dậu,5,2,2,Metal (金),劍鋒金,Kiếm Phong Kim,Sword-Point Metal,"Metal sharp as a blade, by the sword's edge made.","Sharp, refined (weapons, blades)",Yin,Water,Yin,Metal,Yang (养),1
-11,N0111,甲戌,jiǎxū,Giáp Tuất,1,3,4,Fire (火),山头火,Sơn Đầu Hỏa,Mountain-Top Fire,"Fire on the mountain high, beacon in the sky.","Beacon-like, visible from afar",Yang,Wood,Yang,Earth,Lin Guan (临官),5
-12,N0212,乙亥,yǐhài,Ât Hợi,1,3,4,Fire (火),山头火,Sơn Đầu Hỏa,Mountain-Top Fire,"Fire on the mountain high, beacon in the sky.","Beacon-like, visible from afar",Yin,Wood,Yin,Water,Lin Guan (临官),5
-13,N0301,丙子,bǐngzǐ,Bính Tý,2,1,3,Water (水),澗下水,Giản Hạ Thuỷ,Ravine Water,"Water through ravines flow, gentle, soft, and slow.","Gentle, nourishing stream",Yang,Fire,Yang,Water,Bing (病),3
-14,N0402,丁丑,dīngchǒu,Đinh Sửu,2,1,3,Water (水),澗下水,Giản Hạ Thuỷ,Ravine Water,"Water through ravines flow, gentle, soft, and slow.","Gentle, nourishing stream",Yin,Fire,Yin,Earth,Bing (病),3
-15,N0503,戊寅,wùyín,Mậu Dần,3,2,5,Earth (土),城头土,Thành Đầu Thổ,City Wall Earth,"Earth of the city wall, protective for all.","Protective, structured (like fortifications)",Yang,Earth,Yang,Wood,Yang (养),1
-16,N0604,己卯,jǐmǎo,Kỷ Mão,3,2,5,Earth (土),城头土,Thành Đầu Thổ,City Wall Earth,"Earth of the city wall, protective for all.","Protective, structured (like fortifications)",Yin,Earth,Yin,Wood,Yang (养),1
-17,N0705,庚辰,gēngchén,Canh Thìn,4,3,2,Metal (金),白蜡金,Bạch Lạp Kim,White Wax Metal,"White wax metal refined, in jewelry you'll find.","Pure, refined (like jewelry)",Yang,Metal,Yang,Earth,Si (死),2
-18,N0806,辛巳,xīnsì,Tân Tỵ,4,3,2,Metal (金),白蜡金,Bạch Lạp Kim,White Wax Metal,"White wax metal refined, in jewelry you'll find.","Pure, refined (like jewelry)",Yin,Metal,Yin,Fire,Si (死),2
-19,N0907,壬午,rénwǔ,Nhâm Ngọ,5,1,1,Wood (木),杨柳木,Dương Liễu Mộc,Willow Wood,"Willow wood bends with grace, in any wind or place.","Flexible, graceful (bends but doesn't break)",Yang,Water,Yang,Fire,Tai (胎),0
-20,N1008,癸未,guǐwèi,Quý Mùi,5,1,1,Wood (木),杨柳木,Dương Liễu Mộc,Willow Wood,"Willow wood bends with grace, in any wind or place.","Flexible, graceful (bends but doesn't break)",Yin,Water,Yin,Earth,Tai (胎),0
-21,N0109,甲申,jiǎshēn,Giáp Thân,1,2,3,Water (水),井泉水,Tỉnh Tuyền Thủy,Well Spring Water,"Well water pure and clear, life drawing near.","Pure, life-sustaining (like a deep well)",Yang,Wood,Yang,Metal,Guan Dai (冠带),4
-22,N0210,乙酉,yǐyǒu,Ất Dậu,1,2,3,Water (水),井泉水,Tỉnh Tuyền Thủy,Well Spring Water,"Well water pure and clear, life drawing near.","Pure, life-sustaining (like a deep well)",Yin,Wood,Yin,Metal,Guan Dai (冠带),4
-23,N0311,丙戌,bǐngxū,Bính Tuất,2,3,5,Earth (土),屋上土,Ốc Thượng Thổ,Rooftop Earth,"Earth on the rooftop lies, under open skies.","Shelter, stability (like a tiled roof)",Yang,Fire,Yang,Earth,Di Wang (帝旺),5
-24,N0412,丁亥,dīnghài,Đinh Hợi,2,3,5,Earth (土),屋上土,Ốc Thượng Thổ,Rooftop Earth,"Earth on the rooftop lies, under open skies.","Shelter, stability (like a tiled roof)",Yin,Fire,Yin,Water,Di Wang (帝旺),5
-25,N0501,戊子,wùzǐ,Mậu Tý,3,1,4,Fire (火),霹雳火,Tích Lịch Hỏa,Thunderbolt Fire,"Thunderbolt fire strikes loud, breaking through the cloud.","Sudden, explosive energy (like lightning)",Yang,Earth,Yang,Water,Tai (胎),0
-26,N0602,己丑,jǐchǒu,Kỷ Sửu,3,1,4,Fire (火),霹雳火,Tích Lịch Hỏa,Thunderbolt Fire,"Thunderbolt fire strikes loud, breaking through the cloud.","Sudden, explosive energy (like lightning)",Yin,Earth,Yin,Earth,Tai (胎),0
-27,N0703,庚寅,gēngyín,Canh Dần,4,2,1,Wood (木),松柏木,Tùng Bách Mộc,Pine & Cypress Wood,"Pine and cypress evergreen, through all seasons seen.","Evergreen, enduring (resilient in winter)",Yang,Metal,Yang,Wood,Mu (墓),1
-28,N0804,辛卯,xīnmǎo,Tân Mão,4,2,1,Wood (木),松柏木,Tùng Bách Mộc,Pine & Cypress Wood,"Pine and cypress evergreen, through all seasons seen.","Evergreen, enduring (resilient in winter)",Yin,Metal,Yin,Wood,Mu (墓),1
-29,N0905,壬辰,rénchén,Nhâm Thìn,5,3,3,Water (水),长流水,Trường Lưu Thủy,Long Flowing Water,"Long flowing water runs, past mountains and suns.","Continuous, persistent (like a river)",Yang,Water,Yang,Earth,Chang Sheng (长生),2
-30,N1006,癸巳,guǐsì,Quý Tỵ,5,3,3,Water (水),长流水,Trường Lưu Thủy,Long Flowing Water,"Long flowing water runs, past mountains and suns.","Continuous, persistent (like a river)",Yin,Water,Yin,Fire,Chang Sheng (长生),2
-31,N0107,甲午,jiǎwǔ,Giáp Ngọ,1,1,2,Metal (金),砂中金,Sa Thạch Kim,Sand-Middle Metal,"Metal in the sand concealed, treasures to be revealed.",Raw potential (gold hidden in sand),Yang,Wood,Yang,Fire,Mu Yu (沐浴),3
-32,N0208,乙未,yǐwèi,Ất Mùi,1,1,2,Metal (金),砂中金,Sa Thạch Kim,Sand-Middle Metal,"Metal in the sand concealed, treasures to be revealed.",Raw potential (gold hidden in sand),Yin,Wood,Yin,Earth,Mu Yu (沐浴),3
-33,N0309,丙申,bǐngshēn,Bính Thân,2,2,4,Fire (火),山下火,Sơn Hạ Hỏa,Mountain-Base Fire,"Fire at mountain's base, warming every place.",Foundation energy (like a hearth),Yang,Fire,Yang,Metal,Shuai (衰),4
-34,N0410,丁酉,dīngyǒu,Đinh Dậu,2,2,4,Fire (火),山下火,Sơn Hạ Hỏa,Mountain-Base Fire,"Fire at mountain's base, warming every place.",Foundation energy (like a hearth),Yin,Fire,Yin,Metal,Shuai (衰),4
-35,N0511,戊戌,wùxū,Mậu Tuất,3,3,1,Wood (木),平地木,Bình Địa Mộc,Flat Land Wood,"Wood on the flat land grows, where the gentle wind blows.","Stable, grounded growth (like plains)",Yang,Earth,Yang,Earth,Chang Sheng (长生),2
-36,N0612,己亥,jǐhài,Kỷ Hợi,3,3,1,Wood (木),平地木,Bình Địa Mộc,Flat Land Wood,"Wood on the flat land grows, where the gentle wind blows.","Stable, grounded growth (like plains)",Yin,Earth,Yin,Water,Chang Sheng (长生),2
-37,N0701,庚子,gēngzǐ,Canh Tý,4,1,5,Earth (土),壁上土,Bích Thượng Thổ,Wall Earth,"Earth upon the wall stands, built by skillful hands.",Protective barrier (like adobe walls),Yang,Metal,Yang,Water,Jue (绝),0
-38,N0802,辛丑,xīnchǒu,Tân Sửu,4,1,5,Earth (土),壁上土,Bích Thượng Thổ,Wall Earth,"Earth upon the wall stands, built by skillful hands.",Protective barrier (like adobe walls),Yin,Metal,Yin,Earth,Jue (绝),0
-39,N0903,壬寅,rényín,Nhâm Dần,5,2,2,Metal (金),金箔金,Kim Bạc Kim,Gold Foil Metal,"Gold foil thin and bright, gleaming in the light.","Delicate, decorative (like gilding)",Yang,Water,Yang,Wood,Yang (养),1
-40,N1004,癸卯,guǐmǎo,Quý Mão,5,2,2,Metal (金),金箔金,Kim Bạc Kim,Gold Foil Metal,"Gold foil thin and bright, gleaming in the light.","Delicate, decorative (like gilding)",Yin,Water,Yin,Wood,Yang (养),1
-41,N0105,甲辰,jiǎchén,Giáp Thìn,1,3,4,Fire (火),覆灯火,Phúc Đăng Hỏa,Covered Lamp Fire,"Covered lamp fire glows, gentle warmth it shows.","Gentle, contained (like a lantern)",Yang,Wood,Yang,Earth,Lin Guan (临官),5
-42,N0206,乙巳,yǐsì,Ất Tỵ,1,3,4,Fire (火),覆灯火,Phúc Đăng Hỏa,Covered Lamp Fire,"Covered lamp fire glows, gentle warmth it shows.","Gentle, contained (like a lantern)",Yin,Wood,Yin,Fire,Lin Guan (临官),5
-43,N0307,丙午,bǐngwǔ,Bính Ngọ,2,1,3,Water (水),天河水,Thiên Hà Thủy,Sky River Water,"Sky river water flows, where the heavenly wind blows.","Celestial, vast (like the Milky Way)",Yang,Fire,Yang,Fire,Bing (病),3
-44,N0408,丁未,dīngwèi,Đinh Mùi,2,1,3,Water (水),天河水,Thiên Hà Thủy,Sky River Water,"Sky river water flows, where the heavenly wind blows.","Celestial, vast (like the Milky Way)",Yin,Fire,Yin,Earth,Bing (病),3
-45,N0509,戊申,wùshēn,Mậu Thân,3,2,5,Earth (土),大驿土,Đại Dịch Thổ,Great Post Earth,"Great post earth stands, connecting distant lands.","Connecting, supportive (like roads)",Yang,Earth,Yang,Metal,Yang (养),1
-46,N0610,己酉,jǐyǒu,Kỷ Dậu,3,2,5,Earth (土),大驿土,Đại Dịch Thổ,Great Post Earth,"Great post earth stands, connecting distant lands.","Connecting, supportive (like roads)",Yin,Earth,Yin,Metal,Yang (养),1
-47,N0711,庚戌,gēngxū,Canh Tuất,4,3,2,Metal (金),钗钏金,Thoa Xuyến Kim,Hairpin Metal,"Hairpin metal gleams, fulfilling precious dreams.","Ornamental, refined (like jewelry)",Yang,Metal,Yang,Earth,Si (死),2
-48,N0812,辛亥,xīnhài,Tân Hợi,4,3,2,Metal (金),钗钏金,Thoa Xuyến Kim,Hairpin Metal,"Hairpin metal gleams, fulfilling precious dreams.","Ornamental, refined (like jewelry)",Yin,Metal,Yin,Water,Si (死),2
-49,N0901,壬子,rénzǐ,Nhâm Tý,5,1,1,Wood (木),桑柘木,Tang Chá Mộc,Mulberry Wood,"Mulberry wood grows strong, lasting all life long.","Useful, productive (like silk cultivation)",Yang,Water,Yang,Water,Tai (胎),0
-50,N1002,癸丑,guǐchǒu,Quý Sửu,5,1,1,Wood (木),桑柘木,Tang Chá Mộc,Mulberry Wood,"Mulberry wood grows strong, lasting all life long.","Useful, productive (like silk cultivation)",Yin,Water,Yin,Earth,Tai (胎),0
-51,N0103,甲寅,jiǎyín,Giáp Dần,1,2,3,Water (水),大溪水,Đại Khê Thủy,Great Stream Water,"Great stream water wide, flowing side by side.","Powerful, flowing (like a major river)",Yang,Wood,Yang,Wood,Guan Dai (冠带),4
-52,N0204,乙卯,yǐmǎo,Ất Mão,1,2,3,Water (水),大溪水,Đại Khê Thủy,Great Stream Water,"Great stream water wide, flowing side by side.","Powerful, flowing (like a major river)",Yin,Wood,Yin,Wood,Guan Dai (冠带),4
-53,N0305,丙辰,bǐngchén,Bính Thìn,2,3,5,Earth (土),沙中土,Sa Trung Thổ,Sand Earth,"Earth within the sand, shaped by nature's hand.","Shifting, adaptable (like dunes)",Yang,Fire,Yang,Earth,Di Wang (帝旺),5
-54,N0406,丁巳,dīngsì,Đinh Tỵ,2,3,5,Earth (土),沙中土,Sa Trung Thổ,Sand Earth,"Earth within the sand, shaped by nature's hand.","Shifting, adaptable (like dunes)",Yin,Fire,Yin,Fire,Di Wang (帝旺),5
-55,N0507,戊午,wùwǔ,Mậu Ngọ,3,1,4,Fire (火),天上火,Thiên Thượng Hỏa,Heavenly Fire,"Heavenly fire burns bright, illuminating night.","Brilliant, illuminating (like the sun)",Yang,Earth,Yang,Fire,Tai (胎),0
-56,N0608,己未,jǐwèi,Kỷ Mùi,3,1,4,Fire (火),天上火,Thiên Thượng Hỏa,Heavenly Fire,"Heavenly fire burns bright, illuminating night.","Brilliant, illuminating (like the sun)",Yin,Earth,Yin,Earth,Tai (胎),0
-57,N0709,庚申,gēngshēn,Canh Thân,4,2,1,Wood (木),石榴木,Thạch Lựu Mộc,Pomegranate Wood,"Pomegranate wood bears fruit, from branch to root.","Fruitful, abundant (like harvest)",Yang,Metal,Yang,Metal,Mu (墓),1
-58,N0810,辛酉,xīnyǒu,Tân Dậu,4,2,1,Wood (木),石榴木,Thạch Lựu Mộc,Pomegranate Wood,"Pomegranate wood bears fruit, from branch to root.","Fruitful, abundant (like harvest)",Yin,Metal,Yin,Metal,Mu (墓),1
-59,N0911,壬戌,rénxū,Nhâm Tuất,5,3,3,Water (水),大海水,Đại Hải Thủy,Great Ocean Water,"Great ocean water vast, from first day to last.","Vast, encompassing (like the ocean)",Yang,Water,Yang,Earth,Chang Sheng (长生),2
-60,N1012,癸亥,guǐhài,Quý Hợi,5,3,3,Water (水),大海水,Đại Hải Thủy,Great Ocean Water,"Great ocean water vast, from first day to last.","Vast, encompassing (like the ocean)",Yin,Water,Yin,Water,Chang Sheng (长生),2
+cycle_index,cycle_id,chinese,pinyin,vietnamese,nayin_element,nayin_chinese,nayin_vietnamese,nayin_english,nayin_song,stem_polarity,stem_element,branch_polarity,branch_element,stem_life_stage
+1,Y0101,甲子,jiǎzǐ,Giáp Tý,Metal (金),海中金,Hải Trung Kim,Sea Metal,"Gold in the ocean deep, hidden secrets keep.",Yang,Wood,Yang,Water,Mu Yu (沐浴)
+2,Y0202,乙丑,yǐchǒu,Ất Sửu,Metal (金),海中金,Hải Trung Kim,Sea Metal,"Gold in the ocean deep, hidden secrets keep.",Yin,Wood,Yin,Earth,Shuai (衰)
+3,Y0303,丙寅,bǐngyín,Bính Dần,Fire (火),爐中火,Lư Trung Hỏa,Furnace Fire,"Flames in the furnace bright, transforming with might.",Yang,Fire,Yang,Wood,Chang Sheng (长生)
+4,Y0404,丁卯,dīngmǎo,Đinh Mão,Fire (火),爐中火,Lư Trung Hỏa,Furnace Fire,"Flames in the furnace bright, transforming with might.",Yin,Fire,Yin,Wood,Bing (病)
+5,Y0505,戊辰,wùchén,Mậu Thìn,Wood (木),大林木,Đại Lâm Mộc,Great Forest Wood,"Forest trees tall and grand, rooted in the land.",Yang,Earth,Yang,Earth,Guan Dai (冠带)
+6,Y0606,己巳,jǐsì,Kỷ Tỵ,Wood (木),大林木,Đại Lâm Mộc,Great Forest Wood,"Forest trees tall and grand, rooted in the land.",Yin,Earth,Yin,Fire,Di Wang (帝旺)
+7,Y0707,庚午,gēngwǔ,Canh Ngọ,Earth (土),路旁土,Lộ Bàng Thổ,Roadside Earth,"Earth by the roadside laid, where travelers wade.",Yang,Metal,Yang,Fire,Mu Yu (沐浴)
+8,Y0808,辛未,xīnwèi,Tân Mùi,Earth (土),路旁土,Lộ Bàng Thổ,Roadside Earth,"Earth by the roadside laid, where travelers wade.",Yin,Metal,Yin,Earth,Shuai (衰)
+9,Y0909,壬申,rénshēn,Nhâm Thân,Metal (金),劍鋒金,Kiếm Phong Kim,Sword-Point Metal,"Metal sharp as a blade, by the sword's edge made.",Yang,Water,Yang,Metal,Chang Sheng (长生)
+10,Y1010,癸酉,guǐyǒu,Quý Dậu,Metal (金),劍鋒金,Kiếm Phong Kim,Sword-Point Metal,"Metal sharp as a blade, by the sword's edge made.",Yin,Water,Yin,Metal,Bing (病)
+11,Y0111,甲戌,jiǎxū,Giáp Tuất,Fire (火),山头火,Sơn Đầu Hỏa,Mountain-Top Fire,"Fire on the mountain high, beacon in the sky.",Yang,Wood,Yang,Earth,Yang (养)
+12,Y0212,乙亥,yǐhài,Ât Hợi,Fire (火),山头火,Sơn Đầu Hỏa,Mountain-Top Fire,"Fire on the mountain high, beacon in the sky.",Yin,Wood,Yin,Water,Si (死)
+13,Y0301,丙子,bǐngzǐ,Bính Tý,Water (水),澗下水,Giản Hạ Thuỷ,Ravine Water,"Water through ravines flow, gentle, soft, and slow.",Yang,Fire,Yang,Water,Tai (胎)
+14,Y0402,丁丑,dīngchǒu,Đinh Sửu,Water (水),澗下水,Giản Hạ Thuỷ,Ravine Water,"Water through ravines flow, gentle, soft, and slow.",Yin,Fire,Yin,Earth,Mu (墓)
+15,Y0503,戊寅,wùyín,Mậu Dần,Earth (土),城头土,Thành Đầu Thổ,City Wall Earth,"Earth of the city wall, protective for all.",Yang,Earth,Yang,Wood,Chang Sheng (长生)
+16,Y0604,己卯,jǐmǎo,Kỷ Mão,Earth (土),城头土,Thành Đầu Thổ,City Wall Earth,"Earth of the city wall, protective for all.",Yin,Earth,Yin,Wood,Bing (病)
+17,Y0705,庚辰,gēngchén,Canh Thìn,Metal (金),白蜡金,Bạch Lạp Kim,White Wax Metal,"White wax metal refined, in jewelry you'll find.",Yang,Metal,Yang,Earth,Yang (养)
+18,Y0806,辛巳,xīnsì,Tân Tỵ,Metal (金),白蜡金,Bạch Lạp Kim,White Wax Metal,"White wax metal refined, in jewelry you'll find.",Yin,Metal,Yin,Fire,Si (死)
+19,Y0907,壬午,rénwǔ,Nhâm Ngọ,Wood (木),杨柳木,Dương Liễu Mộc,Willow Wood,"Willow wood bends with grace, in any wind or place.",Yang,Water,Yang,Fire,Tai (胎)
+20,Y1008,癸未,guǐwèi,Quý Mùi,Wood (木),杨柳木,Dương Liễu Mộc,Willow Wood,"Willow wood bends with grace, in any wind or place.",Yin,Water,Yin,Earth,Mu (墓)
+21,Y0109,甲申,jiǎshēn,Giáp Thân,Water (水),井泉水,Tỉnh Tuyền Thủy,Well Spring Water,"Well water pure and clear, life drawing near.",Yang,Wood,Yang,Metal,Jue (绝)
+22,Y0210,乙酉,yǐyǒu,Ất Dậu,Water (水),井泉水,Tỉnh Tuyền Thủy,Well Spring Water,"Well water pure and clear, life drawing near.",Yin,Wood,Yin,Metal,Jue (绝)
+23,Y0311,丙戌,bǐngxū,Bính Tuất,Earth (土),屋上土,Ốc Thượng Thổ,Rooftop Earth,"Earth on the rooftop lies, under open skies.",Yang,Fire,Yang,Earth,Mu (墓)
+24,Y0412,丁亥,dīnghài,Đinh Hợi,Earth (土),屋上土,Ốc Thượng Thổ,Rooftop Earth,"Earth on the rooftop lies, under open skies.",Yin,Fire,Yin,Water,Tai (胎)
+25,Y0501,戊子,wùzǐ,Mậu Tý,Fire (火),霹雳火,Tích Lịch Hỏa,Thunderbolt Fire,"Thunderbolt fire strikes loud, breaking through the cloud.",Yang,Earth,Yang,Water,Tai (胎)
+26,Y0602,己丑,jǐchǒu,Kỷ Sửu,Fire (火),霹雳火,Tích Lịch Hỏa,Thunderbolt Fire,"Thunderbolt fire strikes loud, breaking through the cloud.",Yin,Earth,Yin,Earth,Mu (墓)
+27,Y0703,庚寅,gēngyín,Canh Dần,Wood (木),松柏木,Tùng Bách Mộc,Pine & Cypress Wood,"Pine and cypress evergreen, through all seasons seen.",Yang,Metal,Yang,Wood,Jue (绝)
+28,Y0804,辛卯,xīnmǎo,Tân Mão,Wood (木),松柏木,Tùng Bách Mộc,Pine & Cypress Wood,"Pine and cypress evergreen, through all seasons seen.",Yin,Metal,Yin,Wood,Jue (绝)
+29,Y0905,壬辰,rénchén,Nhâm Thìn,Water (水),长流水,Trường Lưu Thủy,Long Flowing Water,"Long flowing water runs, past mountains and suns.",Yang,Water,Yang,Earth,Mu (墓)
+30,Y1006,癸巳,guǐsì,Quý Tỵ,Water (水),长流水,Trường Lưu Thủy,Long Flowing Water,"Long flowing water runs, past mountains and suns.",Yin,Water,Yin,Fire,Tai (胎)
+31,Y0107,甲午,jiǎwǔ,Giáp Ngọ,Metal (金),砂中金,Sa Thạch Kim,Sand-Middle Metal,"Metal in the sand concealed, treasures to be revealed.",Yang,Wood,Yang,Fire,Si (死)
+32,Y0208,乙未,yǐwèi,Ất Mùi,Metal (金),砂中金,Sa Thạch Kim,Sand-Middle Metal,"Metal in the sand concealed, treasures to be revealed.",Yin,Wood,Yin,Earth,Yang (养)
+33,Y0309,丙申,bǐngshēn,Bính Thân,Fire (火),山下火,Sơn Hạ Hỏa,Mountain-Base Fire,"Fire at mountain's base, warming every place.",Yang,Fire,Yang,Metal,Bing (病)
+34,Y0410,丁酉,dīngyǒu,Đinh Dậu,Fire (火),山下火,Sơn Hạ Hỏa,Mountain-Base Fire,"Fire at mountain's base, warming every place.",Yin,Fire,Yin,Metal,Chang Sheng (长生)
+35,Y0511,戊戌,wùxū,Mậu Tuất,Wood (木),平地木,Bình Địa Mộc,Flat Land Wood,"Wood on the flat land grows, where the gentle wind blows.",Yang,Earth,Yang,Earth,Mu (墓)
+36,Y0612,己亥,jǐhài,Kỷ Hợi,Wood (木),平地木,Bình Địa Mộc,Flat Land Wood,"Wood on the flat land grows, where the gentle wind blows.",Yin,Earth,Yin,Water,Tai (胎)
+37,Y0701,庚子,gēngzǐ,Canh Tý,Earth (土),壁上土,Bích Thượng Thổ,Wall Earth,"Earth upon the wall stands, built by skillful hands.",Yang,Metal,Yang,Water,Si (死)
+38,Y0802,辛丑,xīnchǒu,Tân Sửu,Earth (土),壁上土,Bích Thượng Thổ,Wall Earth,"Earth upon the wall stands, built by skillful hands.",Yin,Metal,Yin,Earth,Yang (养)
+39,Y0903,壬寅,rényín,Nhâm Dần,Metal (金),金箔金,Kim Bạc Kim,Gold Foil Metal,"Gold foil thin and bright, gleaming in the light.",Yang,Water,Yang,Wood,Bing (病)
+40,Y1004,癸卯,guǐmǎo,Quý Mão,Metal (金),金箔金,Kim Bạc Kim,Gold Foil Metal,"Gold foil thin and bright, gleaming in the light.",Yin,Water,Yin,Wood,Chang Sheng (长生)
+41,Y0105,甲辰,jiǎchén,Giáp Thìn,Fire (火),覆灯火,Phúc Đăng Hỏa,Covered Lamp Fire,"Covered lamp fire glows, gentle warmth it shows.",Yang,Wood,Yang,Earth,Shuai (衰)
+42,Y0206,乙巳,yǐsì,Ất Tỵ,Fire (火),覆灯火,Phúc Đăng Hỏa,Covered Lamp Fire,"Covered lamp fire glows, gentle warmth it shows.",Yin,Wood,Yin,Fire,Mu Yu (沐浴)
+43,Y0307,丙午,bǐngwǔ,Bính Ngọ,Water (水),天河水,Thiên Hà Thủy,Sky River Water,"Sky river water flows, where the heavenly wind blows.",Yang,Fire,Yang,Fire,Di Wang (帝旺)
+44,Y0408,丁未,dīngwèi,Đinh Mùi,Water (水),天河水,Thiên Hà Thủy,Sky River Water,"Sky river water flows, where the heavenly wind blows.",Yin,Fire,Yin,Earth,Guan Dai (冠带)
+45,Y0509,戊申,wùshēn,Mậu Thân,Earth (土),大驿土,Đại Dịch Thổ,Great Post Earth,"Great post earth stands, connecting distant lands.",Yang,Earth,Yang,Metal,Bing (病)
+46,Y0610,己酉,jǐyǒu,Kỷ Dậu,Earth (土),大驿土,Đại Dịch Thổ,Great Post Earth,"Great post earth stands, connecting distant lands.",Yin,Earth,Yin,Metal,Chang Sheng (长生)
+47,Y0711,庚戌,gēngxū,Canh Tuất,Metal (金),钗钏金,Thoa Xuyến Kim,Hairpin Metal,"Hairpin metal gleams, fulfilling precious dreams.",Yang,Metal,Yang,Earth,Shuai (衰)
+48,Y0812,辛亥,xīnhài,Tân Hợi,Metal (金),钗钏金,Thoa Xuyến Kim,Hairpin Metal,"Hairpin metal gleams, fulfilling precious dreams.",Yin,Metal,Yin,Water,Mu Yu (沐浴)
+49,Y0901,壬子,rénzǐ,Nhâm Tý,Wood (木),桑柘木,Tang Chá Mộc,Mulberry Wood,"Mulberry wood grows strong, lasting all life long.",Yang,Water,Yang,Water,Di Wang (帝旺)
+50,Y1002,癸丑,guǐchǒu,Quý Sửu,Wood (木),桑柘木,Tang Chá Mộc,Mulberry Wood,"Mulberry wood grows strong, lasting all life long.",Yin,Water,Yin,Earth,Guan Dai (冠带)
+51,Y0103,甲寅,jiǎyín,Giáp Dần,Water (水),大溪水,Đại Khê Thủy,Great Stream Water,"Great stream water wide, flowing side by side.",Yang,Wood,Yang,Wood,Lin Guan (临官)
+52,Y0204,乙卯,yǐmǎo,Ất Mão,Water (水),大溪水,Đại Khê Thủy,Great Stream Water,"Great stream water wide, flowing side by side.",Yin,Wood,Yin,Wood,Lin Guan (临官)
+53,Y0305,丙辰,bǐngchén,Bính Thìn,Earth (土),沙中土,Sa Trung Thổ,Sand Earth,"Earth within the sand, shaped by nature's hand.",Yang,Fire,Yang,Earth,Guan Dai (冠带)
+54,Y0406,丁巳,dīngsì,Đinh Tỵ,Earth (土),沙中土,Sa Trung Thổ,Sand Earth,"Earth within the sand, shaped by nature's hand.",Yin,Fire,Yin,Fire,Di Wang (帝旺)
+55,Y0507,戊午,wùwǔ,Mậu Ngọ,Fire (火),天上火,Thiên Thượng Hỏa,Heavenly Fire,"Heavenly fire burns bright, illuminating night.",Yang,Earth,Yang,Fire,Di Wang (帝旺)
+56,Y0608,己未,jǐwèi,Kỷ Mùi,Fire (火),天上火,Thiên Thượng Hỏa,Heavenly Fire,"Heavenly fire burns bright, illuminating night.",Yin,Earth,Yin,Earth,Guan Dai (冠带)
+57,Y0709,庚申,gēngshēn,Canh Thân,Wood (木),石榴木,Thạch Lựu Mộc,Pomegranate Wood,"Pomegranate wood bears fruit, from branch to root.",Yang,Metal,Yang,Metal,Lin Guan (临官)
+58,Y0810,辛酉,xīnyǒu,Tân Dậu,Wood (木),石榴木,Thạch Lựu Mộc,Pomegranate Wood,"Pomegranate wood bears fruit, from branch to root.",Yin,Metal,Yin,Metal,Lin Guan (临官)
+59,Y0911,壬戌,rénxū,Nhâm Tuất,Water (水),大海水,Đại Hải Thủy,Great Ocean Water,"Great ocean water vast, from first day to last.",Yang,Water,Yang,Earth,Guan Dai (冠带)
+60,Y1012,癸亥,guǐhài,Quý Hợi,Water (水),大海水,Đại Hải Thủy,Great Ocean Water,"Great ocean water vast, from first day to last.",Yin,Water,Yin,Water,Di Wang (帝旺)
