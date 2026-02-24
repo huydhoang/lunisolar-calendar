@@ -25,15 +25,30 @@ const ROOT = resolve(__dirname, '..', '..');
 
 // ── 1. Load implementations ────────────────────────────────────────────────
 
-const { LunisolarCalendar, configure } = await import(
-  resolve(ROOT, 'ports', 'lunisolar-ts', 'dist', 'index.mjs')
-);
-configure({ strategy: 'static' });
+let LunisolarCalendar = null, configure = null;
+try {
+  ({ LunisolarCalendar, configure } = await import(
+    resolve(ROOT, 'ports', 'lunisolar-ts', 'dist', 'index.mjs')
+  ));
+  configure({ strategy: 'static' });
+} catch (err) {
+  console.error(`[load] TypeScript package: ${err.message}`);
+}
 
-const wasm = await import(resolve(ROOT, 'ports', 'lunisolar-rs', 'pkg', 'lunisolar_wasm.js'));
+let wasm = null;
+try {
+  wasm = await import(resolve(ROOT, 'ports', 'lunisolar-rs', 'pkg', 'lunisolar_wasm.js'));
+} catch (err) {
+  console.error(`[load] Rust WASM: ${err.message}`);
+}
 
-const createLunisolarEmcc = (await import(resolve(ROOT, 'pkg', 'lunisolar_emcc.mjs'))).default;
-const emccModule = await createLunisolarEmcc();
+let emccModule = null;
+try {
+  const createLunisolarEmcc = (await import(resolve(ROOT, 'pkg', 'lunisolar_emcc.mjs'))).default;
+  emccModule = await createLunisolarEmcc();
+} catch (err) {
+  console.error(`[load] Emscripten WASM: ${err.message}`);
+}
 
 // ── 2. Emscripten WASM range wrapper ───────────────────────────────────────
 
@@ -103,6 +118,19 @@ async function bench(fn, iters = ITERATIONS, warmup = WARMUP) {
   };
 }
 
+/**
+ * Run bench() wrapped in try-catch.
+ * Logs the error and returns null on failure so other benchmarks proceed.
+ */
+async function safeBench(label, fn, iters = ITERATIONS, warmup = WARMUP) {
+  try {
+    return await bench(fn, iters, warmup);
+  } catch (err) {
+    console.error(`  ${label}: ERROR - ${err.message}`);
+    return null;
+  }
+}
+
 // ── 4. Run benchmarks ──────────────────────────────────────────────────────
 
 const scenarios = [
@@ -125,39 +153,49 @@ for (const scenario of scenarios) {
   const [ey, em, ed] = scenario.endDate.split('-').map(Number);
 
   // TypeScript
-  const tsResult = await bench(
-    () => LunisolarCalendar.fromSolarDateRange(startD, endD, TZ),
-  );
-  console.log(`  TS:   ${tsResult.mean_ms.toFixed(1)} ms (${tsResult.count} dates)`);
+  const tsResult = LunisolarCalendar
+    ? await safeBench('TS', () => LunisolarCalendar.fromSolarDateRange(startD, endD, TZ))
+    : null;
+  if (tsResult) console.log(`  TS:   ${tsResult.mean_ms.toFixed(1)} ms (${tsResult.count} dates)`);
 
   // Rust WASM
-  const wasmResult = await bench(
-    () => { const r = wasm.fromSolarDateRange(scenario.startDate, scenario.endDate, CST_OFFSET_SEC); return r; },
-  );
-  console.log(`  WASM: ${wasmResult.mean_ms.toFixed(1)} ms`);
+  const wasmResult = wasm
+    ? await safeBench('WASM', () => { const r = wasm.fromSolarDateRange(scenario.startDate, scenario.endDate, CST_OFFSET_SEC); return r; })
+    : null;
+  if (wasmResult) console.log(`  WASM: ${wasmResult.mean_ms.toFixed(1)} ms`);
 
   // Emscripten WASM
-  const emccResult = await bench(
-    () => emccFromSolarDateRange(sy, sm, sd, ey, em, ed, CST_OFFSET_SEC),
-  );
-  console.log(`  EMCC: ${emccResult.mean_ms.toFixed(1)} ms`);
+  const emccResult = emccModule
+    ? await safeBench('EMCC', () => emccFromSolarDateRange(sy, sm, sd, ey, em, ed, CST_OFFSET_SEC))
+    : null;
+  if (emccResult) console.log(`  EMCC: ${emccResult.mean_ms.toFixed(1)} ms`);
 
-  // Speed ratios
-  const wasmSpeedup = tsResult.mean_ms / wasmResult.mean_ms;
-  const emccSpeedup = tsResult.mean_ms / emccResult.mean_ms;
-  const emccVsWasm = wasmResult.mean_ms / emccResult.mean_ms;
+  const fmt = (r, field) => r ? r[field].toFixed(1) : 'N/A';
 
   md += `## ${scenario.name} (${scenario.days} days)\n\n`;
   md += `| Implementation | Mean (ms) | Min (ms) | Max (ms) | Dates |\n`;
   md += `|----------------|----------:|---------:|---------:|------:|\n`;
-  md += `| TypeScript pkg | ${tsResult.mean_ms.toFixed(1)} | ${tsResult.min_ms.toFixed(1)} | ${tsResult.max_ms.toFixed(1)} | ${tsResult.count} |\n`;
-  md += `| Rust WASM (wasm-pack) | ${wasmResult.mean_ms.toFixed(1)} | ${wasmResult.min_ms.toFixed(1)} | ${wasmResult.max_ms.toFixed(1)} | ${scenario.days} |\n`;
-  md += `| Emscripten WASM (emcc) | ${emccResult.mean_ms.toFixed(1)} | ${emccResult.min_ms.toFixed(1)} | ${emccResult.max_ms.toFixed(1)} | ${scenario.days} |\n\n`;
+  md += `| TypeScript pkg | ${fmt(tsResult, 'mean_ms')} | ${fmt(tsResult, 'min_ms')} | ${fmt(tsResult, 'max_ms')} | ${tsResult ? tsResult.count : 'N/A'} |\n`;
+  md += `| Rust WASM (wasm-pack) | ${fmt(wasmResult, 'mean_ms')} | ${fmt(wasmResult, 'min_ms')} | ${fmt(wasmResult, 'max_ms')} | ${scenario.days} |\n`;
+  md += `| Emscripten WASM (emcc) | ${fmt(emccResult, 'mean_ms')} | ${fmt(emccResult, 'min_ms')} | ${fmt(emccResult, 'max_ms')} | ${scenario.days} |\n\n`;
 
-  md += `**Speed ratios:**\n`;
-  md += `- Rust WASM is **${wasmSpeedup.toFixed(2)}x** ${wasmSpeedup > 1 ? 'faster' : 'slower'} than TypeScript\n`;
-  md += `- Emscripten WASM is **${emccSpeedup.toFixed(2)}x** ${emccSpeedup > 1 ? 'faster' : 'slower'} than TypeScript\n`;
-  md += `- Emscripten vs Rust: **${emccVsWasm.toFixed(2)}x** ${emccVsWasm > 1 ? 'faster' : 'slower'}\n\n`;
+  // Speed ratios (only when at least two results are available)
+  const ratios = [];
+  if (tsResult && wasmResult) {
+    const r = tsResult.mean_ms / wasmResult.mean_ms;
+    ratios.push(`- Rust WASM is **${r.toFixed(2)}x** ${r > 1 ? 'faster' : 'slower'} than TypeScript`);
+  }
+  if (tsResult && emccResult) {
+    const r = tsResult.mean_ms / emccResult.mean_ms;
+    ratios.push(`- Emscripten WASM is **${r.toFixed(2)}x** ${r > 1 ? 'faster' : 'slower'} than TypeScript`);
+  }
+  if (wasmResult && emccResult) {
+    const r = wasmResult.mean_ms / emccResult.mean_ms;
+    ratios.push(`- Emscripten vs Rust: **${r.toFixed(2)}x** ${r > 1 ? 'faster' : 'slower'}`);
+  }
+  if (ratios.length > 0) {
+    md += `**Speed ratios:**\n${ratios.join('\n')}\n\n`;
+  }
 }
 
 md += `## Functions Called\n\n`;
