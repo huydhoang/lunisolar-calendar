@@ -33,7 +33,7 @@ emcc lunisolar.c ephemeris.c "${SWE_SRCS[@]}" \
   -s WASM=1 \
   -s MODULARIZE=1 \
   -s EXPORT_NAME="createLunisolarEmcc" \
-  -s EXPORTED_FUNCTIONS='["_from_solar_date", "_from_solar_date_auto", "_malloc", "_free"]' \
+  -s EXPORTED_FUNCTIONS='["_from_solar_date", "_from_solar_date_auto", "_from_solar_date_range", "_malloc", "_free"]' \
   -s EXPORTED_RUNTIME_METHODS='["ccall", "cwrap", "HEAPF64", "HEAPU32", "UTF8ToString", "stringToUTF8"]' \
   -s ALLOW_MEMORY_GROWTH=1 \
   -s ENVIRONMENT="node" \

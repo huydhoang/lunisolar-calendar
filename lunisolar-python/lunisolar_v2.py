@@ -946,6 +946,42 @@ def solar_to_lunisolar(
             logger.setLevel(original_level)
 
 
+def fromSolarDateRange(
+    start_date: str,
+    end_date: str,
+    solar_time: str = "12:00",
+    timezone_name: str = 'Asia/Shanghai',
+    quiet: bool = True
+) -> List[LunisolarDateDTO]:
+    """
+    Batch-convert a contiguous range of solar dates to lunisolar dates.
+
+    Shares a single ephemeris window (new moons, solar terms, Winter Solstice
+    anchors) across all dates in the range, which is significantly faster than
+    calling solar_to_lunisolar() in a loop.
+
+    Args:
+        start_date: First solar date (inclusive) in YYYY-MM-DD format
+        end_date:   Last solar date (inclusive) in YYYY-MM-DD format
+        solar_time: Solar time applied to every date, HH:MM format (default: "12:00")
+        timezone_name: IANA timezone name (default: 'Asia/Shanghai')
+        quiet:      Suppress info-level logging (default: True)
+
+    Returns:
+        List of LunisolarDateDTO objects, one per day from start_date to end_date.
+    """
+    start = date.fromisoformat(start_date)
+    end = date.fromisoformat(end_date)
+    if start > end:
+        return []
+    n_days = (end - start).days + 1
+    date_range = [
+        ((start + timedelta(days=i)).isoformat(), solar_time)
+        for i in range(n_days)
+    ]
+    return solar_to_lunisolar_batch(date_range, timezone_name=timezone_name, quiet=quiet)
+
+
 def get_stem_pinyin(stem_index: int) -> str:
     """Get pinyin for a heavenly stem by 0-based index (0=甲 … 9=癸)."""
     if 0 <= stem_index < len(HEAVENLY_STEMS):
