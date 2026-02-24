@@ -659,8 +659,9 @@ class LunarMonthResolver:
             # Months 1-11 always start in the same Gregorian year as Month 1
             return period_start.year
         else:  # month 12
-            # Month 12 starts in Dec (same Gregorian year as Month 1) or
-            # Jan/Feb (next Gregorian year, requiring -1 adjustment)
+            # Month 12 is ~11 lunar months (~324 days) after Month 1.
+            # Since Month 1 falls in Jan/Feb, Month 12 starts in Dec or Jan.
+            # When it starts in Jan/Feb (next Gregorian year), subtract 1.
             if period_start.month <= 2:
                 return period_start.year - 1
             return period_start.year

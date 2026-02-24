@@ -3,6 +3,9 @@ Tests for the lunisolar calendar engine v2.
 
 Validates lunar year calculation, month stems, and batch conversions
 for dates before and after the Lunar New Year.
+
+Note: These tests require the NASA DE440 ephemeris file and must be
+run from the repository root directory (where nasa/de440.bsp exists).
 """
 
 import unittest
@@ -13,9 +16,12 @@ import os
 # Suppress all logging during tests
 logging.disable(logging.CRITICAL)
 
-# Ensure ephemeris file is found from repo root
-os.chdir(os.path.join(os.path.dirname(__file__), '..'))
-sys.path.insert(0, os.path.dirname(__file__))
+# The ephemeris file path in config.py is relative to the repo root,
+# so we need to ensure tests run from the correct working directory.
+_REPO_ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
+_ORIG_CWD = os.getcwd()
+os.chdir(_REPO_ROOT)
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from lunisolar_v2 import solar_to_lunisolar, solar_to_lunisolar_batch
 
