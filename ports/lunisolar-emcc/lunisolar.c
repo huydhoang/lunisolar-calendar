@@ -495,15 +495,20 @@ int from_solar_date(double timestamp_ms, int tz_offset_seconds,
 
     /* Lunar year */
     int period_start_utc_year;
+    int lunar_year;
     {
         unsigned pm, pd, ph, pmn, ps;
         utc_ms_to_date_parts(tp->start_utc_ms, 0, &period_start_utc_year, &pm, &pd, &ph, &pmn, &ps);
+        /* Months 1-11: same Gregorian year as period start.
+           Month 12: may start in Dec (same year) or Jan/Feb (next Gregorian year);
+           subtract 1 when the period starts in Jan/Feb. */
+        if (tp->month_number <= 11)
+            lunar_year = period_start_utc_year;
+        else if (pm <= 2)
+            lunar_year = period_start_utc_year - 1;
+        else
+            lunar_year = period_start_utc_year;
     }
-    int lunar_year;
-    if (tp->month_number >= 1 && tp->month_number <= 10)
-        lunar_year = period_start_utc_year;
-    else
-        lunar_year = period_start_utc_year + 1;
 
     /* Wall time for ganzhi using the provided timezone offset */
     int wy;

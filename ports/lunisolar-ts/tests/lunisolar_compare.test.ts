@@ -98,6 +98,24 @@ describe('LunisolarCalendar parity with Python oracle (Asia/Shanghai)', () => {
     expect(res.monthStem + res.monthBranch).toBe((py as any).monthStemBranch);
   });
 
+  it('matches for January date (before Lunar New Year) - regression for month 12 year bug', async () => {
+    const dateStr = '2025-01-15';
+    const timeStr = '12:00';
+    const py = runPythonOracle(dateStr, timeStr);
+    if ((py as any).error) return;
+
+    const { LunisolarCalendar } = await import(resolve(__dirname, '..', 'dist', 'index.mjs'));
+    const jsDate = dateFromCSTLocal(2025, 1, 15, 12, 0);
+    const res = await LunisolarCalendar.fromSolarDate(jsDate, 'Asia/Shanghai');
+
+    expect(res.lunarYear).toBe((py as any).year);
+    expect(res.lunarMonth).toBe((py as any).month);
+    expect(res.lunarDay).toBe((py as any).day);
+    expect(res.isLeapMonth).toBe((py as any).isLeapMonth);
+    expect(res.yearStem + res.yearBranch).toBe((py as any).yearStemBranch);
+    expect(res.monthStem + res.monthBranch).toBe((py as any).monthStemBranch);
+  });
+
   it('applies 23:00 hour boundary rule', async () => {
     const dateStr = '2025-03-01';
     const timeStr = '23:30';

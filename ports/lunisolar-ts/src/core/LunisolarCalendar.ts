@@ -314,9 +314,13 @@ export class LunisolarCalendar {
 
     // Lunar year determination mirroring Python logic
     let lunarYear: number;
-    if (targetPeriod.monthNumber === 1) lunarYear = targetPeriod.startUtc.getUTCFullYear();
-    else if (targetPeriod.monthNumber >= 2 && targetPeriod.monthNumber <= 10) lunarYear = targetPeriod.startUtc.getUTCFullYear();
-    else lunarYear = targetPeriod.startUtc.getUTCFullYear() + 1;
+    if (targetPeriod.monthNumber <= 11) {
+      lunarYear = targetPeriod.startUtc.getUTCFullYear();
+    } else {
+      // Month 12 may start in Dec (same year) or Jan/Feb (next Gregorian year)
+      const startMonth = targetPeriod.startUtc.getUTCMonth() + 1; // 1..12
+      lunarYear = startMonth <= 2 ? targetPeriod.startUtc.getUTCFullYear() - 1 : targetPeriod.startUtc.getUTCFullYear();
+    }
 
         // Sexagenary cycles using the provided timezone for day/hour ganzhi
     const tzWall = userTz.convertToTimezone(targetUtc);

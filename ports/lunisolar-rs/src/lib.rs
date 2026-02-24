@@ -413,13 +413,19 @@ fn from_solar_date_core(
         y
     };
     // Lunar year determination (mirrors Python logic):
-    // Months 1-10 (Yin through Xu) belong to the same Gregorian year as the period start.
-    // Months 11-12 (Zi and Chou) span across the Gregorian year boundary,
-    // so the lunar year is the next Gregorian year (period start year + 1).
-    let lunar_year = if target_period.month_number >= 1 && target_period.month_number <= 10 {
+    // Months 1-11 belong to the same Gregorian year as the period start.
+    // Month 12 may start in Dec (same year) or Jan/Feb (next Gregorian year),
+    // so subtract 1 when the period starts in Jan/Feb.
+    let period_start_utc_month = {
+        let (_, m, _, _, _, _) = utc_ms_to_date_parts(target_period.start_utc_ms, 0);
+        m
+    };
+    let lunar_year = if target_period.month_number <= 11 {
         period_start_utc_year
+    } else if period_start_utc_month <= 2 {
+        period_start_utc_year - 1
     } else {
-        period_start_utc_year + 1
+        period_start_utc_year
     };
 
     // Wall time for ganzhi using the provided timezone offset
