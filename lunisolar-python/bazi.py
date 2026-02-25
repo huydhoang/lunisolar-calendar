@@ -29,6 +29,8 @@ Usage::
 """
 
 import argparse
+import csv
+import os
 from collections import Counter
 from datetime import date
 from typing import Dict, List, Optional, Tuple, Union
@@ -206,6 +208,145 @@ XING: List[frozenset] = [
 
 # §8.5 Self-punishment (自刑)
 ZI_XING_BRANCHES = frozenset({'辰', '午', '酉', '亥'})
+
+# ============================================================
+# Branch → native element mapping
+# ============================================================
+
+BRANCH_ELEMENT: Dict[str, str] = {
+    '子': 'Water', '丑': 'Earth', '寅': 'Wood', '卯': 'Wood',
+    '辰': 'Earth', '巳': 'Fire', '午': 'Fire', '未': 'Earth',
+    '申': 'Metal', '酉': 'Metal', '戌': 'Earth', '亥': 'Water',
+}
+
+# ============================================================
+# Heavenly Stem Combinations & Transformations (天干合化)
+# ============================================================
+
+# Five canonical stem-combination pairs → target element
+STEM_TRANSFORMATIONS: Dict[frozenset, str] = {
+    frozenset(['甲', '己']): 'Earth',
+    frozenset(['乙', '庚']): 'Metal',
+    frozenset(['丙', '辛']): 'Water',
+    frozenset(['丁', '壬']): 'Wood',
+    frozenset(['戊', '癸']): 'Fire',
+}
+
+# Adjacent pillar pairs (strongest proximity for combinations)
+ADJACENT_PAIRS: List[Tuple[str, str]] = [
+    ('year', 'month'), ('month', 'day'), ('day', 'hour'),
+]
+
+# ============================================================
+# Punishments & Harms — detailed pair sets
+# ============================================================
+
+SELF_PUNISH_BRANCHES = frozenset({'午', '酉', '辰', '亥'})
+
+UNCIVIL_PUNISH_PAIRS = frozenset({
+    frozenset({'子', '卯'}),
+})
+
+BULLY_PUNISH_PAIRS = frozenset({
+    frozenset({'寅', '巳'}),
+    frozenset({'巳', '申'}),
+    frozenset({'寅', '申'}),
+    frozenset({'丑', '戌'}),
+    frozenset({'戌', '未'}),
+    frozenset({'丑', '未'}),
+})
+
+HARM_PAIRS = frozenset({
+    frozenset({'子', '未'}),
+    frozenset({'丑', '午'}),
+    frozenset({'寅', '巳'}),
+    frozenset({'卯', '辰'}),
+    frozenset({'申', '亥'}),
+    frozenset({'酉', '戌'}),
+})
+
+# Six Destructions (六破)
+LIU_PO = frozenset({
+    frozenset({'子', '酉'}),
+    frozenset({'丑', '辰'}),
+    frozenset({'寅', '亥'}),
+    frozenset({'卯', '午'}),
+    frozenset({'巳', '申'}),
+    frozenset({'未', '戌'}),
+})
+
+# Stem clash pairs (天干冲) — stems 6 positions apart control each other
+STEM_CLASH_PAIRS = frozenset({
+    frozenset({'甲', '庚'}),
+    frozenset({'乙', '辛'}),
+    frozenset({'丙', '壬'}),
+    frozenset({'丁', '癸'}),
+    frozenset({'戊', '甲'}),  # Earth–Wood (control cycle)
+    frozenset({'己', '乙'}),
+})
+
+# ============================================================
+# Longevity Stage Labels (English & Vietnamese)
+# ============================================================
+
+LONGEVITY_STAGES_EN: List[str] = [
+    'Growth', 'Bath', 'Crown Belt', 'Coming of Age', 'Prosperity Peak',
+    'Decline', 'Sickness', 'Death', 'Grave', 'Termination',
+    'Conception', 'Nurture',
+]
+
+LONGEVITY_STAGES_VI: List[str] = [
+    'Trường Sinh', 'Mộc Dục', 'Quan Đới', 'Lâm Quan', 'Đế Vượng',
+    'Suy', 'Bệnh', 'Tử', 'Mộ', 'Tuyệt', 'Thai', 'Dưỡng',
+]
+
+# ============================================================
+# Na Yin (納音) Data Loader
+# ============================================================
+
+_NAYIN_CSV_PATH = os.path.join(os.path.dirname(__file__), 'nayin.csv')
+_NAYIN_DATA: Dict[int, Dict] = {}
+
+
+def _load_nayin() -> Dict[int, Dict]:
+    """Load Na Yin data from ``nayin.csv`` (cached after first call)."""
+    global _NAYIN_DATA
+    if _NAYIN_DATA:
+        return _NAYIN_DATA
+    with open(_NAYIN_CSV_PATH, encoding='utf-8') as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            idx = int(row['cycle_index'])
+            _NAYIN_DATA[idx] = {
+                'cycle_index': idx,
+                'chinese': row['chinese'],
+                'pinyin': row['pinyin'],
+                'vietnamese': row['vietnamese'],
+                'nayin_element': row['nayin_element'],
+                'nayin_chinese': row['nayin_chinese'],
+                'nayin_vietnamese': row['nayin_vietnamese'],
+                'nayin_english': row['nayin_english'],
+                'nayin_song': row['nayin_song'],
+                'stem_polarity': row['stem_polarity'],
+                'stem_element': row['stem_element'],
+                'branch_polarity': row['branch_polarity'],
+                'branch_element': row['branch_element'],
+                'stem_life_stage': row['stem_life_stage'],
+            }
+    return _NAYIN_DATA
+
+
+def nayin_for_cycle(cycle: int) -> Optional[Dict]:
+    """Return Na Yin data dict for the given 1-60 sexagenary cycle number."""
+    if not (1 <= cycle <= 60):
+        return None
+    data = _load_nayin()
+    return data.get(cycle)
+
+
+def _nayin_pure_element(nayin_element_str: str) -> str:
+    """Extract pure element name from nayin_element field like 'Metal (金)'."""
+    return nayin_element_str.split('(')[0].strip() if '(' in nayin_element_str else nayin_element_str.strip()
 
 
 # ============================================================
@@ -387,12 +528,23 @@ def build_chart(
     }
 
     for name, (stem, branch) in pillars.items():
-        chart['pillars'][name] = {
+        pillar_data: Dict = {
             'stem': stem,
             'branch': branch,
             'hidden': branch_hidden_with_roles(EARTHLY_BRANCHES.index(branch)),
             'ten_god': ten_god(HEAVENLY_STEMS.index(dm_stem), HEAVENLY_STEMS.index(stem)),
         }
+        # Na Yin data
+        p_cycle = pillar_cycles[name]
+        ny = nayin_for_cycle(p_cycle)
+        if ny:
+            pillar_data['nayin'] = {
+                'element': _nayin_pure_element(ny['nayin_element']),
+                'chinese': ny['nayin_chinese'],
+                'vietnamese': ny['nayin_vietnamese'],
+                'english': ny['nayin_english'],
+            }
+        chart['pillars'][name] = pillar_data
 
     return chart
 
@@ -613,6 +765,648 @@ def detect_branch_interactions(chart: Dict) -> Dict[str, list]:
         results['自刑'].append(entry)
 
     return results
+
+
+# ============================================================
+# Stem Combination & Transformation Detection (天干合化)
+# ============================================================
+
+def check_obstruction(chart: Dict, p1: str, p2: str) -> bool:
+    """Check if a third stem between *p1* and *p2* obstructs their combination.
+
+    A pair is obstructed when a stem sitting between the two pillar positions
+    has a clash or controlling relationship with either stem of the pair.
+    """
+    order = ['year', 'month', 'day', 'hour']
+    i1, i2 = order.index(p1), order.index(p2)
+    lo, hi = min(i1, i2), max(i1, i2)
+    if hi - lo <= 1:
+        return False  # adjacent — no room for blocker
+    s1 = chart['pillars'][p1]['stem']
+    s2 = chart['pillars'][p2]['stem']
+    e1, e2 = STEM_ELEMENT[s1], STEM_ELEMENT[s2]
+    for mid_idx in range(lo + 1, hi):
+        mid_pillar = order[mid_idx]
+        mid_stem = chart['pillars'][mid_pillar]['stem']
+        mid_elem = STEM_ELEMENT[mid_stem]
+        if CONTROL_MAP.get(mid_elem) in (e1, e2):
+            return True
+    return False
+
+
+def check_severe_clash(chart: Dict, target_element: str) -> bool:
+    """Return True if *target_element* is severely clashed by natal pillars.
+
+    A severe clash exists when a natal pillar's stem element controls the
+    target element AND that stem is in the month pillar or has opposite
+    polarity to the Day Master.
+    """
+    dm_pol = STEM_POLARITY[chart['day_master']['stem']]
+    for pname, p in chart['pillars'].items():
+        elem = STEM_ELEMENT[p['stem']]
+        if CONTROL_MAP.get(elem) == target_element:
+            if pname == 'month' or STEM_POLARITY[p['stem']] != dm_pol:
+                return True
+    return False
+
+
+def detect_stem_combinations(chart: Dict) -> List[Dict]:
+    """Detect Heavenly Stem Combination pairs (天干合) in the natal chart.
+
+    Returns a list of dicts with combination info, including the target
+    element the combination could transform into.
+    """
+    results: List[Dict] = []
+    pillar_names = ['year', 'month', 'day', 'hour']
+    for i, p1 in enumerate(pillar_names):
+        for j in range(i + 1, len(pillar_names)):
+            p2 = pillar_names[j]
+            s1 = chart['pillars'][p1]['stem']
+            s2 = chart['pillars'][p2]['stem']
+            pair_key = frozenset([s1, s2])
+            if pair_key in STEM_TRANSFORMATIONS:
+                results.append({
+                    'pair': (p1, p2),
+                    'stems': (s1, s2),
+                    'target_element': STEM_TRANSFORMATIONS[pair_key],
+                })
+    return results
+
+
+def detect_transformations(chart: Dict) -> List[Dict]:
+    """Detect stem transformations (合化) with full condition checking.
+
+    For each candidate stem-combination pair, evaluates:
+    - Proximity (adjacent pillars = strong)
+    - Month Command support (月令)
+    - Leading/delivery stem (引化)
+    - Severe clash interference
+    - Obstruction by intervening stems
+
+    Returns a list of dicts with status: 'Hóa (successful)', 'Hợp (bound)',
+    or 'Blocked'.
+    """
+    results: List[Dict] = []
+    month_branch = chart['pillars']['month']['branch']
+    month_elem = BRANCH_ELEMENT[month_branch]
+    pillar_names = ['year', 'month', 'day', 'hour']
+    adjacent_set = {(a, b) for a, b in ADJACENT_PAIRS}
+
+    for i, p1 in enumerate(pillar_names):
+        for j in range(i + 1, len(pillar_names)):
+            p2 = pillar_names[j]
+            s1 = chart['pillars'][p1]['stem']
+            s2 = chart['pillars'][p2]['stem']
+            pair_key = frozenset([s1, s2])
+            if pair_key not in STEM_TRANSFORMATIONS:
+                continue
+            target = STEM_TRANSFORMATIONS[pair_key]
+
+            # Proximity score
+            is_adjacent = (p1, p2) in adjacent_set or (p2, p1) in adjacent_set
+            proximity_score = 2 if is_adjacent else 1
+
+            # Obstruction check
+            blocked = check_obstruction(chart, p1, p2)
+
+            # Month Command support
+            month_support = (month_elem == target)
+
+            # Leading stem — target element appears in other pillars (visible or hidden)
+            other_pillars = [k for k in pillar_names if k not in (p1, p2)]
+            leading = False
+            for k in other_pillars:
+                if STEM_ELEMENT.get(chart['pillars'][k]['stem']) == target:
+                    leading = True
+                    break
+            if not leading:
+                # Check hidden stems across all branches
+                for p in chart['pillars'].values():
+                    for _role, hstem in p['hidden']:
+                        if STEM_ELEMENT.get(hstem) == target:
+                            leading = True
+                            break
+                    if leading:
+                        break
+
+            # Severe clash check
+            severely_clashed = check_severe_clash(chart, target)
+
+            # Decision rule
+            if proximity_score == 2 and month_support and (leading or not severely_clashed) and not blocked:
+                status = 'Hóa (successful)'
+                confidence = 95 if leading else 85
+            elif proximity_score >= 1 and (month_support or leading) and not blocked:
+                status = 'Hợp (bound)'
+                confidence = 65
+            elif blocked:
+                status = 'Blocked'
+                confidence = 10
+            else:
+                status = 'Hợp (bound)'
+                confidence = 40
+
+            # Reduce confidence if severely clashed even when Hóa
+            if status == 'Hóa (successful)' and severely_clashed:
+                status = 'Hóa (suppressed by clash)'
+                confidence = max(confidence - 30, 20)
+
+            results.append({
+                'pair': (p1, p2),
+                'stems': (s1, s2),
+                'target_element': target,
+                'month_support': month_support,
+                'leading_present': leading,
+                'blocked': blocked,
+                'severely_clashed': severely_clashed,
+                'proximity_score': proximity_score,
+                'status': status,
+                'confidence': confidence,
+            })
+    return results
+
+
+# ============================================================
+# Phục Ngâm (伏吟) Detection
+# ============================================================
+
+def detect_phuc_ngam(chart: Dict, dynamic_pillar: Dict) -> List[Dict]:
+    """Detect Phục Ngâm events comparing a dynamic pillar to natal pillars.
+
+    Phục Ngâm occurs when a dynamic pillar (current year or luck pillar) is
+    identical to a natal pillar (strongest) or shares the same branch (weaker).
+
+    Parameters
+    ----------
+    chart : dict
+        Natal chart built by :func:`build_chart`.
+    dynamic_pillar : dict
+        A dict with ``'stem'`` and ``'branch'`` keys (e.g. from a luck pillar
+        or annual pillar).
+
+    Returns
+    -------
+    list[dict]
+        Each entry describes a Phục Ngâm event.
+    """
+    results: List[Dict] = []
+    dyn_stem = dynamic_pillar['stem']
+    dyn_branch = dynamic_pillar['branch']
+
+    for p_name, natal in chart['pillars'].items():
+        if natal['stem'] == dyn_stem and natal['branch'] == dyn_branch:
+            confidence = 95 if p_name == 'month' else 90
+            results.append({
+                'type': 'Phục Ngâm',
+                'match': 'exact',
+                'natal_pillar': p_name,
+                'dynamic_stem': dyn_stem,
+                'dynamic_branch': dyn_branch,
+                'confidence': confidence,
+                'message': (
+                    f"{p_name} pillar identical to dynamic pillar "
+                    f"({dyn_stem}{dyn_branch}) — overload/stagnation risk."
+                ),
+            })
+        elif natal['branch'] == dyn_branch:
+            confidence = 70 if p_name == 'month' else 60
+            results.append({
+                'type': 'Phục Ngâm',
+                'match': 'branch',
+                'natal_pillar': p_name,
+                'dynamic_stem': dyn_stem,
+                'dynamic_branch': dyn_branch,
+                'confidence': confidence,
+                'message': (
+                    f"{p_name} branch equals dynamic branch ({dyn_branch}) "
+                    f"— elemental overbalance."
+                ),
+            })
+    return results
+
+
+# ============================================================
+# Punishments & Harms Detection (detailed)
+# ============================================================
+
+def detect_punishments(chart: Dict) -> List[Dict]:
+    """Detect punishments (刑) and harms (害) with life-area tagging.
+
+    Classifies each detection into Self-Punishment, Uncivil-Punishment,
+    Bully-Punishment, and Harm categories. Assigns severity and affected
+    life-area tags.
+    """
+    results: List[Dict] = []
+    names = ['year', 'month', 'day', 'hour']
+    branches = [chart['pillars'][k]['branch'] for k in names]
+
+    for i in range(len(branches)):
+        for j in range(i + 1, len(branches)):
+            bi, bj = branches[i], branches[j]
+            pair = frozenset({bi, bj})
+
+            involves_day = 'day' in (names[i], names[j])
+            involves_month = 'month' in (names[i], names[j])
+            severity = 80 if involves_day else (70 if involves_month else 50)
+
+            # Self-punishment (自刑)
+            if bi == bj and bi in SELF_PUNISH_BRANCHES:
+                results.append({
+                    'type': 'Tự hình (Self-punish)',
+                    'pair': (names[i], names[j]),
+                    'branches': (bi, bj),
+                    'severity': severity,
+                    'life_areas': ['health', 'self-sabotage'],
+                })
+
+            # Uncivil punishment (无礼之刑)
+            if pair in UNCIVIL_PUNISH_PAIRS:
+                results.append({
+                    'type': 'Vô lễ chi hình (Uncivil)',
+                    'pair': (names[i], names[j]),
+                    'branches': (bi, bj),
+                    'severity': severity,
+                    'life_areas': ['relationship', 'secrets'],
+                })
+
+            # Bully punishment (恃势之刑)
+            if pair in BULLY_PUNISH_PAIRS:
+                results.append({
+                    'type': 'Ỷ thế chi hình (Bully)',
+                    'pair': (names[i], names[j]),
+                    'branches': (bi, bj),
+                    'severity': severity,
+                    'life_areas': ['career', 'power struggles'],
+                })
+
+            # Harm (害/六害)
+            if pair in HARM_PAIRS:
+                results.append({
+                    'type': 'Hại (Harm)',
+                    'pair': (names[i], names[j]),
+                    'branches': (bi, bj),
+                    'severity': severity,
+                    'life_areas': ['health', 'relationship'],
+                })
+
+    return results
+
+
+# ============================================================
+# Na Yin Interaction Analysis (納音相互作用)
+# ============================================================
+
+def _cycle_from_stem_branch(stem: str, branch: str) -> int:
+    """Compute sexagenary cycle number (1-60) from stem and branch characters."""
+    s_idx = HEAVENLY_STEMS.index(stem)
+    b_idx = EARTHLY_BRANCHES.index(branch)
+    for c in range(1, 61):
+        if (c - 1) % 10 == s_idx and (c - 1) % 12 == b_idx:
+            return c
+    raise ValueError(f"Invalid stem-branch pair: {stem}{branch}")
+
+
+def nayin_for_pillar(pillar: Dict) -> Optional[Dict]:
+    """Return Na Yin data for a pillar dict with ``'stem'`` and ``'branch'`` keys."""
+    cycle = _cycle_from_stem_branch(pillar['stem'], pillar['branch'])
+    return nayin_for_cycle(cycle)
+
+
+def analyze_nayin_interactions(chart: Dict) -> Dict:
+    """Analyze Na Yin element interactions between pillars and with Day Master.
+
+    Returns a dict with:
+    - ``pillar_nayins``: Na Yin data for each pillar
+    - ``flow``: interactions along the Year→Month→Day→Hour flow
+    - ``vs_day_master``: each pillar's Na Yin relation to the Day Master element
+    """
+    dm_elem = chart['day_master']['element']
+    pillar_order = ['year', 'month', 'day', 'hour']
+    pillar_nayins: Dict[str, Dict] = {}
+
+    for pname in pillar_order:
+        p = chart['pillars'][pname]
+        ny = nayin_for_pillar(p)
+        if ny:
+            pillar_nayins[pname] = {
+                'nayin_element': _nayin_pure_element(ny['nayin_element']),
+                'nayin_chinese': ny['nayin_chinese'],
+                'nayin_vietnamese': ny['nayin_vietnamese'],
+                'nayin_english': ny['nayin_english'],
+            }
+
+    # Flow interactions: Year→Month→Day→Hour
+    flow: List[Dict] = []
+    for i in range(len(pillar_order) - 1):
+        p1_name, p2_name = pillar_order[i], pillar_order[i + 1]
+        if p1_name in pillar_nayins and p2_name in pillar_nayins:
+            e1 = pillar_nayins[p1_name]['nayin_element']
+            e2 = pillar_nayins[p2_name]['nayin_element']
+            rel = _element_relation(e1, e2)
+            flow.append({
+                'from': p1_name,
+                'to': p2_name,
+                'from_element': e1,
+                'to_element': e2,
+                'relation': rel,
+            })
+
+    # Relation to Day Master
+    vs_dm: Dict[str, Dict] = {}
+    for pname, ny_data in pillar_nayins.items():
+        ny_elem = ny_data['nayin_element']
+        rel = _element_relation(dm_elem, ny_elem)
+        vs_dm[pname] = {
+            'nayin_element': ny_elem,
+            'relation_to_dm': rel,
+            'nayin_name': ny_data['nayin_chinese'],
+        }
+
+    return {
+        'pillar_nayins': pillar_nayins,
+        'flow': flow,
+        'vs_day_master': vs_dm,
+    }
+
+
+# ============================================================
+# Life Stage of Day Master (at each pillar and Da Yun)
+# ============================================================
+
+def life_stage_detail(stem_idx: int, branch_idx: int) -> Dict:
+    """Return full life-stage detail (Chinese, English, Vietnamese, strength)."""
+    idx, cn_name = changsheng_stage(stem_idx, branch_idx)
+    return {
+        'index': idx,
+        'chinese': cn_name,
+        'english': LONGEVITY_STAGES_EN[idx - 1],
+        'vietnamese': LONGEVITY_STAGES_VI[idx - 1],
+        'strength_class': 'strong' if idx <= 5 else 'weak',
+    }
+
+
+def life_stages_for_chart(chart: Dict) -> Dict[str, Dict]:
+    """Return the Day Master's life stage at each natal pillar."""
+    dm_idx = HEAVENLY_STEMS.index(chart['day_master']['stem'])
+    result: Dict[str, Dict] = {}
+    for pname, p in chart['pillars'].items():
+        b_idx = EARTHLY_BRANCHES.index(p['branch'])
+        result[pname] = life_stage_detail(dm_idx, b_idx)
+    return result
+
+
+def life_stage_for_luck_pillar(chart: Dict, luck_pillar: Dict) -> Dict:
+    """Return the Day Master's life stage at a luck pillar."""
+    dm_idx = HEAVENLY_STEMS.index(chart['day_master']['stem'])
+    b_idx = EARTHLY_BRANCHES.index(luck_pillar['branch'])
+    return life_stage_detail(dm_idx, b_idx)
+
+
+# ============================================================
+# Custom Time Range Analysis (Year / Year-Month / Year-Month-Day)
+# ============================================================
+
+def analyze_time_range(
+    chart: Dict,
+    year_cycle: int,
+    month_cycle: Optional[int] = None,
+    day_cycle: Optional[int] = None,
+    luck_pillar: Optional[Dict] = None,
+) -> Dict:
+    """Analyze a custom time range against the natal chart.
+
+    Supports three levels of detail:
+    - **Year Level**: only ``year_cycle`` provided → year pillar analysis
+    - **Year-Month Level**: ``year_cycle`` + ``month_cycle`` → year + month
+    - **Year-Month-Day Level**: all three → year + month + day
+
+    Each level includes: Stem-Branch, Life Stage, interactions,
+    transformations, and Na Yin analysis.
+
+    Parameters
+    ----------
+    chart : dict
+        Natal chart from :func:`build_chart`.
+    year_cycle : int
+        Sexagenary cycle number for the year (1-60).
+    month_cycle : int, optional
+        Sexagenary cycle number for the month (1-60).
+    day_cycle : int, optional
+        Sexagenary cycle number for the day (1-60).
+    luck_pillar : dict, optional
+        Current luck pillar dict (with ``'stem'`` and ``'branch'`` keys).
+    """
+    dm_idx = HEAVENLY_STEMS.index(chart['day_master']['stem'])
+    dm_elem = chart['day_master']['element']
+
+    result: Dict = {'level': 'year', 'pillars': {}}
+
+    # --- Year pillar ---
+    yr_stem, yr_branch = ganzhi_from_cycle(year_cycle)
+    yr_b_idx = EARTHLY_BRANCHES.index(yr_branch)
+    yr_life_stage = life_stage_detail(dm_idx, yr_b_idx)
+    yr_ten_god = ten_god(dm_idx, HEAVENLY_STEMS.index(yr_stem))
+    yr_nayin = nayin_for_cycle(year_cycle)
+
+    yr_entry: Dict = {
+        'stem': yr_stem,
+        'branch': yr_branch,
+        'ten_god': yr_ten_god,
+        'life_stage': yr_life_stage,
+    }
+    if yr_nayin:
+        yr_entry['nayin'] = {
+            'element': _nayin_pure_element(yr_nayin['nayin_element']),
+            'chinese': yr_nayin['nayin_chinese'],
+            'vietnamese': yr_nayin['nayin_vietnamese'],
+            'english': yr_nayin['nayin_english'],
+        }
+    result['pillars']['year'] = yr_entry
+
+    # Interactions with natal branches
+    yr_pillar = {'stem': yr_stem, 'branch': yr_branch}
+    natal_branches = [p['branch'] for p in chart['pillars'].values()]
+    yr_interactions: List[str] = []
+    for b in natal_branches:
+        pair = frozenset({b, yr_branch})
+        if pair in LIU_CHONG:
+            yr_interactions.append('冲')
+        if pair in LIU_HE:
+            yr_interactions.append('合')
+        if pair in LIU_HAI:
+            yr_interactions.append('害')
+    result['year_interactions'] = yr_interactions
+
+    # Phục Ngâm check
+    result['phuc_ngam'] = detect_phuc_ngam(chart, yr_pillar)
+
+    # Stem transformation check (year stem vs natal stems)
+    yr_stem_combos: List[Dict] = []
+    for pname, p in chart['pillars'].items():
+        pair_key = frozenset([yr_stem, p['stem']])
+        if pair_key in STEM_TRANSFORMATIONS:
+            yr_stem_combos.append({
+                'natal_pillar': pname,
+                'stems': (yr_stem, p['stem']),
+                'target_element': STEM_TRANSFORMATIONS[pair_key],
+            })
+    result['year_stem_combinations'] = yr_stem_combos
+
+    # NaYin relation to Day Master
+    if yr_nayin:
+        ny_elem = _nayin_pure_element(yr_nayin['nayin_element'])
+        result['year_nayin_vs_dm'] = {
+            'nayin_element': ny_elem,
+            'relation': _element_relation(dm_elem, ny_elem),
+        }
+
+    # --- Month pillar (if provided) ---
+    if month_cycle is not None:
+        result['level'] = 'year-month'
+        mo_stem, mo_branch = ganzhi_from_cycle(month_cycle)
+        mo_b_idx = EARTHLY_BRANCHES.index(mo_branch)
+        mo_life_stage = life_stage_detail(dm_idx, mo_b_idx)
+        mo_ten_god = ten_god(dm_idx, HEAVENLY_STEMS.index(mo_stem))
+        mo_nayin = nayin_for_cycle(month_cycle)
+
+        mo_entry: Dict = {
+            'stem': mo_stem,
+            'branch': mo_branch,
+            'ten_god': mo_ten_god,
+            'life_stage': mo_life_stage,
+        }
+        if mo_nayin:
+            mo_entry['nayin'] = {
+                'element': _nayin_pure_element(mo_nayin['nayin_element']),
+                'chinese': mo_nayin['nayin_chinese'],
+                'vietnamese': mo_nayin['nayin_vietnamese'],
+                'english': mo_nayin['nayin_english'],
+            }
+        result['pillars']['month'] = mo_entry
+
+    # --- Day pillar (if provided) ---
+    if day_cycle is not None:
+        result['level'] = 'year-month-day'
+        dy_stem, dy_branch = ganzhi_from_cycle(day_cycle)
+        dy_b_idx = EARTHLY_BRANCHES.index(dy_branch)
+        dy_life_stage = life_stage_detail(dm_idx, dy_b_idx)
+        dy_ten_god = ten_god(dm_idx, HEAVENLY_STEMS.index(dy_stem))
+        dy_nayin = nayin_for_cycle(day_cycle)
+
+        dy_entry: Dict = {
+            'stem': dy_stem,
+            'branch': dy_branch,
+            'ten_god': dy_ten_god,
+            'life_stage': dy_life_stage,
+        }
+        if dy_nayin:
+            dy_entry['nayin'] = {
+                'element': _nayin_pure_element(dy_nayin['nayin_element']),
+                'chinese': dy_nayin['nayin_chinese'],
+                'vietnamese': dy_nayin['nayin_vietnamese'],
+                'english': dy_nayin['nayin_english'],
+            }
+        result['pillars']['day'] = dy_entry
+
+    # Luck pillar context
+    if luck_pillar is not None:
+        lp_interactions: List[str] = []
+        lp_branch = luck_pillar['branch']
+        for b in natal_branches:
+            pair = frozenset({b, lp_branch})
+            if pair in LIU_CHONG:
+                lp_interactions.append('冲')
+            if pair in LIU_HE:
+                lp_interactions.append('合')
+            if pair in LIU_HAI:
+                lp_interactions.append('害')
+        result['luck_pillar_interactions'] = lp_interactions
+        result['luck_phuc_ngam'] = detect_phuc_ngam(chart, luck_pillar)
+
+    return result
+
+
+# ============================================================
+# Comprehensive Interaction Analysis (aggregated output)
+# ============================================================
+
+def comprehensive_analysis(chart: Dict) -> Dict:
+    """Produce a comprehensive interaction and transformation analysis.
+
+    Returns a machine-friendly dict containing:
+    - ``day_master``: element, polarity, strength, born-in context
+    - ``natal_interactions``: clashes, combinations, transformations, punishments
+    - ``nayin_analysis``: Na Yin interactions and pillar data
+    - ``life_stages``: Day Master's life stage at each pillar
+    - ``summary``: human-readable summary string
+    """
+    dm = chart['day_master']
+    dm_stem = dm['stem']
+    dm_elem = dm['element']
+    score, strength = score_day_master(chart)
+
+    # Month context
+    month_branch = chart['pillars']['month']['branch']
+    month_elem = BRANCH_ELEMENT[month_branch]
+
+    # Branch interactions
+    interactions = detect_branch_interactions(chart)
+
+    # Stem combinations & transformations
+    stem_combos = detect_stem_combinations(chart)
+    transformations = detect_transformations(chart)
+
+    # Punishments
+    punishments = detect_punishments(chart)
+
+    # Life stages
+    life_stages = life_stages_for_chart(chart)
+
+    # Na Yin
+    nayin_analysis = analyze_nayin_interactions(chart)
+
+    # Build summary
+    summary_parts = [
+        f"Day Master {dm_stem} {dm_elem}; strength: {strength} ({score} pts).",
+        f"Born in {month_branch} ({month_elem} month).",
+    ]
+    for t in transformations:
+        if t['status'].startswith('Hóa'):
+            summary_parts.append(
+                f"Transformation: {t['stems'][0]}+{t['stems'][1]} → "
+                f"{t['target_element']} ({t['status']}, confidence {t['confidence']})."
+            )
+    if interactions.get('六冲'):
+        summary_parts.append("Clashes detected — watch for conflicts.")
+    if punishments:
+        p_types = {p['type'] for p in punishments}
+        summary_parts.append(f"Punishments: {', '.join(p_types)}.")
+
+    return {
+        'day_master': {
+            'stem': dm_stem,
+            'element': dm_elem,
+            'polarity': STEM_POLARITY[dm_stem],
+            'strength': strength,
+            'strength_score': score,
+            'born_in': f"{month_branch} ({month_elem} month)",
+        },
+        'natal_interactions': {
+            'clashes': interactions.get('六冲', []),
+            'combinations': interactions.get('六合', []),
+            'san_he': interactions.get('三合', []),
+            'san_hui': interactions.get('三会', []),
+            'stem_combinations': stem_combos,
+            'transformations': transformations,
+            'punishments': punishments,
+            'harms': interactions.get('害', []),
+            'xing': interactions.get('刑', []),
+            'self_punishment': interactions.get('自刑', []),
+        },
+        'life_stages': life_stages,
+        'nayin_analysis': nayin_analysis,
+        'summary': ' '.join(summary_parts),
+    }
 
 
 # ============================================================
@@ -873,11 +1667,24 @@ def generate_luck_pillars(
     for i in range(count):
         stem, branch = _next_ganzhi(stem, branch, forward)
         b_idx = EARTHLY_BRANCHES.index(branch)
+        s_idx = HEAVENLY_STEMS.index(stem)
         entry: Dict = {
             'stem': stem,
             'branch': branch,
             'longevity_stage': changsheng_stage(dm_idx, b_idx),
+            'ten_god': ten_god(dm_idx, s_idx),
+            'life_stage_detail': life_stage_detail(dm_idx, b_idx),
         }
+        # Na Yin for luck pillar
+        lp_cycle = _cycle_from_stem_branch(stem, branch)
+        lp_nayin = nayin_for_cycle(lp_cycle)
+        if lp_nayin:
+            entry['nayin'] = {
+                'element': _nayin_pure_element(lp_nayin['nayin_element']),
+                'chinese': lp_nayin['nayin_chinese'],
+                'vietnamese': lp_nayin['nayin_vietnamese'],
+                'english': lp_nayin['nayin_english'],
+            }
         if start_years is not None:
             cycle_start_months = (start_years * 12 + start_months) + i * 120
             age_years = cycle_start_months // 12

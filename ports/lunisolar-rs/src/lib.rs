@@ -1,6 +1,7 @@
 use wasm_bindgen::prelude::*;
 use serde::{Deserialize, Serialize};
 
+pub mod bazi;
 mod ephemeris;
 
 // ── Constants ────────────────────────────────────────────────────────────────
