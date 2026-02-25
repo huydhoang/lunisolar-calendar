@@ -22,6 +22,7 @@ from bazi import (
     annual_analysis,
     branch_hidden_with_roles,
     build_chart,
+    calculate_luck_start_age,
     changsheng_stage,
     classify_structure,
     classify_structure_professional,
@@ -31,6 +32,7 @@ from bazi import (
     ganzhi_from_cycle,
     generate_luck_pillars,
     generate_narrative,
+    longevity_map,
     normalize_gender,
     rate_chart,
     recommend_useful_god,
@@ -402,24 +404,24 @@ class TestLuckPillars(unittest.TestCase):
         # 甲子=1, 乙丑=2, 丙寅=3, 丁巳=54
         chart = build_chart(1, 2, 3, 54, "male")
         pillars = generate_luck_pillars(chart, count=3)
-        self.assertEqual(pillars[0], ('丙', '寅'))
-        self.assertEqual(pillars[1], ('丁', '卯'))
-        self.assertEqual(pillars[2], ('戊', '辰'))
+        self.assertEqual((pillars[0]['stem'], pillars[0]['branch']), ('丙', '寅'))
+        self.assertEqual((pillars[1]['stem'], pillars[1]['branch']), ('丁', '卯'))
+        self.assertEqual((pillars[2]['stem'], pillars[2]['branch']), ('戊', '辰'))
 
     def test_backward_yin_male(self):
         """Yin year + male → backward. 乙丑 month → prev is 甲子."""
         # 乙丑=2, 丙寅=3, 丁巳=54
         chart = build_chart(2, 2, 3, 54, "male")
         pillars = generate_luck_pillars(chart, count=2)
-        self.assertEqual(pillars[0], ('甲', '子'))
-        self.assertEqual(pillars[1], ('癸', '亥'))
+        self.assertEqual((pillars[0]['stem'], pillars[0]['branch']), ('甲', '子'))
+        self.assertEqual((pillars[1]['stem'], pillars[1]['branch']), ('癸', '亥'))
 
     def test_forward_yin_female(self):
         """Yin year + female → forward."""
         # 乙丑=2, 丙寅=3, 丁巳=54
         chart = build_chart(2, 2, 3, 54, "female")
         pillars = generate_luck_pillars(chart, count=1)
-        self.assertEqual(pillars[0], ('丙', '寅'))
+        self.assertEqual((pillars[0]['stem'], pillars[0]['branch']), ('丙', '寅'))
 
 
 class TestAnnualAnalysis(unittest.TestCase):
@@ -648,6 +650,241 @@ class TestDetectXing(unittest.TestCase):
         results = detect_xing(chart, strict=True)
         self.assertTrue(len(results) > 0)
         self.assertTrue(all(r['mode'] == 'complete' for r in results))
+
+
+# ============================================================
+# Tests for longevity_map
+# ============================================================
+
+class TestLongevityMap(unittest.TestCase):
+    """Tests for the longevity_map function that maps Day Master stages
+    across all four natal pillars."""
+
+    def test_returns_all_four_pillars(self):
+        chart = build_chart(1, 2, 3, 54, "male")
+        result = longevity_map(chart)
+        self.assertEqual(set(result.keys()), {'year', 'month', 'day', 'hour'})
+
+    def test_values_are_stage_tuples(self):
+        chart = build_chart(1, 2, 3, 54, "male")
+        result = longevity_map(chart)
+        for name, (idx, stage) in result.items():
+            self.assertIsInstance(idx, int)
+            self.assertGreaterEqual(idx, 1)
+            self.assertLessEqual(idx, 12)
+            self.assertIn(stage, [
+                '长生', '沐浴', '冠带', '临官', '帝旺',
+                '衰', '病', '死', '墓', '绝', '胎', '养',
+            ])
+
+    def test_day_master_bing_at_yin_is_changsheng(self):
+        """丙 (DM) at 寅 (day branch) should be 长生 (stage 1)."""
+        # 甲子=1, 乙丑=2, 丙寅=3 (day), 丁巳=54
+        chart = build_chart(1, 2, 3, 54, "male")
+        result = longevity_map(chart)
+        self.assertEqual(result['day'], (1, '长生'))
+
+    def test_day_master_bing_at_zi(self):
+        """丙 (DM) at 子 (year branch) should be 胎 (stage 11)."""
+        # 丙 starts at 寅. Forward from 寅: 寅=1,卯=2,辰=3,巳=4,午=5,
+        # 未=6,申=7,酉=8,戌=9,亥=10,子=11 → 胎
+        chart = build_chart(1, 2, 3, 54, "male")
+        result = longevity_map(chart)
+        self.assertEqual(result['year'], (11, '胎'))
+
+    def test_day_master_bing_at_si(self):
+        """丙 (DM) at 巳 (hour branch) should be 临官 (stage 4)."""
+        # 丙 starts at 寅. Forward: 寅=1,卯=2,辰=3,巳=4 → 临官
+        chart = build_chart(1, 2, 3, 54, "male")
+        result = longevity_map(chart)
+        self.assertEqual(result['hour'], (4, '临官'))
+
+    def test_consistent_with_changsheng_stage(self):
+        """longevity_map should match direct changsheng_stage calls."""
+        chart = build_chart(1, 2, 3, 54, "male")
+        dm_idx = HEAVENLY_STEMS.index(chart['day_master']['stem'])
+        result = longevity_map(chart)
+        for name, p in chart['pillars'].items():
+            b_idx = EARTHLY_BRANCHES.index(p['branch'])
+            expected = changsheng_stage(dm_idx, b_idx)
+            self.assertEqual(result[name], expected)
+
+
+# ============================================================
+# Tests for precise Luck Pillar starting age
+# ============================================================
+
+class TestCalculateLuckStartAge(unittest.TestCase):
+    """Tests for calculate_luck_start_age (the 3-day rule)."""
+
+    def test_3_days_equals_1_year(self):
+        """3 days from birth to solar term = 1 year starting age."""
+        from datetime import date
+        years, months = calculate_luck_start_age(
+            date(1990, 3, 1), date(1990, 3, 4), forward=True,
+        )
+        self.assertEqual(years, 1)
+        self.assertEqual(months, 0)
+
+    def test_1_day_equals_4_months(self):
+        """1 day = 4 months."""
+        from datetime import date
+        years, months = calculate_luck_start_age(
+            date(1990, 3, 1), date(1990, 3, 2), forward=True,
+        )
+        self.assertEqual(years, 0)
+        self.assertEqual(months, 4)
+
+    def test_6_days_equals_2_years(self):
+        """6 days → 6 × 4 = 24 months = 2 years."""
+        from datetime import date
+        years, months = calculate_luck_start_age(
+            date(1990, 3, 1), date(1990, 3, 7), forward=True,
+        )
+        self.assertEqual(years, 2)
+        self.assertEqual(months, 0)
+
+    def test_7_days(self):
+        """7 days → 7 × 4 = 28 months = 2 years 4 months."""
+        from datetime import date
+        years, months = calculate_luck_start_age(
+            date(1990, 3, 1), date(1990, 3, 8), forward=True,
+        )
+        self.assertEqual(years, 2)
+        self.assertEqual(months, 4)
+
+    def test_backward_uses_absolute_delta(self):
+        """Backward direction: solar term before birth still uses abs days."""
+        from datetime import date
+        years, months = calculate_luck_start_age(
+            date(1990, 3, 10), date(1990, 3, 7), forward=False,
+        )
+        self.assertEqual(years, 1)
+        self.assertEqual(months, 0)
+
+    def test_zero_days(self):
+        """Born on the solar term → starting age 0."""
+        from datetime import date
+        years, months = calculate_luck_start_age(
+            date(1990, 3, 5), date(1990, 3, 5), forward=True,
+        )
+        self.assertEqual(years, 0)
+        self.assertEqual(months, 0)
+
+
+# ============================================================
+# Tests for enhanced Luck Pillars with longevity stages
+# ============================================================
+
+class TestLuckPillarLongevityStages(unittest.TestCase):
+    """Tests for longevity stage mapping on luck pillars."""
+
+    def test_luck_pillars_have_longevity_stage(self):
+        """Each luck pillar dict should contain a longevity_stage key."""
+        chart = build_chart(1, 2, 3, 54, "male")
+        pillars = generate_luck_pillars(chart, count=4)
+        for p in pillars:
+            self.assertIn('longevity_stage', p)
+            idx, stage = p['longevity_stage']
+            self.assertIsInstance(idx, int)
+            self.assertGreaterEqual(idx, 1)
+            self.assertLessEqual(idx, 12)
+
+    def test_longevity_stage_matches_changsheng(self):
+        """Longevity stage on luck pillar should match changsheng_stage."""
+        chart = build_chart(1, 2, 3, 54, "male")
+        dm_idx = HEAVENLY_STEMS.index(chart['day_master']['stem'])
+        pillars = generate_luck_pillars(chart, count=8)
+        for p in pillars:
+            b_idx = EARTHLY_BRANCHES.index(p['branch'])
+            expected = changsheng_stage(dm_idx, b_idx)
+            self.assertEqual(p['longevity_stage'], expected)
+
+    def test_forward_yang_male_first_pillar_longevity(self):
+        """丙 DM at 寅 (first luck pillar for forward yang male) = 长生."""
+        # 甲子=1, 乙丑=2, 丙寅=3, 丁巳=54
+        # Forward from 乙丑 → first pillar is 丙寅
+        chart = build_chart(1, 2, 3, 54, "male")
+        pillars = generate_luck_pillars(chart, count=1)
+        self.assertEqual(pillars[0]['longevity_stage'], (1, '长生'))
+
+
+class TestLuckPillarStartAge(unittest.TestCase):
+    """Tests for precise starting age and Gregorian year on luck pillars."""
+
+    def test_start_age_with_dates(self):
+        """When birth_date and solar_term_date are given, start_age is set."""
+        from datetime import date
+        chart = build_chart(1, 2, 3, 54, "male")
+        pillars = generate_luck_pillars(
+            chart, count=3,
+            birth_date=date(1990, 3, 1),
+            solar_term_date=date(1990, 3, 4),
+        )
+        # 3 days → 1 year starting age
+        self.assertEqual(pillars[0]['start_age'], (1, 0))
+        # Second pillar: 1 + 10 = 11
+        self.assertEqual(pillars[1]['start_age'], (11, 0))
+        # Third pillar: 1 + 20 = 21
+        self.assertEqual(pillars[2]['start_age'], (21, 0))
+
+    def test_start_gregorian_year_with_dates(self):
+        """start_gregorian_year = birth_year + start_age_years."""
+        from datetime import date
+        chart = build_chart(1, 2, 3, 54, "male")
+        pillars = generate_luck_pillars(
+            chart, count=3,
+            birth_date=date(1990, 3, 1),
+            solar_term_date=date(1990, 3, 4),
+        )
+        self.assertEqual(pillars[0]['start_gregorian_year'], 1991)
+        self.assertEqual(pillars[1]['start_gregorian_year'], 2001)
+        self.assertEqual(pillars[2]['start_gregorian_year'], 2011)
+
+    def test_start_age_with_birth_year_only(self):
+        """When only birth_year is given, uses default starting age of 1."""
+        chart = build_chart(1, 2, 3, 54, "male")
+        pillars = generate_luck_pillars(
+            chart, count=2, birth_year=1990,
+        )
+        self.assertEqual(pillars[0]['start_age'], (1, 0))
+        self.assertEqual(pillars[0]['start_gregorian_year'], 1991)
+        self.assertEqual(pillars[1]['start_age'], (11, 0))
+        self.assertEqual(pillars[1]['start_gregorian_year'], 2001)
+
+    def test_no_dates_no_start_age(self):
+        """Without date params, start_age and start_gregorian_year are absent."""
+        chart = build_chart(1, 2, 3, 54, "male")
+        pillars = generate_luck_pillars(chart, count=2)
+        self.assertNotIn('start_age', pillars[0])
+        self.assertNotIn('start_gregorian_year', pillars[0])
+
+    def test_fractional_start_age(self):
+        """7 days → 2y4m. Pillars start at 2y4m, 12y4m, 22y4m."""
+        from datetime import date
+        chart = build_chart(1, 2, 3, 54, "male")
+        pillars = generate_luck_pillars(
+            chart, count=3,
+            birth_date=date(1990, 1, 1),
+            solar_term_date=date(1990, 1, 8),
+        )
+        self.assertEqual(pillars[0]['start_age'], (2, 4))
+        self.assertEqual(pillars[1]['start_age'], (12, 4))
+        self.assertEqual(pillars[2]['start_age'], (22, 4))
+
+    def test_10_year_cycle_spacing(self):
+        """Each luck pillar should be 10 years (120 months) apart."""
+        from datetime import date
+        chart = build_chart(1, 2, 3, 54, "male")
+        pillars = generate_luck_pillars(
+            chart, count=5,
+            birth_date=date(1990, 3, 1),
+            solar_term_date=date(1990, 3, 7),
+        )
+        for i in range(1, len(pillars)):
+            prev_months = pillars[i - 1]['start_age'][0] * 12 + pillars[i - 1]['start_age'][1]
+            curr_months = pillars[i]['start_age'][0] * 12 + pillars[i]['start_age'][1]
+            self.assertEqual(curr_months - prev_months, 120)
 
 
 if __name__ == '__main__':

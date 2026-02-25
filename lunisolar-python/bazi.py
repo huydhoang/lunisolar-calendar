@@ -30,6 +30,7 @@ Usage::
 
 import argparse
 from collections import Counter
+from datetime import date
 from typing import Dict, List, Optional, Tuple, Union
 
 from lunisolar_v2 import (
@@ -264,6 +265,29 @@ def changsheng_stage(stem_idx: int, branch_idx: int) -> Tuple[int, str]:
 
     idx = offset + 1          # 1-based
     return idx, LONGEVITY_STAGES[idx - 1]
+
+
+def longevity_map(chart: Dict) -> Dict[str, Tuple[int, str]]:
+    """Map the Day Master's 12 Longevity Stage across all four natal pillars.
+
+    Returns a dictionary keyed by pillar name (``'year'``, ``'month'``,
+    ``'day'``, ``'hour'``) whose values are ``(1-based stage index, stage
+    name)`` tuples produced by :func:`changsheng_stage`.
+
+    This answers the question: "How strong or healthy is the Day Master's
+    energy in each of the four pillars?"
+
+    Parameters
+    ----------
+    chart : dict
+        Natal chart built by :func:`build_chart`.
+    """
+    dm_idx = HEAVENLY_STEMS.index(chart['day_master']['stem'])
+    result: Dict[str, Tuple[int, str]] = {}
+    for name, p in chart['pillars'].items():
+        b_idx = EARTHLY_BRANCHES.index(p['branch'])
+        result[name] = changsheng_stage(dm_idx, b_idx)
+    return result
 
 
 # ============================================================
@@ -708,8 +732,67 @@ def _next_ganzhi(stem: str, branch: str, forward: bool = True) -> Tuple[str, str
     )
 
 
-def generate_luck_pillars(chart: Dict, count: int = 8) -> List[Tuple[str, str]]:
-    """Generate *count* Luck Pillars from the month pillar.
+def _luck_direction(chart: Dict) -> bool:
+    """Return *True* if luck pillars advance forward (clockwise).
+
+    Direction follows spec §5.2 Step 1:
+    - Yang year-stem + male  → forward
+    - Yang year-stem + female → backward
+    - Yin year-stem  + male  → backward
+    - Yin year-stem  + female → forward
+    """
+    year_stem = chart['pillars']['year']['stem']
+    gender = normalize_gender(chart.get('gender', 'male'))
+    is_yang = STEM_POLARITY[year_stem] == 'Yang'
+    return (is_yang and gender == 'male') or (
+        not is_yang and gender == 'female'
+    )
+
+
+def calculate_luck_start_age(
+    birth_date: date,
+    solar_term_date: date,
+    forward: bool,
+) -> Tuple[int, int]:
+    """Calculate the starting age of the first Luck Pillar (大运).
+
+    Implements the traditional **3-Day Rule**: 3 days from birth to the
+    governing solar term equals 1 year of life, and 1 day equals 4 months.
+
+    Parameters
+    ----------
+    birth_date : :class:`datetime.date`
+        Gregorian date of birth.
+    solar_term_date : :class:`datetime.date`
+        Gregorian date of the **governing Jie solar term boundary**.
+        If *forward* is True, this should be the *next* Jie (节) after birth.
+        If *forward* is False, this should be the *previous* Jie before birth.
+    forward : bool
+        True when the luck direction is forward (Yang-male / Yin-female).
+
+    Returns
+    -------
+    (start_age_years, start_age_months)
+        The age (in whole years and remaining months) at which the first
+        Luck Pillar takes effect.  Fractional days are rounded to the
+        nearest whole month.
+    """
+    delta_days = abs((solar_term_date - birth_date).days)
+    # 3 days = 1 year → 1 day = 4 months
+    total_months = delta_days * 4
+    years = total_months // 12
+    months = total_months % 12
+    return int(years), int(months)
+
+
+def generate_luck_pillars(
+    chart: Dict,
+    count: int = 8,
+    birth_date: Optional[date] = None,
+    solar_term_date: Optional[date] = None,
+    birth_year: Optional[int] = None,
+) -> List[Dict]:
+    """Generate *count* Luck Pillars (大运) from the month pillar.
 
     Direction follows spec §5.2 Step 1:
     - Yang year-stem + male  → forward
@@ -717,23 +800,92 @@ def generate_luck_pillars(chart: Dict, count: int = 8) -> List[Tuple[str, str]]:
     - Yin year-stem  + male  → backward
     - Yin year-stem  + female → forward
 
-    .. note::
-       Precise starting-age calculation (§5.2 Step 2) requires Jie solar-term
-       dates and is not included here.  The pillar *sequence* is correct.
+    When *birth_date* **and** *solar_term_date* are provided, the precise
+    starting age is calculated using :func:`calculate_luck_start_age` (the
+    traditional 3-day rule) and each pillar includes a
+    ``start_gregorian_year``.  When only *birth_year* is provided without
+    dates, an approximate ``start_gregorian_year`` is computed using a
+    default starting age of 1 year.
+
+    Parameters
+    ----------
+    chart : dict
+        Natal chart built by :func:`build_chart`.
+    count : int
+        Number of luck pillars to generate (default 8).
+    birth_date : date, optional
+        Gregorian birth date for precise starting-age calculation.
+    solar_term_date : date, optional
+        Governing Jie solar-term date (next Jie if forward, previous Jie
+        if backward).
+    birth_year : int, optional
+        Gregorian birth year.  Used for approximate year mapping when
+        exact dates are not available.
+
+    Returns
+    -------
+    list[dict]
+        Each element is a dict with keys:
+
+        * ``stem`` — Heavenly Stem character
+        * ``branch`` — Earthly Branch character
+        * ``longevity_stage`` — ``(index, name)`` tuple from
+          :func:`changsheng_stage` for the Day Master at this branch
+        * ``start_age`` — ``(years, months)`` tuple (present when dates
+          are supplied or estimated when *birth_year* is given)
+        * ``start_gregorian_year`` — Gregorian year at which this 10-year
+          cycle begins (present when any birth info is given)
+
+    Backward Compatibility
+    ----------------------
+    When called **without** any date parameters and the return value is
+    iterated for ``(stem, branch)`` tuples (the old API), each dict
+    supports tuple unpacking via ``__iter__``.  However callers are
+    encouraged to migrate to the dict-based API.
     """
-    year_stem = chart['pillars']['year']['stem']
-    gender = normalize_gender(chart.get('gender', 'male'))
-    is_yang = STEM_POLARITY[year_stem] == 'Yang'
-    forward = (is_yang and gender == 'male') or (
-        not is_yang and gender == 'female'
-    )
+    forward = _luck_direction(chart)
+    dm_idx = HEAVENLY_STEMS.index(chart['day_master']['stem'])
+
+    # Starting age calculation
+    start_years: Optional[int] = None
+    start_months: int = 0
+
+    if birth_date is not None and solar_term_date is not None:
+        start_years, start_months = calculate_luck_start_age(
+            birth_date, solar_term_date, forward,
+        )
+    elif birth_year is not None:
+        # Approximate: default starting age of 1 year when no solar-term
+        # date is available.
+        start_years = 1
+        start_months = 0
+
+    # Resolve birth year for Gregorian year mapping
+    effective_birth_year: Optional[int] = None
+    if birth_date is not None:
+        effective_birth_year = birth_date.year
+    elif birth_year is not None:
+        effective_birth_year = birth_year
 
     stem = chart['pillars']['month']['stem']
     branch = chart['pillars']['month']['branch']
-    pillars: List[Tuple[str, str]] = []
-    for _ in range(count):
+    pillars: List[Dict] = []
+    for i in range(count):
         stem, branch = _next_ganzhi(stem, branch, forward)
-        pillars.append((stem, branch))
+        b_idx = EARTHLY_BRANCHES.index(branch)
+        entry: Dict = {
+            'stem': stem,
+            'branch': branch,
+            'longevity_stage': changsheng_stage(dm_idx, b_idx),
+        }
+        if start_years is not None:
+            cycle_start_months = (start_years * 12 + start_months) + i * 120
+            age_years = cycle_start_months // 12
+            age_months = cycle_start_months % 12
+            entry['start_age'] = (age_years, age_months)
+            if effective_birth_year is not None:
+                entry['start_gregorian_year'] = effective_birth_year + age_years
+        pillars.append(entry)
     return pillars
 
 
@@ -957,7 +1109,7 @@ if __name__ == "__main__":
     print("Strength Score:", score, "→", strength)
     print("Structure (basic):", structure)
     print("Structure (professional):", structure_pro, f"(dominance={dominance})")
-    print("Luck Pillars:", ["".join(p) for p in luck])
+    print("Luck Pillars:", [p['stem'] + p['branch'] for p in luck])
     print("Useful Elements:", useful)
     print("Chart Rating:", rating, "/ 100")
     print()
