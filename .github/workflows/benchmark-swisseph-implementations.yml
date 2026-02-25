@@ -1,9 +1,9 @@
-name: "Benchmark: Swiss Ephemeris WASM implementations"
+name: "Benchmark: Swiss Ephemeris implementations"
 
 on:
   push:
     paths:
-      - '.github/workflows/benchmark-swisseph-wasm-implementations.yml'
+      - '.github/workflows/benchmark-swisseph-implementations.yml'
       - 'tests/swisseph-wasm/benchmark.mjs'
       - 'ports/swisseph-rs/**'
       - 'vendor/swisseph/**'
