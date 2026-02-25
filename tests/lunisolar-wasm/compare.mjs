@@ -202,13 +202,14 @@ const TRANSFORMATION_SIZE = 48;
 const PUNISHMENT_SIZE = 32;
 
 function emccBaziDetectStemCombinations(pillars) {
-  const outPtr = emccModule._malloc(4 * 50);
+  const maxCount = 50;
+  const outPtr = emccModule._malloc(4 * 5 * maxCount);
   const pillarsPtr = emccModule._malloc(4 * 8);
   for (let i = 0; i < 4; i++) {
     emccModule.HEAP32[pillarsPtr / 4 + i * 2] = stemIdx(pillars[i].stem);
     emccModule.HEAP32[pillarsPtr / 4 + i * 2 + 1] = branchIdx(pillars[i].branch);
   }
-  const count = emccModule._bazi_detect_stem_combinations(pillarsPtr, outPtr, 50);
+  const count = emccModule._bazi_detect_stem_combinations(pillarsPtr, outPtr, maxCount);
   const results = [];
   for (let i = 0; i < count; i++) {
     const base = outPtr / 4 + i * 5;
@@ -413,11 +414,14 @@ function baziStemCombinationsMatch(ref, cand) {
   const candSc = cand.bazi.stemCombinations;
   if (refSc.length !== candSc.length) return false;
   for (const refItem of refSc) {
-    const found = candSc.find(c => 
-      c.targetElement === refItem.targetElement &&
-      ((c.pairA === refItem.pair[0] && c.pairB === refItem.pair[1]) ||
-       (c.pairA === refItem.pair[1] && c.pairB === refItem.pair[0]))
-    );
+    const found = candSc.find(c => {
+      const pairA = c.pairA ?? c.pair?.[0];
+      const pairB = c.pairB ?? c.pair?.[1];
+      const targetElement = c.targetElement ?? c.target_element;
+      return targetElement === refItem.targetElement &&
+        ((pairA === refItem.pair[0] && pairB === refItem.pair[1]) ||
+         (pairA === refItem.pair[1] && pairB === refItem.pair[0]));
+    });
     if (!found) return false;
   }
   return true;
@@ -429,13 +433,18 @@ function baziTransformationsMatch(ref, cand) {
   const candT = cand.bazi.transformations;
   if (refT.length !== candT.length) return false;
   for (const refItem of refT) {
-    const found = candT.find(c =>
-      c.targetElement === refItem.targetElement &&
-      c.status === refItem.status &&
-      c.confidence === refItem.confidence &&
-      ((c.pairA === refItem.pair[0] && c.pairB === refItem.pair[1]) ||
-       (c.pairA === refItem.pair[1] && c.pairB === refItem.pair[0]))
-    );
+    const found = candT.find(c => {
+      const pairA = c.pairA ?? c.pair?.[0];
+      const pairB = c.pairB ?? c.pair?.[1];
+      const targetElement = c.targetElement ?? c.target_element;
+      const status = c.status;
+      const confidence = c.confidence;
+      return targetElement === refItem.targetElement &&
+        status === refItem.status &&
+        confidence === refItem.confidence &&
+        ((pairA === refItem.pair[0] && pairB === refItem.pair[1]) ||
+         (pairA === refItem.pair[1] && pairB === refItem.pair[0]));
+    });
     if (!found) return false;
   }
   return true;
@@ -447,10 +456,10 @@ function baziPunishmentsMatch(ref, cand) {
   const candP = cand.bazi.punishments;
   if (refP.length !== candP.length) return false;
   for (const refItem of refP) {
-    const found = candP.find(c =>
-      c.type === refItem.type &&
-      c.severity === refItem.severity
-    );
+    const found = candP.find(c => {
+      const type = c.type ?? c.punishment_type;
+      return type === refItem.type && c.severity === refItem.severity;
+    });
     if (!found) return false;
   }
   return true;

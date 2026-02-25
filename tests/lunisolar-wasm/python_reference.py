@@ -103,13 +103,14 @@ def main():
             dm_stem = chart["day_master"]["stem"]
             dm_elem = chart["day_master"]["element"]
             dm_idx = HEAVENLY_STEMS.index(dm_stem)
+            day_master_strength_score, day_master_strength = score_day_master(chart)
 
             entry["bazi"] = {
                 "dayMasterStem": dm_stem,
                 "dayMasterElement": dm_elem,
                 "dayMasterPolarity": STEM_POLARITY[dm_stem],
-                "dayMasterStrengthScore": score_day_master(chart)[0],
-                "dayMasterStrength": score_day_master(chart)[1],
+                "dayMasterStrengthScore": day_master_strength_score,
+                "dayMasterStrength": day_master_strength,
                 "tenGods": {
                     "year": ten_god(dm_idx, HEAVENLY_STEMS.index(r.year_stem)),
                     "month": ten_god(dm_idx, HEAVENLY_STEMS.index(r.month_stem)),
@@ -143,8 +144,11 @@ def main():
             ]:
                 ny = nayin_for_cycle(cycle)
                 if ny:
+                    nayin_elem = ny["nayin_element"]
+                    if "(" in nayin_elem:
+                        nayin_elem = nayin_elem.split("(")[0].strip()
                     entry["bazi"]["naYin"][pname] = {
-                        "element": ny["nayin_element"].split("(")[0].strip(),
+                        "element": nayin_elem,
                         "chinese": ny["nayin_chinese"],
                         "english": ny["nayin_english"],
                     }

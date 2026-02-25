@@ -65,7 +65,7 @@ Also renamed the workflow file from `test-lunisolar-wasm.yml` to `verify-ports-a
 
 ---
 
-### `ports/lunisolar-rs/src/lib.rs` (NEW)
+### `ports/lunisolar-rs/src/lib.rs` (MODIFIED)
 
 **Added:**
 - `#[wasm_bindgen]` exports for bazi functions:
@@ -185,7 +185,7 @@ node compare.mjs
 
 The generated `compare-report.md` now includes:
 
-```
+```text
 ## Summary
 ### Ganzhi (Sexagenary Cycle)
 ### Huangdao (Construction Stars + Great Yellow Path)
@@ -205,3 +205,25 @@ The Bazi section now shows a comparison table with both Rust WASM and Emcc vs Py
 - Stem Combinations (天干合)
 - Transformations (合化)
 - Punishments (刑害)
+
+---
+
+## Bug Fixes Applied (2026-02-25)
+
+### `ports/lunisolar-rs/src/lib.rs`
+- **Bounds check in `bazi_detect_transformations`**: Added validation that `month_branch_idx` must be 0-11 before calling `bazi::detect_transformations`, preventing potential WASM panic when indexing `BRANCH_ELEMENT`.
+
+### `tests/lunisolar-wasm/compare.mjs`
+- **Fixed undersized `outPtr` buffer in `emccBaziDetectStemCombinations`**: Each result is 5 ints (5×4 bytes), but `outPtr` was only 200 bytes. Now allocates `4 * 5 * maxCount` bytes based on `maxCount = 50`.
+- **Fixed field name mismatch in matchers**: Updated `baziStemCombinationsMatch`, `baziTransformationsMatch`, and `baziPunishmentsMatch` to normalize field names, accepting both camelCase (`pairA`, `pairB`, `targetElement`) and snake_case (`target_element`, `punishment_type`) plus array-style `pair`. This ensures Rust WASM (camelCase JSON) and Emcc WASM outputs match correctly.
+
+### `tests/lunisolar-wasm/python_reference.py`
+- **Eliminated duplicate `score_day_master()` call**: Previously called twice to get index 0 and 1. Now calls once and unpacks into `day_master_strength_score, day_master_strength`.
+- **Robust Na Yin element parsing**: Changed from fragile `.split("(")[0].strip()` to conditional check before stripping parenthesized suffix, handling both `"Wood(木)"` and `"Wood"` formats.
+
+### `.github/workflows/verify-ports-against-python.yml`
+- **Added missing path triggers**: Added `lunisolar_v2.py`, `huangdao_systems_v2.py`, and `config.py` to `on.push.paths` so edits to these imported modules trigger the verification job.
+
+### `changes/20260225_bazi_accuracy_workflow.md`
+- **Fixed file status header**: Changed `### ports/lunisolar-rs/src/lib.rs (NEW)` to `(MODIFIED)` to accurately reflect that new Bazi WASM exports were added to an existing file.
+- **Added language tag to fenced code block**: Changed opening fence from ` ``` ` to ` ```text ` for markdownlint MD040 compliance.

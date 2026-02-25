@@ -10,6 +10,9 @@ on:
       - 'ports/lunisolar-emcc/**'
       - 'ports/lunisolar-ts/src/**'
       - 'lunisolar-python/bazi.py'
+      - 'lunisolar-python/lunisolar_v2.py'
+      - 'lunisolar-python/huangdao_systems_v2.py'
+      - 'lunisolar-python/config.py'
       - 'lunisolar-python/nayin.csv'
   workflow_dispatch:
 

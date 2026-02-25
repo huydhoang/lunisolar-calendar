@@ -126,8 +126,8 @@ None. All existing functionality preserved and enhanced.
 ## Spec Compliance
 
 This update implements data from:
-- `@specs/bazi-analysis-framework.md` - Section 9 (Symbolic Stars), Section 8 (Branch Interactions)
-- `@specs/bazi-target-data-schema.md`:
+- `specs/bazi-analysis-framework.md` - Section 9 (Symbolic Stars), Section 8 (Branch Interactions)
+- `specs/bazi-target-data-schema.md`:
   - Section IX (Void Branches) - Fully implemented
   - Section X (Symbolic Stars) - Core stars implemented
   - Section XI (Luck Pillars) - Enhanced with Ten-God and Na Yin
@@ -150,7 +150,7 @@ python bazi.py -d 1990-03-15 -t 14:30 -g male
 
 ## Output Structure
 
-```
+```text
 ======================================================================
   BAZI (四柱八字) COMPREHENSIVE CHART REPORT
 ======================================================================

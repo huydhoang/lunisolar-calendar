@@ -749,6 +749,12 @@ pub fn bazi_detect_transformations(
     pillars_json: &str,
     month_branch_idx: usize,
 ) -> Result<String, JsError> {
+    if month_branch_idx >= 12 {
+        return Err(JsError::new(&format!(
+            "month_branch_idx must be 0-11, got {}",
+            month_branch_idx
+        )));
+    }
     let pillars: bazi::FourPillars = serde_json::from_str(pillars_json)
         .map_err(|e| JsError::new(&format!("Failed to parse pillars JSON: {}", e)))?;
     let results = bazi::detect_transformations(&pillars, month_branch_idx);
