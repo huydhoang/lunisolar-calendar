@@ -1,0 +1,103 @@
+name: "Verify: Port Implementations vs Python Reference"
+
+on:
+  push:
+    paths:
+      - '.github/workflows/verify-ports-against-python.yml'
+      - 'tests/lunisolar-wasm/compare.mjs'
+      - 'tests/lunisolar-wasm/python_reference.py'
+      - 'ports/lunisolar-rs/**'
+      - 'ports/lunisolar-emcc/**'
+      - 'ports/lunisolar-ts/src/**'
+      - 'lunisolar-python/bazi.py'
+      - 'lunisolar-python/nayin.csv'
+  workflow_dispatch:
+
+jobs:
+  verify-ports:
+    name: Verify Rust WASM, Emscripten WASM, TypeScript vs Python (DE440s)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Python dependencies
+        run: pip install skyfield pytz
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install wasm-pack
+        run: curl -sSL https://rustwasm.github.io/wasm-pack/installer/init.sh | sh
+
+      - name: Set up Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 'latest'
+
+      - name: Verify emcc
+        run: emcc --version
+
+      - name: Build TypeScript port
+        working-directory: ports/lunisolar-ts
+        run: |
+          npm ci
+          npm run build
+
+      - name: Build Rust WASM port
+        working-directory: ports/lunisolar-rs
+        run: wasm-pack build --target nodejs --release
+
+      - name: Build Emscripten WASM port
+        working-directory: ports/lunisolar-emcc
+        run: bash build.sh
+
+      - name: Verify build artifacts
+        run: |
+          echo "=== DE440s ephemeris (git-lfs) ==="
+          ls -lh nasa/de440s.bsp
+          echo ""
+          echo "=== TypeScript port ==="
+          ls -lh ports/lunisolar-ts/dist/index.mjs ports/lunisolar-ts/dist/index.cjs
+          echo ""
+          echo "=== Rust WASM port ==="
+          ls -lh ports/lunisolar-rs/pkg/lunisolar_wasm.js ports/lunisolar-rs/pkg/lunisolar_wasm_bg.wasm
+          echo ""
+          echo "=== Emscripten WASM port ==="
+          ls -lh pkg/lunisolar_emcc.mjs pkg/lunisolar_emcc.wasm
+
+      - name: Run cross-implementation verification
+        working-directory: tests/lunisolar-wasm
+        run: node compare.mjs
+
+      - name: Write results to step summary
+        if: always()
+        run: |
+          if [ -f tests/lunisolar-wasm/compare-report.md ]; then
+            cat tests/lunisolar-wasm/compare-report.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload verification report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: port-verification-report
+          path: tests/lunisolar-wasm/compare-report.md
+          retention-days: 30

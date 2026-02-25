@@ -92,12 +92,10 @@ fn bisect_new_moon(mut jd_lo: f64, mut jd_hi: f64) -> f64 {
 /// Returns a vector of Unix timestamps in seconds.
 pub fn compute_new_moons(start_year: i32, end_year: i32) -> Vec<f64> {
     let mut results = Vec::new();
-    let mut jd = unsafe {
-        swe_bindings::swe_julday(start_year, 1, 1, 0.0, swe_bindings::SE_GREG_CAL)
-    };
-    let jd_end = unsafe {
-        swe_bindings::swe_julday(end_year + 1, 1, 1, 0.0, swe_bindings::SE_GREG_CAL)
-    };
+    let mut jd =
+        unsafe { swe_bindings::swe_julday(start_year, 1, 1, 0.0, swe_bindings::SE_GREG_CAL) };
+    let jd_end =
+        unsafe { swe_bindings::swe_julday(end_year + 1, 1, 1, 0.0, swe_bindings::SE_GREG_CAL) };
     let step = 1.0; // 1-day step
     let mut prev = elongation(jd);
 
@@ -144,12 +142,10 @@ fn bisect_sun_crossing(target: f64, mut jd_lo: f64, mut jd_hi: f64) -> f64 {
 /// Returns a vector of `(unix_timestamp_sec, term_index)` pairs.
 pub fn compute_solar_terms(start_year: i32, end_year: i32) -> Vec<(f64, u32)> {
     let mut results = Vec::new();
-    let mut jd = unsafe {
-        swe_bindings::swe_julday(start_year, 1, 1, 0.0, swe_bindings::SE_GREG_CAL)
-    };
-    let jd_end = unsafe {
-        swe_bindings::swe_julday(end_year + 1, 1, 1, 0.0, swe_bindings::SE_GREG_CAL)
-    };
+    let mut jd =
+        unsafe { swe_bindings::swe_julday(start_year, 1, 1, 0.0, swe_bindings::SE_GREG_CAL) };
+    let jd_end =
+        unsafe { swe_bindings::swe_julday(end_year + 1, 1, 1, 0.0, swe_bindings::SE_GREG_CAL) };
     let step = 1.0;
     let mut prev_sector = (sun_lon(jd) / 15.0).floor() as u32 % 24;
 

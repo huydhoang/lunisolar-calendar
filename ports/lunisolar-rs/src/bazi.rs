@@ -1,117 +1,131 @@
 //! Bazi (Four Pillars of Destiny) analysis module — ported from `bazi.py`.
 
+use super::{EARTHLY_BRANCHES, HEAVENLY_STEMS};
 use serde::Serialize;
-use super::{HEAVENLY_STEMS, EARTHLY_BRANCHES};
 
 // ── Element & Polarity Mappings (indexed parallel to HEAVENLY_STEMS) ────────
 
 /// Element for each Heavenly Stem (indexed 0–9).
 pub const STEM_ELEMENT: [&str; 10] = [
-    "Wood", "Wood", "Fire", "Fire", "Earth",
-    "Earth", "Metal", "Metal", "Water", "Water",
+    "Wood", "Wood", "Fire", "Fire", "Earth", "Earth", "Metal", "Metal", "Water", "Water",
 ];
 
 /// Polarity (Yin/Yang) for each Heavenly Stem.
 pub const STEM_POLARITY: [&str; 10] = [
-    "Yang", "Yin", "Yang", "Yin", "Yang",
-    "Yin", "Yang", "Yin", "Yang", "Yin",
+    "Yang", "Yin", "Yang", "Yin", "Yang", "Yin", "Yang", "Yin", "Yang", "Yin",
 ];
 
 /// Element for each Earthly Branch (indexed 0–11).
 pub const BRANCH_ELEMENT: [&str; 12] = [
-    "Water", "Earth", "Wood", "Wood", "Earth", "Fire",
-    "Fire", "Earth", "Metal", "Metal", "Earth", "Water",
+    "Water", "Earth", "Wood", "Wood", "Earth", "Fire", "Fire", "Earth", "Metal", "Metal", "Earth",
+    "Water",
 ];
 
 /// Hidden stems for each Earthly Branch (main, [middle, [residual]]).
 pub const BRANCH_HIDDEN_STEMS: [&[&str]; 12] = [
-    &["癸"],                // 子
-    &["己", "癸", "辛"],    // 丑
-    &["甲", "丙", "戊"],    // 寅
-    &["乙"],                // 卯
-    &["戊", "乙", "癸"],    // 辰
-    &["丙", "戊", "庚"],    // 巳
-    &["丁", "己"],          // 午
-    &["己", "丁", "乙"],    // 未
-    &["庚", "壬", "戊"],    // 申
-    &["辛"],                // 酉
-    &["戊", "辛", "丁"],    // 戌
-    &["壬", "甲"],          // 亥
+    &["癸"],             // 子
+    &["己", "癸", "辛"], // 丑
+    &["甲", "丙", "戊"], // 寅
+    &["乙"],             // 卯
+    &["戊", "乙", "癸"], // 辰
+    &["丙", "戊", "庚"], // 巳
+    &["丁", "己"],       // 午
+    &["己", "丁", "乙"], // 未
+    &["庚", "壬", "戊"], // 申
+    &["辛"],             // 酉
+    &["戊", "辛", "丁"], // 戌
+    &["壬", "甲"],       // 亥
 ];
 
 // ── Stem Transformations (天干合化) ─────────────────────────────────────────
 
 /// Five canonical stem-combination pairs: (stem_idx_a, stem_idx_b, target_element).
 pub const STEM_TRANSFORMATIONS: [(usize, usize, &str); 5] = [
-    (0, 5, "Earth"),  // 甲己 → Earth
-    (1, 6, "Metal"),  // 乙庚 → Metal
-    (2, 7, "Water"),  // 丙辛 → Water
-    (3, 8, "Wood"),   // 丁壬 → Wood
-    (4, 9, "Fire"),   // 戊癸 → Fire
+    (0, 5, "Earth"), // 甲己 → Earth
+    (1, 6, "Metal"), // 乙庚 → Metal
+    (2, 7, "Water"), // 丙辛 → Water
+    (3, 8, "Wood"),  // 丁壬 → Wood
+    (4, 9, "Fire"),  // 戊癸 → Fire
 ];
 
 // ── Twelve Longevity Stages (十二长生) ──────────────────────────────────────
 
 pub const LONGEVITY_STAGES: [&str; 12] = [
-    "长生", "沐浴", "冠带", "临官", "帝旺",
-    "衰", "病", "死", "墓", "绝", "胎", "养",
+    "长生", "沐浴", "冠带", "临官", "帝旺", "衰", "病", "死", "墓", "绝", "胎", "养",
 ];
 
 pub const LONGEVITY_STAGES_EN: [&str; 12] = [
-    "Growth", "Bath", "Crown Belt", "Coming of Age", "Prosperity Peak",
-    "Decline", "Sickness", "Death", "Grave", "Termination",
-    "Conception", "Nurture",
+    "Growth",
+    "Bath",
+    "Crown Belt",
+    "Coming of Age",
+    "Prosperity Peak",
+    "Decline",
+    "Sickness",
+    "Death",
+    "Grave",
+    "Termination",
+    "Conception",
+    "Nurture",
 ];
 
 pub const LONGEVITY_STAGES_VI: [&str; 12] = [
-    "Trường Sinh", "Mộc Dục", "Quan Đới", "Lâm Quan", "Đế Vượng",
-    "Suy", "Bệnh", "Tử", "Mộ", "Tuyệt", "Thai", "Dưỡng",
+    "Trường Sinh",
+    "Mộc Dục",
+    "Quan Đới",
+    "Lâm Quan",
+    "Đế Vượng",
+    "Suy",
+    "Bệnh",
+    "Tử",
+    "Mộ",
+    "Tuyệt",
+    "Thai",
+    "Dưỡng",
 ];
 
 /// Starting branch index for 长生 of each Heavenly Stem (indexed 0–9).
 pub const LONGEVITY_START: [usize; 10] = [
-    11, 6,  // 甲→亥, 乙→午
-    2, 9,   // 丙→寅, 丁→酉
-    2, 9,   // 戊→寅, 己→酉
-    5, 0,   // 庚→巳, 辛→子
-    8, 3,   // 壬→申, 癸→卯
+    11, 6, // 甲→亥, 乙→午
+    2, 9, // 丙→寅, 丁→酉
+    2, 9, // 戊→寅, 己→酉
+    5, 0, // 庚→巳, 辛→子
+    8, 3, // 壬→申, 癸→卯
 ];
 
 // ── Five-Element Cycles ─────────────────────────────────────────────────────
 
 /// Production cycle: element produces → result.
 pub const GEN_MAP: [(&str, &str); 5] = [
-    ("Wood", "Fire"), ("Fire", "Earth"), ("Earth", "Metal"),
-    ("Metal", "Water"), ("Water", "Wood"),
+    ("Wood", "Fire"),
+    ("Fire", "Earth"),
+    ("Earth", "Metal"),
+    ("Metal", "Water"),
+    ("Water", "Wood"),
 ];
 
 /// Control cycle: element controls → result.
 pub const CONTROL_MAP: [(&str, &str); 5] = [
-    ("Wood", "Earth"), ("Fire", "Metal"), ("Earth", "Water"),
-    ("Metal", "Wood"), ("Water", "Fire"),
+    ("Wood", "Earth"),
+    ("Fire", "Metal"),
+    ("Earth", "Water"),
+    ("Metal", "Wood"),
+    ("Water", "Fire"),
 ];
 
 // ── Branch Interactions ─────────────────────────────────────────────────────
 
 /// Six Combinations (六合) — branch index pairs.
-pub const LIU_HE: [(usize, usize); 6] = [
-    (0, 1), (2, 11), (3, 10), (4, 9), (5, 8), (6, 7),
-];
+pub const LIU_HE: [(usize, usize); 6] = [(0, 1), (2, 11), (3, 10), (4, 9), (5, 8), (6, 7)];
 
 /// Six Clashes (六冲) — branch index pairs.
-pub const LIU_CHONG: [(usize, usize); 6] = [
-    (0, 6), (1, 7), (2, 8), (3, 9), (4, 10), (5, 11),
-];
+pub const LIU_CHONG: [(usize, usize); 6] = [(0, 6), (1, 7), (2, 8), (3, 9), (4, 10), (5, 11)];
 
 /// Six Harms (六害) — branch index pairs.
-pub const LIU_HAI: [(usize, usize); 6] = [
-    (0, 7), (1, 6), (2, 5), (3, 4), (8, 11), (9, 10),
-];
+pub const LIU_HAI: [(usize, usize); 6] = [(0, 7), (1, 6), (2, 5), (3, 4), (8, 11), (9, 10)];
 
 /// Harm pairs (害) — same as LIU_HAI.
-pub const HARM_PAIRS: [(usize, usize); 6] = [
-    (0, 7), (1, 6), (2, 5), (3, 4), (8, 11), (9, 10),
-];
+pub const HARM_PAIRS: [(usize, usize); 6] = [(0, 7), (1, 6), (2, 5), (3, 4), (8, 11), (9, 10)];
 
 /// Self-punishment branches (自刑): 辰(4), 午(6), 酉(9), 亥(11).
 pub const SELF_PUNISH_BRANCHES: [usize; 4] = [4, 6, 9, 11];
@@ -120,10 +134,7 @@ pub const SELF_PUNISH_BRANCHES: [usize; 4] = [4, 6, 9, 11];
 const UNCIVIL_PUNISH_PAIRS: [(usize, usize); 1] = [(0, 3)];
 
 /// Bully punishment pairs (恃势之刑).
-const BULLY_PUNISH_PAIRS: [(usize, usize); 6] = [
-    (2, 5), (5, 8), (2, 8),
-    (1, 10), (10, 7), (1, 7),
-];
+const BULLY_PUNISH_PAIRS: [(usize, usize); 6] = [(2, 5), (5, 8), (2, 8), (1, 10), (10, 7), (1, 7)];
 
 // ── Na Yin Data ─────────────────────────────────────────────────────────────
 
@@ -136,86 +147,395 @@ pub struct NaYinEntry {
 }
 
 pub const NAYIN_DATA: [NaYinEntry; 60] = [
-    NaYinEntry { element: "Metal", chinese: "海中金", vietnamese: "Hải Trung Kim", english: "Sea Metal" },
-    NaYinEntry { element: "Metal", chinese: "海中金", vietnamese: "Hải Trung Kim", english: "Sea Metal" },
-    NaYinEntry { element: "Fire", chinese: "爐中火", vietnamese: "Lư Trung Hỏa", english: "Furnace Fire" },
-    NaYinEntry { element: "Fire", chinese: "爐中火", vietnamese: "Lư Trung Hỏa", english: "Furnace Fire" },
-    NaYinEntry { element: "Wood", chinese: "大林木", vietnamese: "Đại Lâm Mộc", english: "Great Forest Wood" },
-    NaYinEntry { element: "Wood", chinese: "大林木", vietnamese: "Đại Lâm Mộc", english: "Great Forest Wood" },
-    NaYinEntry { element: "Earth", chinese: "路旁土", vietnamese: "Lộ Bàng Thổ", english: "Roadside Earth" },
-    NaYinEntry { element: "Earth", chinese: "路旁土", vietnamese: "Lộ Bàng Thổ", english: "Roadside Earth" },
-    NaYinEntry { element: "Metal", chinese: "劍鋒金", vietnamese: "Kiếm Phong Kim", english: "Sword-Point Metal" },
-    NaYinEntry { element: "Metal", chinese: "劍鋒金", vietnamese: "Kiếm Phong Kim", english: "Sword-Point Metal" },
-    NaYinEntry { element: "Fire", chinese: "山头火", vietnamese: "Sơn Đầu Hỏa", english: "Mountain-Top Fire" },
-    NaYinEntry { element: "Fire", chinese: "山头火", vietnamese: "Sơn Đầu Hỏa", english: "Mountain-Top Fire" },
-    NaYinEntry { element: "Water", chinese: "澗下水", vietnamese: "Giản Hạ Thuỷ", english: "Ravine Water" },
-    NaYinEntry { element: "Water", chinese: "澗下水", vietnamese: "Giản Hạ Thuỷ", english: "Ravine Water" },
-    NaYinEntry { element: "Earth", chinese: "城头土", vietnamese: "Thành Đầu Thổ", english: "City Wall Earth" },
-    NaYinEntry { element: "Earth", chinese: "城头土", vietnamese: "Thành Đầu Thổ", english: "City Wall Earth" },
-    NaYinEntry { element: "Metal", chinese: "白蜡金", vietnamese: "Bạch Lạp Kim", english: "White Wax Metal" },
-    NaYinEntry { element: "Metal", chinese: "白蜡金", vietnamese: "Bạch Lạp Kim", english: "White Wax Metal" },
-    NaYinEntry { element: "Wood", chinese: "杨柳木", vietnamese: "Dương Liễu Mộc", english: "Willow Wood" },
-    NaYinEntry { element: "Wood", chinese: "杨柳木", vietnamese: "Dương Liễu Mộc", english: "Willow Wood" },
-    NaYinEntry { element: "Water", chinese: "井泉水", vietnamese: "Tỉnh Tuyền Thủy", english: "Well Spring Water" },
-    NaYinEntry { element: "Water", chinese: "井泉水", vietnamese: "Tỉnh Tuyền Thủy", english: "Well Spring Water" },
-    NaYinEntry { element: "Earth", chinese: "屋上土", vietnamese: "Ốc Thượng Thổ", english: "Rooftop Earth" },
-    NaYinEntry { element: "Earth", chinese: "屋上土", vietnamese: "Ốc Thượng Thổ", english: "Rooftop Earth" },
-    NaYinEntry { element: "Fire", chinese: "霹雳火", vietnamese: "Tích Lịch Hỏa", english: "Thunderbolt Fire" },
-    NaYinEntry { element: "Fire", chinese: "霹雳火", vietnamese: "Tích Lịch Hỏa", english: "Thunderbolt Fire" },
-    NaYinEntry { element: "Wood", chinese: "松柏木", vietnamese: "Tùng Bách Mộc", english: "Pine & Cypress Wood" },
-    NaYinEntry { element: "Wood", chinese: "松柏木", vietnamese: "Tùng Bách Mộc", english: "Pine & Cypress Wood" },
-    NaYinEntry { element: "Water", chinese: "长流水", vietnamese: "Trường Lưu Thủy", english: "Long Flowing Water" },
-    NaYinEntry { element: "Water", chinese: "长流水", vietnamese: "Trường Lưu Thủy", english: "Long Flowing Water" },
-    NaYinEntry { element: "Metal", chinese: "砂中金", vietnamese: "Sa Thạch Kim", english: "Sand-Middle Metal" },
-    NaYinEntry { element: "Metal", chinese: "砂中金", vietnamese: "Sa Thạch Kim", english: "Sand-Middle Metal" },
-    NaYinEntry { element: "Fire", chinese: "山下火", vietnamese: "Sơn Hạ Hỏa", english: "Mountain-Base Fire" },
-    NaYinEntry { element: "Fire", chinese: "山下火", vietnamese: "Sơn Hạ Hỏa", english: "Mountain-Base Fire" },
-    NaYinEntry { element: "Wood", chinese: "平地木", vietnamese: "Bình Địa Mộc", english: "Flat Land Wood" },
-    NaYinEntry { element: "Wood", chinese: "平地木", vietnamese: "Bình Địa Mộc", english: "Flat Land Wood" },
-    NaYinEntry { element: "Earth", chinese: "壁上土", vietnamese: "Bích Thượng Thổ", english: "Wall Earth" },
-    NaYinEntry { element: "Earth", chinese: "壁上土", vietnamese: "Bích Thượng Thổ", english: "Wall Earth" },
-    NaYinEntry { element: "Metal", chinese: "金箔金", vietnamese: "Kim Bạc Kim", english: "Gold Foil Metal" },
-    NaYinEntry { element: "Metal", chinese: "金箔金", vietnamese: "Kim Bạc Kim", english: "Gold Foil Metal" },
-    NaYinEntry { element: "Fire", chinese: "覆灯火", vietnamese: "Phúc Đăng Hỏa", english: "Covered Lamp Fire" },
-    NaYinEntry { element: "Fire", chinese: "覆灯火", vietnamese: "Phúc Đăng Hỏa", english: "Covered Lamp Fire" },
-    NaYinEntry { element: "Water", chinese: "天河水", vietnamese: "Thiên Hà Thủy", english: "Sky River Water" },
-    NaYinEntry { element: "Water", chinese: "天河水", vietnamese: "Thiên Hà Thủy", english: "Sky River Water" },
-    NaYinEntry { element: "Earth", chinese: "大驿土", vietnamese: "Đại Dịch Thổ", english: "Great Post Earth" },
-    NaYinEntry { element: "Earth", chinese: "大驿土", vietnamese: "Đại Dịch Thổ", english: "Great Post Earth" },
-    NaYinEntry { element: "Metal", chinese: "钗钏金", vietnamese: "Thoa Xuyến Kim", english: "Hairpin Metal" },
-    NaYinEntry { element: "Metal", chinese: "钗钏金", vietnamese: "Thoa Xuyến Kim", english: "Hairpin Metal" },
-    NaYinEntry { element: "Wood", chinese: "桑柘木", vietnamese: "Tang Chá Mộc", english: "Mulberry Wood" },
-    NaYinEntry { element: "Wood", chinese: "桑柘木", vietnamese: "Tang Chá Mộc", english: "Mulberry Wood" },
-    NaYinEntry { element: "Water", chinese: "大溪水", vietnamese: "Đại Khê Thủy", english: "Great Stream Water" },
-    NaYinEntry { element: "Water", chinese: "大溪水", vietnamese: "Đại Khê Thủy", english: "Great Stream Water" },
-    NaYinEntry { element: "Earth", chinese: "沙中土", vietnamese: "Sa Trung Thổ", english: "Sand Earth" },
-    NaYinEntry { element: "Earth", chinese: "沙中土", vietnamese: "Sa Trung Thổ", english: "Sand Earth" },
-    NaYinEntry { element: "Fire", chinese: "天上火", vietnamese: "Thiên Thượng Hỏa", english: "Heavenly Fire" },
-    NaYinEntry { element: "Fire", chinese: "天上火", vietnamese: "Thiên Thượng Hỏa", english: "Heavenly Fire" },
-    NaYinEntry { element: "Wood", chinese: "石榴木", vietnamese: "Thạch Lựu Mộc", english: "Pomegranate Wood" },
-    NaYinEntry { element: "Wood", chinese: "石榴木", vietnamese: "Thạch Lựu Mộc", english: "Pomegranate Wood" },
-    NaYinEntry { element: "Water", chinese: "大海水", vietnamese: "Đại Hải Thủy", english: "Great Ocean Water" },
-    NaYinEntry { element: "Water", chinese: "大海水", vietnamese: "Đại Hải Thủy", english: "Great Ocean Water" },
+    NaYinEntry {
+        element: "Metal",
+        chinese: "海中金",
+        vietnamese: "Hải Trung Kim",
+        english: "Sea Metal",
+    },
+    NaYinEntry {
+        element: "Metal",
+        chinese: "海中金",
+        vietnamese: "Hải Trung Kim",
+        english: "Sea Metal",
+    },
+    NaYinEntry {
+        element: "Fire",
+        chinese: "爐中火",
+        vietnamese: "Lư Trung Hỏa",
+        english: "Furnace Fire",
+    },
+    NaYinEntry {
+        element: "Fire",
+        chinese: "爐中火",
+        vietnamese: "Lư Trung Hỏa",
+        english: "Furnace Fire",
+    },
+    NaYinEntry {
+        element: "Wood",
+        chinese: "大林木",
+        vietnamese: "Đại Lâm Mộc",
+        english: "Great Forest Wood",
+    },
+    NaYinEntry {
+        element: "Wood",
+        chinese: "大林木",
+        vietnamese: "Đại Lâm Mộc",
+        english: "Great Forest Wood",
+    },
+    NaYinEntry {
+        element: "Earth",
+        chinese: "路旁土",
+        vietnamese: "Lộ Bàng Thổ",
+        english: "Roadside Earth",
+    },
+    NaYinEntry {
+        element: "Earth",
+        chinese: "路旁土",
+        vietnamese: "Lộ Bàng Thổ",
+        english: "Roadside Earth",
+    },
+    NaYinEntry {
+        element: "Metal",
+        chinese: "劍鋒金",
+        vietnamese: "Kiếm Phong Kim",
+        english: "Sword-Point Metal",
+    },
+    NaYinEntry {
+        element: "Metal",
+        chinese: "劍鋒金",
+        vietnamese: "Kiếm Phong Kim",
+        english: "Sword-Point Metal",
+    },
+    NaYinEntry {
+        element: "Fire",
+        chinese: "山头火",
+        vietnamese: "Sơn Đầu Hỏa",
+        english: "Mountain-Top Fire",
+    },
+    NaYinEntry {
+        element: "Fire",
+        chinese: "山头火",
+        vietnamese: "Sơn Đầu Hỏa",
+        english: "Mountain-Top Fire",
+    },
+    NaYinEntry {
+        element: "Water",
+        chinese: "澗下水",
+        vietnamese: "Giản Hạ Thuỷ",
+        english: "Ravine Water",
+    },
+    NaYinEntry {
+        element: "Water",
+        chinese: "澗下水",
+        vietnamese: "Giản Hạ Thuỷ",
+        english: "Ravine Water",
+    },
+    NaYinEntry {
+        element: "Earth",
+        chinese: "城头土",
+        vietnamese: "Thành Đầu Thổ",
+        english: "City Wall Earth",
+    },
+    NaYinEntry {
+        element: "Earth",
+        chinese: "城头土",
+        vietnamese: "Thành Đầu Thổ",
+        english: "City Wall Earth",
+    },
+    NaYinEntry {
+        element: "Metal",
+        chinese: "白蜡金",
+        vietnamese: "Bạch Lạp Kim",
+        english: "White Wax Metal",
+    },
+    NaYinEntry {
+        element: "Metal",
+        chinese: "白蜡金",
+        vietnamese: "Bạch Lạp Kim",
+        english: "White Wax Metal",
+    },
+    NaYinEntry {
+        element: "Wood",
+        chinese: "杨柳木",
+        vietnamese: "Dương Liễu Mộc",
+        english: "Willow Wood",
+    },
+    NaYinEntry {
+        element: "Wood",
+        chinese: "杨柳木",
+        vietnamese: "Dương Liễu Mộc",
+        english: "Willow Wood",
+    },
+    NaYinEntry {
+        element: "Water",
+        chinese: "井泉水",
+        vietnamese: "Tỉnh Tuyền Thủy",
+        english: "Well Spring Water",
+    },
+    NaYinEntry {
+        element: "Water",
+        chinese: "井泉水",
+        vietnamese: "Tỉnh Tuyền Thủy",
+        english: "Well Spring Water",
+    },
+    NaYinEntry {
+        element: "Earth",
+        chinese: "屋上土",
+        vietnamese: "Ốc Thượng Thổ",
+        english: "Rooftop Earth",
+    },
+    NaYinEntry {
+        element: "Earth",
+        chinese: "屋上土",
+        vietnamese: "Ốc Thượng Thổ",
+        english: "Rooftop Earth",
+    },
+    NaYinEntry {
+        element: "Fire",
+        chinese: "霹雳火",
+        vietnamese: "Tích Lịch Hỏa",
+        english: "Thunderbolt Fire",
+    },
+    NaYinEntry {
+        element: "Fire",
+        chinese: "霹雳火",
+        vietnamese: "Tích Lịch Hỏa",
+        english: "Thunderbolt Fire",
+    },
+    NaYinEntry {
+        element: "Wood",
+        chinese: "松柏木",
+        vietnamese: "Tùng Bách Mộc",
+        english: "Pine & Cypress Wood",
+    },
+    NaYinEntry {
+        element: "Wood",
+        chinese: "松柏木",
+        vietnamese: "Tùng Bách Mộc",
+        english: "Pine & Cypress Wood",
+    },
+    NaYinEntry {
+        element: "Water",
+        chinese: "长流水",
+        vietnamese: "Trường Lưu Thủy",
+        english: "Long Flowing Water",
+    },
+    NaYinEntry {
+        element: "Water",
+        chinese: "长流水",
+        vietnamese: "Trường Lưu Thủy",
+        english: "Long Flowing Water",
+    },
+    NaYinEntry {
+        element: "Metal",
+        chinese: "砂中金",
+        vietnamese: "Sa Thạch Kim",
+        english: "Sand-Middle Metal",
+    },
+    NaYinEntry {
+        element: "Metal",
+        chinese: "砂中金",
+        vietnamese: "Sa Thạch Kim",
+        english: "Sand-Middle Metal",
+    },
+    NaYinEntry {
+        element: "Fire",
+        chinese: "山下火",
+        vietnamese: "Sơn Hạ Hỏa",
+        english: "Mountain-Base Fire",
+    },
+    NaYinEntry {
+        element: "Fire",
+        chinese: "山下火",
+        vietnamese: "Sơn Hạ Hỏa",
+        english: "Mountain-Base Fire",
+    },
+    NaYinEntry {
+        element: "Wood",
+        chinese: "平地木",
+        vietnamese: "Bình Địa Mộc",
+        english: "Flat Land Wood",
+    },
+    NaYinEntry {
+        element: "Wood",
+        chinese: "平地木",
+        vietnamese: "Bình Địa Mộc",
+        english: "Flat Land Wood",
+    },
+    NaYinEntry {
+        element: "Earth",
+        chinese: "壁上土",
+        vietnamese: "Bích Thượng Thổ",
+        english: "Wall Earth",
+    },
+    NaYinEntry {
+        element: "Earth",
+        chinese: "壁上土",
+        vietnamese: "Bích Thượng Thổ",
+        english: "Wall Earth",
+    },
+    NaYinEntry {
+        element: "Metal",
+        chinese: "金箔金",
+        vietnamese: "Kim Bạc Kim",
+        english: "Gold Foil Metal",
+    },
+    NaYinEntry {
+        element: "Metal",
+        chinese: "金箔金",
+        vietnamese: "Kim Bạc Kim",
+        english: "Gold Foil Metal",
+    },
+    NaYinEntry {
+        element: "Fire",
+        chinese: "覆灯火",
+        vietnamese: "Phúc Đăng Hỏa",
+        english: "Covered Lamp Fire",
+    },
+    NaYinEntry {
+        element: "Fire",
+        chinese: "覆灯火",
+        vietnamese: "Phúc Đăng Hỏa",
+        english: "Covered Lamp Fire",
+    },
+    NaYinEntry {
+        element: "Water",
+        chinese: "天河水",
+        vietnamese: "Thiên Hà Thủy",
+        english: "Sky River Water",
+    },
+    NaYinEntry {
+        element: "Water",
+        chinese: "天河水",
+        vietnamese: "Thiên Hà Thủy",
+        english: "Sky River Water",
+    },
+    NaYinEntry {
+        element: "Earth",
+        chinese: "大驿土",
+        vietnamese: "Đại Dịch Thổ",
+        english: "Great Post Earth",
+    },
+    NaYinEntry {
+        element: "Earth",
+        chinese: "大驿土",
+        vietnamese: "Đại Dịch Thổ",
+        english: "Great Post Earth",
+    },
+    NaYinEntry {
+        element: "Metal",
+        chinese: "钗钏金",
+        vietnamese: "Thoa Xuyến Kim",
+        english: "Hairpin Metal",
+    },
+    NaYinEntry {
+        element: "Metal",
+        chinese: "钗钏金",
+        vietnamese: "Thoa Xuyến Kim",
+        english: "Hairpin Metal",
+    },
+    NaYinEntry {
+        element: "Wood",
+        chinese: "桑柘木",
+        vietnamese: "Tang Chá Mộc",
+        english: "Mulberry Wood",
+    },
+    NaYinEntry {
+        element: "Wood",
+        chinese: "桑柘木",
+        vietnamese: "Tang Chá Mộc",
+        english: "Mulberry Wood",
+    },
+    NaYinEntry {
+        element: "Water",
+        chinese: "大溪水",
+        vietnamese: "Đại Khê Thủy",
+        english: "Great Stream Water",
+    },
+    NaYinEntry {
+        element: "Water",
+        chinese: "大溪水",
+        vietnamese: "Đại Khê Thủy",
+        english: "Great Stream Water",
+    },
+    NaYinEntry {
+        element: "Earth",
+        chinese: "沙中土",
+        vietnamese: "Sa Trung Thổ",
+        english: "Sand Earth",
+    },
+    NaYinEntry {
+        element: "Earth",
+        chinese: "沙中土",
+        vietnamese: "Sa Trung Thổ",
+        english: "Sand Earth",
+    },
+    NaYinEntry {
+        element: "Fire",
+        chinese: "天上火",
+        vietnamese: "Thiên Thượng Hỏa",
+        english: "Heavenly Fire",
+    },
+    NaYinEntry {
+        element: "Fire",
+        chinese: "天上火",
+        vietnamese: "Thiên Thượng Hỏa",
+        english: "Heavenly Fire",
+    },
+    NaYinEntry {
+        element: "Wood",
+        chinese: "石榴木",
+        vietnamese: "Thạch Lựu Mộc",
+        english: "Pomegranate Wood",
+    },
+    NaYinEntry {
+        element: "Wood",
+        chinese: "石榴木",
+        vietnamese: "Thạch Lựu Mộc",
+        english: "Pomegranate Wood",
+    },
+    NaYinEntry {
+        element: "Water",
+        chinese: "大海水",
+        vietnamese: "Đại Hải Thủy",
+        english: "Great Ocean Water",
+    },
+    NaYinEntry {
+        element: "Water",
+        chinese: "大海水",
+        vietnamese: "Đại Hải Thủy",
+        english: "Great Ocean Water",
+    },
 ];
 
 // ── Internal helpers ────────────────────────────────────────────────────────
 
 fn gen_of(element: &str) -> &'static str {
     match element {
-        "Wood" => "Fire", "Fire" => "Earth", "Earth" => "Metal",
-        "Metal" => "Water", "Water" => "Wood", _ => "",
+        "Wood" => "Fire",
+        "Fire" => "Earth",
+        "Earth" => "Metal",
+        "Metal" => "Water",
+        "Water" => "Wood",
+        _ => "",
     }
 }
 
 fn control_of(element: &str) -> &'static str {
     match element {
-        "Wood" => "Earth", "Fire" => "Metal", "Earth" => "Water",
-        "Metal" => "Wood", "Water" => "Fire", _ => "",
+        "Wood" => "Earth",
+        "Fire" => "Metal",
+        "Earth" => "Water",
+        "Metal" => "Wood",
+        "Water" => "Fire",
+        _ => "",
     }
 }
 
 fn pair_in_set(a: usize, b: usize, set: &[(usize, usize)]) -> bool {
-    set.iter().any(|&(x, y)| (a == x && b == y) || (a == y && b == x))
+    set.iter()
+        .any(|&(x, y)| (a == x && b == y) || (a == y && b == x))
 }
 
 fn stem_idx_of(stem: &str) -> Option<usize> {
@@ -250,7 +570,8 @@ pub fn stem_polarity(stem: &str) -> &'static str {
 
 /// Return the element of an Earthly Branch character.
 pub fn branch_element(branch: &str) -> &'static str {
-    EARTHLY_BRANCHES.iter()
+    EARTHLY_BRANCHES
+        .iter()
         .position(|&b| b == branch)
         .map(|i| BRANCH_ELEMENT[i])
         .unwrap_or("")
@@ -259,7 +580,10 @@ pub fn branch_element(branch: &str) -> &'static str {
 /// Convert a 1–60 sexagenary cycle number to (stem, branch) characters.
 pub fn ganzhi_from_cycle(cycle: usize) -> (&'static str, &'static str) {
     assert!((1..=60).contains(&cycle), "cycle must be 1..=60");
-    (HEAVENLY_STEMS[(cycle - 1) % 10], EARTHLY_BRANCHES[(cycle - 1) % 12])
+    (
+        HEAVENLY_STEMS[(cycle - 1) % 10],
+        EARTHLY_BRANCHES[(cycle - 1) % 12],
+    )
 }
 
 // ── Twelve Longevity Stages ─────────────────────────────────────────────────
@@ -303,11 +627,21 @@ pub fn life_stage_detail(stem_idx: usize, branch_idx: usize) -> LifeStageDetail 
 
 /// Classify the five-element relationship of `other_elem` to `dm_elem`.
 pub fn element_relation(dm_elem: &str, other_elem: &str) -> &'static str {
-    if other_elem == dm_elem { return "same"; }
-    if gen_of(other_elem) == dm_elem { return "sheng"; }
-    if gen_of(dm_elem) == other_elem { return "wo_sheng"; }
-    if control_of(dm_elem) == other_elem { return "wo_ke"; }
-    if control_of(other_elem) == dm_elem { return "ke"; }
+    if other_elem == dm_elem {
+        return "same";
+    }
+    if gen_of(other_elem) == dm_elem {
+        return "sheng";
+    }
+    if gen_of(dm_elem) == other_elem {
+        return "wo_sheng";
+    }
+    if control_of(dm_elem) == other_elem {
+        return "wo_ke";
+    }
+    if control_of(other_elem) == dm_elem {
+        return "ke";
+    }
     ""
 }
 
@@ -319,16 +653,16 @@ pub fn ten_god(dm_stem_idx: usize, target_stem_idx: usize) -> &'static str {
     let rel = element_relation(dm_elem, t_elem);
     let same_pol = STEM_POLARITY[dm_stem_idx] == STEM_POLARITY[target_stem_idx];
     match (rel, same_pol) {
-        ("same", true)     => "比肩",
-        ("same", false)    => "劫财",
-        ("sheng", true)    => "偏印",
-        ("sheng", false)   => "正印",
+        ("same", true) => "比肩",
+        ("same", false) => "劫财",
+        ("sheng", true) => "偏印",
+        ("sheng", false) => "正印",
         ("wo_sheng", true) => "食神",
-        ("wo_sheng", false)=> "伤官",
-        ("wo_ke", true)    => "偏财",
-        ("wo_ke", false)   => "正财",
-        ("ke", true)       => "七杀",
-        ("ke", false)      => "正官",
+        ("wo_sheng", false) => "伤官",
+        ("wo_ke", true) => "偏财",
+        ("wo_ke", false) => "正财",
+        ("ke", true) => "七杀",
+        ("ke", false) => "正官",
         _ => "",
     }
 }
@@ -382,7 +716,9 @@ pub struct Punishment {
 fn check_obstruction(pillars: &FourPillars, p1: usize, p2: usize) -> bool {
     let lo = p1.min(p2);
     let hi = p1.max(p2);
-    if hi - lo <= 1 { return false; }
+    if hi - lo <= 1 {
+        return false;
+    }
     let e1 = STEM_ELEMENT[pillars[p1].0];
     let e2 = STEM_ELEMENT[pillars[p2].0];
     for mid in (lo + 1)..hi {
@@ -547,7 +883,13 @@ pub fn detect_punishments(pillars: &FourPillars) -> Vec<Punishment> {
             let bj = pillars[j].1;
             let involves_day = i == 2 || j == 2;
             let involves_month = i == 1 || j == 1;
-            let severity: u32 = if involves_day { 80 } else if involves_month { 70 } else { 50 };
+            let severity: u32 = if involves_day {
+                80
+            } else if involves_month {
+                70
+            } else {
+                50
+            };
 
             if bi == bj && is_self_punish_branch(bi) {
                 results.push(Punishment {
@@ -679,7 +1021,8 @@ mod tests {
         // 子(0) and 未(7) form a harm pair
         let pillars: FourPillars = [(0, 0), (1, 1), (2, 7), (3, 3)];
         let results = detect_punishments(&pillars);
-        let harms: Vec<_> = results.iter()
+        let harms: Vec<_> = results
+            .iter()
             .filter(|p| p.punishment_type == "Hại (Harm)")
             .collect();
         assert_eq!(harms.len(), 1);
