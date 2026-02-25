@@ -1104,20 +1104,103 @@ if __name__ == "__main__":
     useful = recommend_useful_god(chart, strength)
     rating = rate_chart(chart)
     narrative = generate_narrative(chart, strength, structure, interactions)
+    lmap = longevity_map(chart)
+    tg_dist = weighted_ten_god_distribution(chart)
 
-    print("Day Master:", chart['day_master'])
-    print("Strength Score:", score, "→", strength)
-    print("Structure (basic):", structure)
-    print("Structure (professional):", structure_pro, f"(dominance={dominance})")
-    print("Luck Pillars:", [p['stem'] + p['branch'] for p in luck])
-    print("Useful Elements:", useful)
-    print("Chart Rating:", rating, "/ 100")
-    print()
-    print("Branch Interactions:", {k: v for k, v in interactions.items() if v})
-    print()
-    print("--- Narrative ---")
-    print(narrative)
+    SEP = "=" * 60
 
-    # Demo annual analysis - 丙午 = cycle 43
-    print("--- Flowing Year 2026 (丙午, cycle 43) ---")
-    print(annual_analysis(chart, 43))
+    print(SEP)
+    print("  BAZI (四柱八字) COMPREHENSIVE CHART REPORT")
+    print(SEP)
+
+    # ── Day Master ──────────────────────────────────────────────
+    dm = chart['day_master']
+    polarity = STEM_POLARITY[dm['stem']]
+    print(f"\n[ Day Master (日元) ]")
+    print(f"  Stem    : {dm['stem']}  |  Element : {dm['element']}  |  Polarity : {polarity}")
+    print(f"  Strength: {score} pts → {strength.upper()}")
+
+    # ── Four Pillars ────────────────────────────────────────────
+    print(f"\n[ Four Pillars (四柱) ]")
+    header = f"  {'Pillar':<8} {'GanZhi':<6} {'Stem':<4} {'Branch':<4} {'Ten-God':<6} {'Longevity Stage':<18} {'Hidden Stems (role: stem)'}"
+    print(header)
+    print("  " + "-" * (len(header) - 2))
+    pillar_order = ['year', 'month', 'day', 'hour']
+    pillar_labels = {'year': '年 Year', 'month': '月 Month', 'day': '日 Day', 'hour': '时 Hour'}
+    for pname in pillar_order:
+        p = chart['pillars'][pname]
+        stage_idx, stage_name = lmap[pname]
+        ganzhi = p['stem'] + p['branch']
+        hidden_str = ', '.join(f"{role}: {stem}" for role, stem in p['hidden'])
+        print(f"  {pillar_labels[pname]:<12} {ganzhi:<6} {p['stem']:<4} {p['branch']:<6} {p['ten_god']:<8} "
+              f"({stage_idx:>2}) {stage_name:<12}  {hidden_str}")
+
+    # ── Chart Structures ────────────────────────────────────────
+    print(f"\n[ Chart Structure (格局) ]")
+    print(f"  Basic            : {structure}")
+    print(f"  Professional     : {structure_pro}  (dominance score = {dominance:.1f})")
+
+    # ── Weighted Ten-God Distribution ───────────────────────────
+    print(f"\n[ Ten-God Distribution (十神分布, weighted) ]")
+    sorted_tg = sorted(tg_dist.items(), key=lambda x: x[1], reverse=True)
+    for tg_name, tg_score in sorted_tg:
+        bar = '█' * int(tg_score)
+        print(f"  {tg_name:<4} {tg_score:>5.1f}  {bar}")
+
+    # ── Branch Interactions ─────────────────────────────────────
+    active = {k: v for k, v in interactions.items() if v}
+    print(f"\n[ Branch Interactions (地支关系) ]")
+    if active:
+        for kind, entries in active.items():
+            print(f"  {kind}:")
+            for entry in entries:
+                print(f"    {entry}")
+    else:
+        print("  None detected.")
+
+    # ── Luck Pillars ────────────────────────────────────────────
+    print(f"\n[ Luck Pillars (大运) — {len(luck)} pillars, direction: {'forward ▶' if _luck_direction(chart) else 'backward ◀'} ]")
+    for i, lp in enumerate(luck, 1):
+        ganzhi = lp['stem'] + lp['branch']
+        ls_idx, ls_name = lp['longevity_stage']
+        age_info = ""
+        if 'start_age' in lp:
+            ay, am = lp['start_age']
+            age_info = f"  age {ay}y {am}m"
+            if 'start_gregorian_year' in lp:
+                age_info += f" (~{lp['start_gregorian_year']})"
+        print(f"  {i}. {ganzhi:<4}  longevity: ({ls_idx:>2}) {ls_name:<8}{age_info}")
+
+    # ── Useful Elements (用神) ───────────────────────────────────
+    print(f"\n[ Useful Elements / Yong Shen (用神) ]")
+    print(f"  Favorable (喜用) : {', '.join(useful['favorable'])}")
+    print(f"  Avoid (忌)       : {', '.join(useful['avoid']) if useful['avoid'] else 'None'}")
+
+    # ── Chart Rating ────────────────────────────────────────────
+    print(f"\n[ Chart Rating (综合评分) ]")
+    bar_filled = '█' * (rating // 5)
+    bar_empty = '░' * (20 - rating // 5)
+    print(f"  {rating} / 100  [{bar_filled}{bar_empty}]")
+
+    # ── Narrative ───────────────────────────────────────────────
+    print(f"\n[ Narrative Interpretation (命理解读) ]")
+    for line in narrative.splitlines():
+        print(f"  {line}")
+
+    # ── Annual (Flowing Year) Analysis ──────────────────────────
+    print(f"\n[ Flowing Year Analysis (流年) ]")
+    # Demo: current year 丙午 = cycle 43, plus the two surrounding years
+    demo_years = [
+        (2025, 42, "乙巳"),
+        (2026, 43, "丙午"),
+        (2027, 44, "丁未"),
+    ]
+    for yr, cycle, gz in demo_years:
+        res = annual_analysis(chart, cycle)
+        yr_stem, yr_branch = ganzhi_from_cycle(cycle)
+        interactions_str = ', '.join(res['interactions']) if res['interactions'] else 'none'
+        delta_str = f"+{res['strength_delta']}" if res['strength_delta'] > 0 else str(res['strength_delta'])
+        print(f"  {yr} ({gz}, cycle {cycle:>2}) | Ten-God: {res['year_ten_god']:<4} | "
+              f"Branch interactions: {interactions_str:<12} | Strength Δ: {delta_str}")
+
+    print(f"\n{SEP}")
