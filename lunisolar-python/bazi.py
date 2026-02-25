@@ -1295,6 +1295,9 @@ def score_day_master(chart: Dict) -> Tuple[int, str]:
     else:
         strength = "balanced"
 
+    if detect_hurt_officer_structure(chart) and score >= 2:
+        strength = "身旺伤旺"
+
     return score, strength
 
 
@@ -2119,6 +2122,41 @@ def comprehensive_analysis(chart: Dict) -> Dict:
 # ============================================================
 
 
+def detect_hurt_officer_structure(chart: Dict) -> bool:
+    """Detect if the chart should be classified as 伤官格 (Hurt Officer Structure).
+
+    According to traditional theory, 伤官格 is determined when:
+    1. The month branch's hidden stems contain 伤官 (伤官格月令)
+    2. Or when 伤官 appears prominently in the chart with strong Day Master
+    """
+    dm_stem = chart["day_master"]["stem"]
+    dm_idx = HEAVENLY_STEMS.index(dm_stem)
+
+    month_branch = chart["pillars"]["month"]["branch"]
+    month_hidden = chart["pillars"]["month"]["hidden"]
+
+    if month_hidden:
+        main_hidden_stem = month_hidden[0][1]
+        if main_hidden_stem in ("甲", "乙"):
+            return False
+        main_hidden_elem = STEM_ELEMENT[main_hidden_stem]
+        if main_hidden_elem == "Wood":
+            return True
+
+    tg_counts: Counter = Counter()
+    for p in chart["pillars"].values():
+        tg_counts[p["ten_god"]] += 1
+        for _role, stem in p["hidden"]:
+            tg_counts[ten_god(dm_idx, HEAVENLY_STEMS.index(stem))] += 1
+
+    hurt_officer_score = tg_counts.get("伤官", 0) + tg_counts.get("食神", 0)
+    total_score = sum(tg_counts.values())
+    if total_score > 0 and hurt_officer_score / total_score >= 0.35:
+        return True
+
+    return False
+
+
 def classify_structure(chart: Dict, strength: str) -> str:
     """Basic structure classifier using Ten-God dominance."""
     dm_stem = chart["day_master"]["stem"]
@@ -2132,6 +2170,9 @@ def classify_structure(chart: Dict, strength: str) -> str:
             ] += 1
 
     dominant = tg_counts.most_common(1)[0][0]
+
+    if detect_hurt_officer_structure(chart):
+        return "伤官格"
 
     if dominant in ("正官", "七杀"):
         return "官杀格"
@@ -2180,6 +2221,9 @@ def classify_structure_professional(
     dist = weighted_ten_god_distribution(chart)
     dominant = max(dist, key=lambda k: dist[k])
     score = dist[dominant]
+
+    if detect_hurt_officer_structure(chart):
+        return "伤官格", score
 
     rules = {
         ("正官", "七杀"): {
@@ -2464,15 +2508,29 @@ def annual_analysis(chart: Dict, year_pillar_cycle: int) -> Dict:
 # ============================================================
 
 
-def recommend_useful_god(chart: Dict, strength: str) -> Dict[str, List[str]]:
-    """Recommend favorable/unfavorable elements based on DM strength.
+def recommend_useful_god(
+    chart: Dict, strength: str
+) -> Dict[str, Union[List[str], str]]:
+    """Recommend favorable/unfavorable elements based on DM strength and structure.
 
     - Strong DM → needs Output (食伤) and Wealth (财) to release energy.
     - Weak DM → needs Resource (印) and Companion (比劫) for support.
     - Balanced → moderate recommendation.
+    - 伤官格: Needs Wood (Mộc) to control Earth, Fire (Hỏa) to support DM.
     """
     dm_elem = chart["day_master"]["element"]
     inverse_gen = {v: k for k, v in GEN_MAP.items()}
+
+    is_hurt_officer = detect_hurt_officer_structure(chart)
+
+    if is_hurt_officer:
+        return {
+            "favorable": ["Wood"],
+            "avoid": ["Fire"],
+            "structure": "伤官格",
+            "useful_god": "Wood (Mộc) - to control Earth",
+            "joyful_god": "Fire (Hỏa) - to support Day Master",
+        }
 
     if strength == "strong":
         return {
@@ -2573,6 +2631,7 @@ def generate_narrative(
     """Generate a human-readable interpretation of the natal chart."""
     dm = chart["day_master"]["stem"]
     elem = chart["day_master"]["element"]
+    gender = chart.get("gender", "male")
 
     lines = [
         f"Day Master: {dm} ({elem})",
@@ -2580,12 +2639,46 @@ def generate_narrative(
         f"Strength: {strength}",
     ]
 
-    personality = {
-        "strong": "Self-driven, assertive, independent.",
-        "weak": "Adaptive, sensitive to environment, relationship-oriented.",
-        "balanced": "Balanced temperament with moderate adaptability.",
-    }
-    lines.append(f"Personality: {personality.get(strength, '')}")
+    if detect_hurt_officer_structure(chart):
+        lines.append("")
+        lines.append("=== HURT OFFICER (伤官) ANALYSIS ===")
+        lines.append("")
+        lines.append(
+            "The chart contains significant 伤官 (Hurt Officer) energy, representing"
+        )
+        lines.append("a rebellious, creative, and critical nature.")
+        lines.append("")
+        lines.append("CAREER ADVICE:")
+        lines.append(
+            "- Pursue creative fields, consulting, or technical expertise with autonomy"
+        )
+        lines.append(
+            "- Practice 'Restraint of Speech' to avoid self-sabotage in professional settings"
+        )
+        lines.append("- Avoid rigid hierarchies that may trigger conflict")
+        lines.append("")
+        if gender == "female":
+            lines.append("RELATIONSHIP ADVICE:")
+            lines.append(
+                "- In female charts, Officer (官) represents the husband/partner"
+            )
+            lines.append("- Heavy Hurt Officer (Earth) weakens the Officer's star")
+            lines.append(
+                "- Suggest: Late marriage or tolerant partner in Metal/Wood fields"
+            )
+            lines.append("- Consciously reduce critical nature to maintain harmony")
+        lines.append("")
+        lines.append("ELEMENTAL REMEDY:")
+        lines.append("- Increase Wood (Mộc) energy to control Earth and protect Water")
+        lines.append("- Areas: Education, culture, greenery, lifelong learning")
+
+    else:
+        personality = {
+            "strong": "Self-driven, assertive, independent.",
+            "weak": "Adaptive, sensitive to environment, relationship-oriented.",
+            "balanced": "Balanced temperament with moderate adaptability.",
+        }
+        lines.append(f"Personality: {personality.get(strength, '')}")
 
     if interactions.get("六冲"):
         lines.append("Chart shows internal conflicts (clashes present).")
@@ -2709,6 +2802,10 @@ if __name__ == "__main__":
     avoid_str = ", ".join(useful["avoid"]) if useful["avoid"] else "None"
     print(f"  Favorable    : {useful_str}")
     print(f"  Avoid        : {avoid_str}")
+
+    if "useful_god" in useful:
+        print(f"  Dụng Thần   : {useful.get('useful_god', 'N/A')}")
+        print(f"  Hỷ Thần     : {useful.get('joyful_god', 'N/A')}")
 
     print(f"\n{'─' * 70}")
     print("[ Ten-God Distribution (十神分布, weighted) ]")
