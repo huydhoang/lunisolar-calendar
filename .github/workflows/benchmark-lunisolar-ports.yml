@@ -1,0 +1,128 @@
+name: "Benchmark: Lunisolar ports"
+
+on:
+  push:
+    paths:
+      - '.github/workflows/benchmark-lunisolar-ports.yml'
+      - 'tests/lunisolar-wasm/benchmark-range.mjs'
+      - 'tests/lunisolar-wasm/benchmark-batch.py'
+      - 'lunisolar-python/lunisolar_v2.py'
+      - 'ports/lunisolar-rs/**'
+      - 'ports/lunisolar-emcc/**'
+      - 'ports/lunisolar-ts/**'
+      - 'vendor/swisseph/**'
+  workflow_dispatch:
+
+jobs:
+  benchmark:
+    name: lunisolar batch throughput
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      # ── 1. Source code (with git-lfs for DE440s ephemeris) ────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      # ── 2. Runtimes ───────────────────────────────────────────────────────
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Python dependencies
+        run: pip install skyfield pytz
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install wasm-pack
+        run: curl -sSL https://rustwasm.github.io/wasm-pack/installer/init.sh | sh
+
+      # ── 3. Set up Emscripten ──────────────────────────────────────────────
+      - name: Set up Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 'latest'
+
+      - name: Verify emcc
+        run: emcc --version
+
+      # ── 4. Build TypeScript package ───────────────────────────────────────
+      - name: Install TS dependencies
+        working-directory: ports/lunisolar-ts
+        run: npm ci
+
+      - name: Build TypeScript package
+        working-directory: ports/lunisolar-ts
+        run: npm run build
+
+      # ── 5. Build lunisolar Rust WASM ──────────────────────────────────────
+      - name: Build lunisolar WASM (Rust / wasm-pack)
+        working-directory: ports/lunisolar-rs
+        run: wasm-pack build --target nodejs --release
+
+      # ── 6. Build lunisolar Emscripten WASM ────────────────────────────────
+      - name: Build lunisolar WASM (Emscripten / emcc)
+        working-directory: ports/lunisolar-emcc
+        run: bash build.sh
+
+      # ── 7. Verify WASM files ──────────────────────────────────────────────
+      - name: Verify WASM files
+        run: |
+          echo "=== lunisolar WASM ==="
+          ls -lh ports/lunisolar-rs/pkg/lunisolar_wasm_bg.wasm
+          ls -lh pkg/lunisolar_emcc.wasm
+          echo ""
+          echo "=== TypeScript package ==="
+          ls -lh ports/lunisolar-ts/dist/index.mjs
+
+      # ── 8. Run lunisolar range benchmark (Rust, Emcc, TS) ─────────────────
+      - name: Run lunisolar range benchmark
+        working-directory: tests/lunisolar-wasm
+        run: node benchmark-range.mjs
+
+      # ── 9. Run Python batch benchmark ─────────────────────────────────────
+      - name: Run Python batch benchmark
+        working-directory: tests/lunisolar-wasm
+        run: python3 benchmark-batch.py
+
+      # ── 10. Write results to step summary ─────────────────────────────────
+      - name: Write step summary
+        if: always()
+        run: |
+          echo "# Lunisolar Ports — Batch Benchmark" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Date:** $(date -u +%Y-%m-%d)" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+
+          if [ -f tests/lunisolar-wasm/lunisolar-range-benchmark-report.md ]; then
+            cat tests/lunisolar-wasm/lunisolar-range-benchmark-report.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          if [ -f tests/lunisolar-wasm/python-batch-benchmark-report.md ]; then
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            cat tests/lunisolar-wasm/python-batch-benchmark-report.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      # ── 11. Upload reports ────────────────────────────────────────────────
+      - name: Upload benchmark reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lunisolar-batch-benchmark-reports
+          path: |
+            tests/lunisolar-wasm/lunisolar-range-benchmark-report.md
+            tests/lunisolar-wasm/python-batch-benchmark-report.md
+          retention-days: 30
+

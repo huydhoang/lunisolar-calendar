@@ -542,6 +542,80 @@ pub fn from_solar_date_auto(
         .map_err(|e| JsError::new(&format!("Failed to serialize result: {}", e)))
 }
 
+/// Batch-convert a contiguous range of solar dates to lunisolar dates.
+///
+/// Computes new moons and solar terms **once** for the whole range and
+/// reuses the shared ephemeris data for every day, which is much faster
+/// than calling `fromSolarDateAuto` in a loop.
+///
+/// # Arguments
+/// * `start_date` - First date (inclusive), format "YYYY-MM-DD"
+/// * `end_date`   - Last  date (inclusive), format "YYYY-MM-DD"
+/// * `tz_offset_seconds` - Timezone offset from UTC in seconds (e.g., 28800 for CST/UTC+8)
+///
+/// # Returns
+/// JSON array of lunisolar date result objects (one per day).
+#[wasm_bindgen(js_name = "fromSolarDateRange")]
+pub fn from_solar_date_range(
+    start_date: &str,
+    end_date: &str,
+    tz_offset_seconds: i32,
+) -> Result<String, JsError> {
+    // Parse YYYY-MM-DD strings
+    let parse_ymd = |s: &str| -> Result<(i32, u32, u32), JsError> {
+        let parts: Vec<&str> = s.split('-').collect();
+        if parts.len() != 3 {
+            return Err(JsError::new(&format!("Invalid date format: {}", s)));
+        }
+        let y: i32 = parts[0].parse().map_err(|_| JsError::new("bad year"))?;
+        let m: u32 = parts[1].parse().map_err(|_| JsError::new("bad month"))?;
+        let d: u32 = parts[2].parse().map_err(|_| JsError::new("bad day"))?;
+        Ok((y, m, d))
+    };
+
+    let (sy, sm, sd) = parse_ymd(start_date)?;
+    let (ey, em, ed) = parse_ymd(end_date)?;
+
+    let start_day = days_from_civil(sy, sm, sd);
+    let end_day = days_from_civil(ey, em, ed);
+    if start_day > end_day {
+        return Ok("[]".to_string());
+    }
+
+    // Determine year range for ephemeris data
+    let min_year = sy.min(ey) - 1;
+    let max_year = sy.max(ey) + 1;
+
+    // Compute ephemeris once for the whole range
+    let new_moons = ephemeris::compute_new_moons(min_year, max_year);
+    let solar_terms = ephemeris::compute_solar_terms(min_year, max_year);
+
+    if new_moons.len() < 2 {
+        return Err(JsError::new("Insufficient new moon data from Swiss Ephemeris"));
+    }
+    if solar_terms.is_empty() {
+        return Err(JsError::new("No solar terms computed from Swiss Ephemeris"));
+    }
+
+    // Convert each day using the shared data
+    let mut results: Vec<LunisolarResult> = Vec::new();
+    for day_offset in 0..=(end_day - start_day) {
+        let d = start_day + day_offset;
+        let (y, m, dd) = civil_from_days(d);
+        // Noon UTC on that day, then adjusted by tz
+        let timestamp_ms = d as f64 * 86400000.0 + 12.0 * 3600000.0;
+        match from_solar_date_core(timestamp_ms, tz_offset_seconds, &new_moons, &solar_terms) {
+            Ok(r) => results.push(r),
+            Err(e) => return Err(JsError::new(&format!(
+                "Failed for {}-{:02}-{:02}: {}", y, m, dd, e
+            ))),
+        }
+    }
+
+    serde_json::to_string(&results)
+        .map_err(|e| JsError::new(&format!("Failed to serialize results: {}", e)))
+}
+
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]

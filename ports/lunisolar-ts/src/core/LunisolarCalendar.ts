@@ -145,6 +145,192 @@ export class LunisolarCalendar {
     return new Date(this._solarDate.getTime());
   }
 
+  static async fromSolarDateRange(
+    startDate: Date,
+    endDate: Date,
+    timezone: string,
+  ): Promise<LunisolarCalendar[]> {
+    const userTz = new TimezoneHandler(timezone);
+    const cst = new TimezoneHandler('Asia/Shanghai');
+    const loader = getDataLoader();
+
+    // Determine year window from the full range
+    const startParts = userTz.utcToTimezoneDate(startDate);
+    const endParts = userTz.utcToTimezoneDate(endDate);
+    const yrs = new Set<number>();
+    for (let y = startParts.year - 1; y <= endParts.year + 1; y++) yrs.add(y);
+
+    // Load new moons + solar terms ONCE
+    const [nmYearMap, stYearMap] = await Promise.all([
+      (async () => {
+        const m = new Map<number, number[]>();
+        for (const y of yrs) m.set(y, await loader.getNewMoons(y));
+        return m;
+      })(),
+      (async () => {
+        const m = new Map<number, [number, number][]>();
+        for (const y of yrs) m.set(y, (await loader.getSolarTerms(y)).map((v: any) => v as [number, number]));
+        return m;
+      })(),
+    ]);
+
+    const newMoons = Array.from(nmYearMap.values())
+      .flat()
+      .map((ts) => new Date(ts * 1000))
+      .sort((a, b) => a.getTime() - b.getTime());
+
+    const principalTerms: PrincipalTerm[] = Array.from(stYearMap.entries())
+      .flatMap(([_, arr]) => arr)
+      .filter(([, idx]) => (idx % 2) === 0)
+      .map(([ts, idx]) => {
+        const termIndexRaw = (idx / 2) + 2;
+        const termIndex = termIndexRaw > 12 ? termIndexRaw - 12 : termIndexRaw;
+        const dt = new Date(ts * 1000);
+        const d = cst.utcToTimezoneDate(dt);
+        return { instantUtc: dt, cstDate: { y: d.year, m: d.month, d: d.day }, termIndex } as PrincipalTerm;
+      })
+      .sort((a, b) => a.instantUtc.getTime() - b.instantUtc.getTime());
+
+    if (newMoons.length < 2) throw new Error('Insufficient new moon data');
+
+    // Build month periods
+    const periods: MonthPeriod[] = [];
+    for (let i = 0; i < newMoons.length - 1; i++) {
+      const startUtc = newMoons[i];
+      const endUtc = newMoons[i + 1];
+      const s = cst.utcToTimezoneDate(startUtc);
+      const e = cst.utcToTimezoneDate(endUtc);
+      periods.push({
+        index: i,
+        startUtc,
+        endUtc,
+        startCst: { y: s.year, m: s.month, d: s.day },
+        endCst: { y: e.year, m: e.month, d: e.day },
+        hasPrincipal: false,
+        isLeap: false,
+        monthNumber: 0,
+      });
+    }
+
+    // Tag principal terms
+    for (const term of principalTerms) {
+      for (const period of periods) {
+        if (withinCstRange(term.cstDate, period.startCst, period.endCst)) {
+          period.hasPrincipal = true;
+          break;
+        }
+      }
+    }
+
+    // Pre-compute Z11 (Winter Solstice) terms — constant for the entire range
+    const z11 = principalTerms.filter((t) => t.termIndex === 11);
+    if (z11.length === 0) throw new Error('No Winter Solstice (Z11) found');
+
+    // Iterate each day in the range and convert
+    const results: LunisolarCalendar[] = [];
+    const startMs = startDate.getTime();
+    const endMs = endDate.getTime();
+    const dayMs = 86400000;
+
+    // Cache: only re-assign month numbers when the anchor solstice changes
+    let lastAnchorMs = -1;
+
+    for (let ms = startMs; ms <= endMs; ms += dayMs) {
+      const targetUtc = new Date(ms);
+      const localParts = userTz.utcToTimezoneDate(targetUtc);
+      const targetYear = localParts.year;
+
+      const currentYearZ11 = z11.find((t) => t.instantUtc.getUTCFullYear() === targetYear)
+        || z11.reduce((prev, curr) =>
+          Math.abs(curr.instantUtc.getUTCFullYear() - targetYear) < Math.abs(prev.instantUtc.getUTCFullYear() - targetYear) ? curr : prev);
+
+      const anchorSolstice = (targetUtc.getTime() >= currentYearZ11.instantUtc.getTime())
+        ? currentYearZ11.instantUtc
+        : (z11.find((t) => t.instantUtc.getUTCFullYear() === targetYear - 1)?.instantUtc || currentYearZ11.instantUtc);
+
+      // Only recalculate month numbering when the anchor changes
+      if (anchorSolstice.getTime() !== lastAnchorMs) {
+        lastAnchorMs = anchorSolstice.getTime();
+
+        for (const p of periods) { p.monthNumber = 0; p.isLeap = false; }
+
+        const ziIndex = periods.findIndex((p) => p.startUtc <= anchorSolstice && anchorSolstice < p.endUtc);
+        if (ziIndex === -1) throw new Error('Failed to locate Zi-month');
+
+        periods[ziIndex].monthNumber = 11;
+        periods[ziIndex].isLeap = false;
+
+        let current = 11;
+        for (let i = ziIndex + 1; i < periods.length; i++) {
+          if (periods[i].hasPrincipal) {
+            current = (current % 12) + 1;
+            periods[i].monthNumber = current;
+            periods[i].isLeap = false;
+          } else {
+            periods[i].monthNumber = current;
+            periods[i].isLeap = true;
+          }
+        }
+        if (ziIndex > 0) {
+          current = 11;
+          for (let i = ziIndex - 1; i >= 0; i--) {
+            current = current > 1 ? current - 1 : 12;
+            if (periods[i].hasPrincipal) {
+              periods[i].monthNumber = current;
+              periods[i].isLeap = false;
+            } else {
+              periods[i].monthNumber = current;
+              periods[i].isLeap = true;
+            }
+          }
+        }
+      }
+
+      const targetCst = cst.utcToTimezoneDate(targetUtc);
+      const targetCstDate = { y: targetCst.year, m: targetCst.month, d: targetCst.day };
+      const targetPeriod = periods.find((p) => withinCstRange(targetCstDate, p.startCst, p.endCst));
+      if (!targetPeriod) throw new Error('No lunar month period found');
+
+      const start = new Date(Date.UTC(targetPeriod.startCst.y, targetPeriod.startCst.m - 1, targetPeriod.startCst.d));
+      const tgt = new Date(Date.UTC(targetCstDate.y, targetCstDate.m - 1, targetCstDate.d));
+      const lunarDayRaw = Math.floor((tgt.getTime() - start.getTime()) / dayMs) + 1;
+      const lunarDay = Math.max(1, Math.min(30, lunarDayRaw));
+
+      let lunarYear: number;
+      if (targetPeriod.monthNumber <= 11) {
+        lunarYear = targetPeriod.startUtc.getUTCFullYear();
+      } else {
+        const startMonth = targetPeriod.startUtc.getUTCMonth() + 1;
+        lunarYear = startMonth <= 2 ? targetPeriod.startUtc.getUTCFullYear() - 1 : targetPeriod.startUtc.getUTCFullYear();
+      }
+
+      const tzWall = userTz.convertToTimezone(targetUtc);
+      const [yStem, yBranch, yCycle] = yearGanzhi(lunarYear);
+      const [mStem, mBranch, mCycle] = monthGanzhi(lunarYear, targetPeriod.monthNumber);
+      const [dStem, dBranch, dCycle] = dayGanzhi(tzWall);
+      const [hStem, hBranch, hCycle] = hourGanzhi(tzWall, dStem);
+
+      const result: TLunisolarDate = {
+        lunarYear,
+        lunarMonth: targetPeriod.monthNumber,
+        lunarDay,
+        isLeapMonth: targetPeriod.isLeap,
+        yearStem: yStem,
+        yearBranch: yBranch,
+        monthStem: mStem,
+        monthBranch: mBranch,
+        dayStem: dStem,
+        dayBranch: dBranch,
+        hourStem: hStem,
+        hourBranch: hBranch,
+      };
+
+      results.push(new LunisolarCalendar(result, targetUtc, false));
+    }
+
+    return results;
+  }
+
   static async fromSolarDate(date: Date, timezone: string): Promise<LunisolarCalendar> {
     const userTz = new TimezoneHandler(timezone);
     const localParts = userTz.utcToTimezoneDate(date);

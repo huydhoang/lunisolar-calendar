@@ -563,7 +563,100 @@ int from_solar_date(double timestamp_ms, int tz_offset_seconds,
     return n;
 }
 
-/* ── Standalone conversion using Swiss Ephemeris ──────────────────────────── */
+/* ── Batch range conversion using Swiss Ephemeris ─────────────────────────── */
+
+/*
+ * from_solar_date_range
+ *
+ * Batch-convert a contiguous range of solar dates to lunisolar dates.
+ * Computes new moons and solar terms ONCE for the entire range and
+ * reuses the shared data for every day.
+ *
+ * Parameters:
+ *   start_y/m/d       – first date (inclusive), e.g. 2025,1,1
+ *   end_y/m/d         – last  date (inclusive), e.g. 2025,12,31
+ *   tz_offset_seconds – timezone offset from UTC in seconds
+ *   out_buf           – output buffer for JSON array string
+ *   out_buf_len       – capacity of out_buf
+ *
+ * Returns: bytes written to out_buf, or -1 on error.
+ */
+EMSCRIPTEN_KEEPALIVE
+int from_solar_date_range(int start_y, int start_m, int start_d,
+                          int end_y,   int end_m,   int end_d,
+                          int tz_offset_seconds,
+                          char *out_buf, int out_buf_len) {
+
+    long long s_day = days_from_civil(start_y, (unsigned)start_m, (unsigned)start_d);
+    long long e_day = days_from_civil(end_y,   (unsigned)end_m,   (unsigned)end_d);
+    if (s_day > e_day) {
+        int n = snprintf(out_buf, (size_t)out_buf_len, "[]");
+        return n;
+    }
+
+    int min_year = start_y < end_y ? start_y : end_y;
+    int max_year = start_y > end_y ? start_y : end_y;
+
+    /* Compute ephemeris once for the whole range */
+    ephe_init();
+
+    double nm_sec[EPHE_MAX_NEW_MOONS];
+    int nm_count = compute_new_moons(min_year - 1, max_year + 1,
+                                     nm_sec, EPHE_MAX_NEW_MOONS);
+    if (nm_count < 2) { ephe_close(); return -1; }
+
+    double st_sec[EPHE_MAX_SOLAR_TERMS];
+    unsigned st_idx[EPHE_MAX_SOLAR_TERMS];
+    int st_count = compute_solar_terms(min_year - 1, max_year + 1,
+                                       st_sec, st_idx,
+                                       EPHE_MAX_SOLAR_TERMS);
+    if (st_count < 1) { ephe_close(); return -1; }
+
+    ephe_close();
+
+    /* Build JSON array one element at a time */
+    int total = 0;
+    int remaining = out_buf_len;
+    char *cursor = out_buf;
+
+    int n = snprintf(cursor, (size_t)remaining, "[");
+    if (n < 0 || n >= remaining) return -1;
+    cursor += n; remaining -= n; total += n;
+
+    /* Per-date JSON is ~600 bytes; 1024 gives comfortable headroom */
+    char single_buf[1024];
+    int first = 1;
+
+    for (long long day = s_day; day <= e_day; day++) {
+        /* Noon UTC on this day */
+        double ts_ms = (double)day * 86400000.0 + 12.0 * 3600000.0;
+
+        int sn = from_solar_date(ts_ms, tz_offset_seconds,
+                                 nm_sec, nm_count,
+                                 st_sec, st_idx, st_count,
+                                 single_buf, (int)sizeof(single_buf));
+        if (sn < 0) return -1;
+
+        /* Comma separator */
+        if (!first) {
+            n = snprintf(cursor, (size_t)remaining, ",");
+            if (n < 0 || n >= remaining) return -1;
+            cursor += n; remaining -= n; total += n;
+        }
+        first = 0;
+
+        if (sn >= remaining) return -1;
+        memcpy(cursor, single_buf, (size_t)sn);
+        cursor += sn; remaining -= sn; total += sn;
+    }
+
+    n = snprintf(cursor, (size_t)remaining, "]");
+    if (n < 0 || n >= remaining) return -1;
+    total += n;
+
+    return total;
+}
+
 
 /*
  * from_solar_date_auto
