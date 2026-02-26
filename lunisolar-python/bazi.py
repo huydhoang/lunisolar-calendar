@@ -1246,57 +1246,76 @@ def from_solar_date(
 # Day-Master Strength Scoring
 # ============================================================
 
+PILLAR_WEIGHTS = {
+    "year": 1.0,
+    "month": 3.0,  # The Season is 3x more powerful
+    "day": 1.5,    # The "Day Branch" is the spouse palace/roots
+    "hour": 1.0
+}
 
-def score_day_master(chart: Dict) -> Tuple[int, str]:
+LU_MAP = {
+    '甲': '寅', '乙': '卯', '丙': '巳', '丁': '午', 
+    '戊': '巳', '己': '午', '庚': '申', '辛': '酉', 
+    '壬': '亥', '癸': '子'
+}
+
+def is_jian_lu(dm_stem: str, month_branch: str) -> bool:
+    "Strictly check ONLY the month branch"
+    return LU_MAP.get(dm_stem) == month_branch
+
+
+def score_day_master(chart: Dict) -> Tuple[float, str]:
     """Score the Day Master's strength and classify as strong/weak/balanced.
 
     Factors
     -------
     1. Month-order (月令) via Longevity Stage of DM in month branch.
-       Stages 1–5 strengthen (+2); stages 6–12 weaken (−2).  (spec §3.5)
+       Stages 1–5 strengthen (+2); stages 6–12 weaken (−2). Weighted by PILLAR_WEIGHTS.
     2. Root depth — hidden stems matching DM element.
-       Main root +2, middle root +1.
-    3. Visible-stem support — surface stems matching DM element (+1 each).
+       Main root +2, middle root +1. Weighted by PILLAR_WEIGHTS.
+    3. Visible-stem support — surface stems matching DM element (+1 each). Weighted by PILLAR_WEIGHTS.
     """
     dm_stem = chart["day_master"]["stem"]
     dm_elem = chart["day_master"]["element"]
     month_branch = chart["pillars"]["month"]["branch"]
 
-    score = 0
+    score = 0.0
 
     # 1) Month-order (月令) via longevity stage
     idx, _stage = changsheng_stage(
         HEAVENLY_STEMS.index(dm_stem), EARTHLY_BRANCHES.index(month_branch)
     )
+    month_weight = PILLAR_WEIGHTS["month"]
     if idx <= 5:
-        score += 2
+        score += 2 * month_weight
     else:
-        score -= 2
+        score -= 2 * month_weight
 
     # 2) Root depth (hidden stems matching DM element)
-    for p in chart["pillars"].values():
+    for pname, p in chart["pillars"].items():
+        w = PILLAR_WEIGHTS.get(pname, 1.0)
         for role, stem in p["hidden"]:
             if STEM_ELEMENT[stem] == dm_elem:
                 if role == "main":
-                    score += 2
+                    score += 2 * w
                 elif role == "middle":
-                    score += 1
+                    score += 1 * w
 
     # 3) Visible stem support
-    for p in chart["pillars"].values():
+    for pname, p in chart["pillars"].items():
+        w = PILLAR_WEIGHTS.get(pname, 1.0)
         if STEM_ELEMENT[p["stem"]] == dm_elem:
-            score += 1
+            score += 1 * w
 
-    # Classification
-    if score >= 3:
+    # Classification boundaries scaled by weights (roughly 6.5 is a balanced baseline)
+    # The old logic used 3 for strong, -2 for weak on an unweighted scale.
+    # We will adjust bounds: > 6 strong, < -3 weak.
+    if score >= 6:
         strength = "strong"
-    elif score <= -2:
+    elif score <= -3:
         strength = "weak"
     else:
         strength = "balanced"
-
-    if detect_hurt_officer_structure(chart) and score >= 2:
-        strength = "身旺伤旺"
 
     return score, strength
 
@@ -2122,76 +2141,71 @@ def comprehensive_analysis(chart: Dict) -> Dict:
 # ============================================================
 
 
-def detect_hurt_officer_structure(chart: Dict) -> bool:
-    """Detect if the chart should be classified as 伤官格 (Hurt Officer Structure).
-
-    According to traditional theory, 伤官格 is determined when:
-    1. The month branch's hidden stems contain 伤官 (伤官格月令)
-    2. Or when 伤官 appears prominently in the chart with strong Day Master
-    """
-    dm_stem = chart["day_master"]["stem"]
-    dm_idx = HEAVENLY_STEMS.index(dm_stem)
-
-    month_branch = chart["pillars"]["month"]["branch"]
+def detect_month_pillar_structure(chart: Dict) -> Optional[str]:
+    """Detect structure based on month pillar Ten-God (月令格局)."""
     month_hidden = chart["pillars"]["month"]["hidden"]
-
-    if month_hidden:
-        main_hidden_stem = month_hidden[0][1]
-        if main_hidden_stem in ("甲", "乙"):
-            return False
-        main_hidden_elem = STEM_ELEMENT[main_hidden_stem]
-        if main_hidden_elem == "Wood":
-            return True
-
-    tg_counts: Counter = Counter()
-    for p in chart["pillars"].values():
-        tg_counts[p["ten_god"]] += 1
-        for _role, stem in p["hidden"]:
-            tg_counts[ten_god(dm_idx, HEAVENLY_STEMS.index(stem))] += 1
-
-    hurt_officer_score = tg_counts.get("伤官", 0) + tg_counts.get("食神", 0)
-    total_score = sum(tg_counts.values())
-    if total_score > 0 and hurt_officer_score / total_score >= 0.35:
-        return True
-
-    return False
+    if not month_hidden:
+        return None
+    
+    dm_idx = HEAVENLY_STEMS.index(chart["day_master"]["stem"])
+    main_hidden_stem = month_hidden[0][1]
+    main_hidden_idx = HEAVENLY_STEMS.index(main_hidden_stem)
+    
+    return ten_god(dm_idx, main_hidden_idx)
 
 
-def classify_structure(chart: Dict, strength: str) -> str:
-    """Basic structure classifier using Ten-God dominance."""
-    dm_stem = chart["day_master"]["stem"]
-    tg_counts: Counter = Counter()
+def detect_special_structures(chart: Dict, strength: str) -> Optional[str]:
+    """Detect special structures (从格, 化格, etc.)."""
+    return None
 
-    for p in chart["pillars"].values():
-        tg_counts[p["ten_god"]] += 1
-        for _role, stem in p["hidden"]:
-            tg_counts[
-                ten_god(HEAVENLY_STEMS.index(dm_stem), HEAVENLY_STEMS.index(stem))
-            ] += 1
 
-    dominant = tg_counts.most_common(1)[0][0]
-
-    if detect_hurt_officer_structure(chart):
-        return "伤官格"
-
-    if dominant in ("正官", "七杀"):
-        return "官杀格"
-    if dominant in ("食神", "伤官"):
-        return "食伤格"
-    if dominant in ("正财", "偏财"):
-        return "财格"
-    if dominant in ("正印", "偏印"):
-        return "印格"
-    if strength == "strong" and dominant in ("比肩", "劫财"):
-        return "从强格"
-    if strength == "weak" and dominant not in ("比肩", "劫财"):
-        return "从弱格"
+def _get_structure_category(ten_god_val: str) -> str:
+    category_map = {
+        ("正官", "七杀"): "官杀格",
+        ("食神", "伤官"): "食伤格",
+        ("正财", "偏财"): "财格",
+        ("正印", "偏印"): "印格",
+        ("比肩", "劫财"): "比劫格",
+    }
+    for gods, category in category_map.items():
+        if ten_god_val in gods:
+            return category
     return "普通格局"
 
 
-# ============================================================
-# Advanced Structure Scoring
-# ============================================================
+def _assess_structure_quality(
+    chart: Dict, primary_tg: str, strength: str, dist: Dict[str, float]
+) -> Tuple[str, bool]:
+    if primary_tg in ("正官", "七杀"):
+        if strength in ("strong", "balanced"):
+            return "官杀有制, 格局清纯", False
+        else:
+            return "杀重身轻 (破格)", True
+    elif primary_tg in ("食神", "伤官"):
+        has_officer = dist.get("正官", 0) > 2
+        if strength == "strong" and not has_officer:
+            return "食伤生财格", False
+        elif has_officer:
+            return "伤官见官, 为祸百端 (破格)", True
+        else:
+            return "食伤格成, 但身弱", False
+    elif primary_tg in ("正财", "偏财"):
+        if strength == "strong":
+            return "身财两停, 格局纯正", False
+        else:
+            return "财多身弱 (破格)", True
+    elif primary_tg in ("正印", "偏印"):
+        if strength in ("weak", "balanced"):
+            return "印绶格成", False
+        else:
+            return "印多压身", False
+    elif primary_tg in ("比肩", "劫财"):
+        has_food = dist.get("食神", 0) + dist.get("伤官", 0) > 3
+        if strength == "strong" and has_food:
+            return "建禄格/羊刃格成", False
+        else:
+            return "比劫夺财风险", False
+    return "格局一般", False
 
 
 def weighted_ten_god_distribution(chart: Dict) -> Dict[str, float]:
@@ -2213,56 +2227,62 @@ def weighted_ten_god_distribution(chart: Dict) -> Dict[str, float]:
     return dist
 
 
-def classify_structure_professional(
-    chart: Dict,
-    strength: str,
-) -> Tuple[str, float]:
-    """Professional structure classifier with dominance score."""
+def classify_structure(chart: Dict, strength: str) -> Dict[str, Union[str, float, bool]]:
+    """Unified structure classifier using traditional Bazi theory."""
+    dm_idx = HEAVENLY_STEMS.index(chart["day_master"]["stem"])
+    special = detect_special_structures(chart, strength)
+    if special:
+        return {
+            "primary": special,
+            "category": "特殊格局",
+            "quality": "特殊",
+            "dominance_score": 0.0,
+            "is_special": True,
+            "is_broken": False,
+            "notes": "Special structure takes precedence"
+        }
+    
+    month_tg = detect_month_pillar_structure(chart)
     dist = weighted_ten_god_distribution(chart)
-    dominant = max(dist, key=lambda k: dist[k])
-    score = dist[dominant]
-
-    if detect_hurt_officer_structure(chart):
-        return "伤官格", score
-
-    rules = {
-        ("正官", "七杀"): {
-            True: "官杀格",
-            False: "杀重身轻 (破格)",
-        },
-        ("食神", "伤官"): {
-            True: "食伤生财格",
-            False: "伤官见官风险",
-        },
-        ("正财", "偏财"): {
-            True: "财格",
-            False: "财多身弱",
-        },
-        ("正印", "偏印"): {
-            True: "印绶格",
-            False: "印多压身",
-        },
-        ("比肩", "劫财"): {
-            True: "建禄格",
-            False: "比劫夺财风险",
-        },
+    
+    if not dist:
+        dist = {month_tg: 1.0} if month_tg else {"比肩": 1.0}
+        
+    dominant_tg = max(dist, key=lambda k: dist[k])
+    dominance_score = dist[dominant_tg]
+    
+    month_score = dist.get(month_tg, 0) if month_tg else 0
+    if month_tg and month_score >= dominance_score * 0.7:
+        primary_tg = month_tg
+    else:
+        primary_tg = dominant_tg
+        
+    structure_map = {
+        "正官": "正官格",
+        "七杀": "七杀格", 
+        "食神": "食神格",
+        "伤官": "伤官格",
+        "正财": "正财格",
+        "偏财": "偏财格",
+        "正印": "正印格",
+        "偏印": "偏印格",
+        "比肩": "建禄格",
+        "劫财": "羊刃格",
     }
-
-    for gods, outcomes in rules.items():
-        if dominant in gods:
-            if dominant in ("正官", "七杀"):
-                ok = strength != "weak"
-            elif dominant in ("食神", "伤官"):
-                ok = strength == "strong"
-            elif dominant in ("正财", "偏财"):
-                ok = strength == "strong"
-            elif dominant in ("正印", "偏印"):
-                ok = strength == "weak"
-            else:
-                ok = strength == "strong"
-            return outcomes[ok], score
-
-    return "普通格局", score
+    
+    primary_structure = structure_map.get(primary_tg, "普通格局")
+    category = _get_structure_category(primary_tg)
+    quality, is_broken = _assess_structure_quality(chart, primary_tg, strength, dist)
+    
+    return {
+        "primary": primary_structure,
+        "category": category,
+        "quality": quality,
+        "dominance_score": dominance_score,
+        "is_special": False,
+        "is_broken": is_broken,
+        "notes": f"Based on {primary_tg} dominance"
+    }
 
 
 # ============================================================
@@ -2509,7 +2529,7 @@ def annual_analysis(chart: Dict, year_pillar_cycle: int) -> Dict:
 
 
 def recommend_useful_god(
-    chart: Dict, strength: str
+    chart: Dict, strength: str, structure: Dict
 ) -> Dict[str, Union[List[str], str]]:
     """Recommend favorable/unfavorable elements based on DM strength and structure.
 
@@ -2521,7 +2541,7 @@ def recommend_useful_god(
     dm_elem = chart["day_master"]["element"]
     inverse_gen = {v: k for k, v in GEN_MAP.items()}
 
-    is_hurt_officer = detect_hurt_officer_structure(chart)
+    is_hurt_officer = structure.get("primary") == "伤官格"
 
     if is_hurt_officer:
         return {
@@ -2580,7 +2600,8 @@ def rate_chart(chart: Dict) -> int:
         total += 18
 
     # 2. Structure purity (max 25)
-    _struct, s_score = classify_structure_professional(chart, strength)
+    struct_dict = classify_structure(chart, strength)
+    s_score = struct_dict.get("dominance_score", 0)
     if s_score > 8:
         total += 25
     elif s_score > 5:
@@ -2625,7 +2646,7 @@ def rate_chart(chart: Dict) -> int:
 def generate_narrative(
     chart: Dict,
     strength: str,
-    structure: str,
+    structure: Dict,
     interactions: Dict[str, list],
 ) -> str:
     """Generate a human-readable interpretation of the natal chart."""
@@ -2635,11 +2656,11 @@ def generate_narrative(
 
     lines = [
         f"Day Master: {dm} ({elem})",
-        f"Structure: {structure}",
+        f"Structure: {structure.get('primary', 'Unknown')}",
         f"Strength: {strength}",
     ]
 
-    if detect_hurt_officer_structure(chart):
+    if structure.get("primary") == "伤官格":
         lines.append("")
         lines.append("=== HURT OFFICER (伤官) ANALYSIS ===")
         lines.append("")
@@ -2721,12 +2742,14 @@ if __name__ == "__main__":
 
     score, strength = score_day_master(chart)
     interactions = detect_branch_interactions(chart)
-    structure = classify_structure(chart, strength)
-    structure_pro, dominance = classify_structure_professional(chart, strength)
+    structure_dict = classify_structure(chart, strength)
+    structure_primary = structure_dict.get("primary", "Unknown")
+    structure_quality = structure_dict.get("quality", "Unknown")
+    dominance = float(structure_dict.get("dominance_score", 0.0))
     luck = generate_luck_pillars(chart, birth_year=dto.year)
-    useful = recommend_useful_god(chart, strength)
+    useful = recommend_useful_god(chart, strength, structure_dict)
     rating = rate_chart(chart)
-    narrative = generate_narrative(chart, strength, structure, interactions)
+    narrative = generate_narrative(chart, strength, structure_dict, interactions)
     lmap = longevity_map(chart)
     tg_dist = weighted_ten_god_distribution(chart)
     comprehensive = comprehensive_analysis(chart)
@@ -2796,8 +2819,8 @@ if __name__ == "__main__":
 
     print(f"\n{'─' * 70}")
     print("[ Chart Structure (格局) ]")
-    print(f"  Basic        : {structure}")
-    print(f"  Professional : {structure_pro}  (dominance score = {dominance:.1f})")
+    print(f"  Basic        : {structure_primary}")
+    print(f"  Quality      : {structure_quality}  (dominance score = {dominance:.1f})")
     useful_str = ", ".join(useful["favorable"]) if useful["favorable"] else "None"
     avoid_str = ", ".join(useful["avoid"]) if useful["avoid"] else "None"
     print(f"  Favorable    : {useful_str}")
