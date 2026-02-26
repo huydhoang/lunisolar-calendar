@@ -53,109 +53,139 @@ HEAVENLY_STEMS: List[str] = [s[0] for s in _HS_TUPLES]
 EARTHLY_BRANCHES: List[str] = [b[0] for b in _EB_TUPLES]
 
 # ============================================================
-# Terminology Translations (Pinyin, English, Vietnamese)
+# Terminology Translations (Arrays to avoid Dictionary encoding issues)
 # ============================================================
 
-TERM_TRANSLATIONS: Dict[str, Tuple[str, str, str]] = {
-    # Stems
-    "甲": ("Jiǎ", "Yang Wood", "Giáp"),
-    "乙": ("Yǐ", "Yin Wood", "Ất"),
-    "丙": ("Bǐng", "Yang Fire", "Bính"),
-    "丁": ("Dīng", "Yin Fire", "Đinh"),
-    "戊": ("Wù", "Yang Earth", "Mậu"),
-    "己": ("Jǐ", "Yin Earth", "Kỷ"),
-    "庚": ("Gēng", "Yang Metal", "Canh"),
-    "辛": ("Xīn", "Yin Metal", "Tân"),
-    "壬": ("Rén", "Yang Water", "Nhâm"),
-    "癸": ("Guǐ", "Yin Water", "Quý"),
-    # Branches
-    "子": ("Zǐ", "Rat", "Tí"),
-    "丑": ("Chǒu", "Ox", "Sửu"),
-    "寅": ("Yín", "Tiger", "Dần"),
-    "卯": ("Mǎo", "Rabbit", "Mão"),
-    "辰": ("Chén", "Dragon", "Thìn"),
-    "巳": ("Sì", "Snake", "Tỵ"),
-    "午": ("Wǔ", "Horse", "Ngọ"),
-    "未": ("Wèi", "Goat", "Mùi"),
-    "申": ("Shēn", "Monkey", "Thân"),
-    "酉": ("Yǒu", "Rooster", "Dậu"),
-    "戌": ("Xū", "Dog", "Tuất"),
-    "亥": ("Hài", "Pig", "Hợi"),
-    # Ten Gods
-    "比肩": ("Bǐ Jiān", "Friend", "Tỷ Kiên"),
-    "劫财": ("Jié Cái", "Rob Wealth", "Kiếp Tài"),
-    "食神": ("Shí Shén", "Eating God", "Thực Thần"),
-    "伤官": ("Shāng Guān", "Hurting Officer", "Thương Quan"),
-    "偏财": ("Piān Cái", "Indirect Wealth", "Thiên Tài"),
-    "正财": ("Zhèng Cái", "Direct Wealth", "Chính Tài"),
-    "七杀": ("Qī Shā", "Seven Killings", "Thất Sát"),
-    "正官": ("Zhèng Guān", "Direct Officer", "Chính Quan"),
-    "偏印": ("Piān Yìn", "Indirect Resource", "Thiên Ấn"),
-    "正印": ("Zhèng Yìn", "Direct Resource", "Chính Ấn"),
-    # Interactions
-    "合": ("Hé", "Combine", "Hợp"),
-    "冲": ("Chōng", "Clash", "Xung"),
-    "刑": ("Xíng", "Punishment", "Hình"),
-    "害": ("Hài", "Harm", "Hại"),
-    "破": ("Pò", "Destruction", "Phá"),
-    "六合": ("Liù Hé", "Six Combinations", "Lục Hợp"),
-    "三合": ("Sān Hé", "Three Combinations", "Tam Hợp"),
-    "三会": ("Sān Huì", "Directional Combination", "Tam Hội"),
-    "六冲": ("Liù Chōng", "Six Clashes", "Lục Xung"),
-    "六害": ("Liù Hài", "Six Harms", "Lục Hại"),
-    "自刑": ("Zì Xíng", "Self-Punishment", "Tự Hình"),
-    "三刑": ("Sān Xíng", "Three Punishments", "Tam Hình"),
-    # Longevity Stages
-    "长生": ("Cháng Shēng", "Growth", "Trường Sinh"),
-    "沐浴": ("Mù Yù", "Bath", "Mộc Dục"),
-    "冠带": ("Guàn Dài", "Crown Belt", "Quan Đới"),
-    "临官": ("Lín Guān", "Coming of Age", "Lâm Quan"),
-    "帝旺": ("Dì Wàng", "Prosperity Peak", "Đế Vượng"),
-    "衰": ("Shuāi", "Decline", "Suy"),
-    "病": ("Bìng", "Sickness", "Bệnh"),
-    "死": ("Sǐ", "Death", "Tử"),
-    "墓": ("Mù", "Grave", "Mộ"),
-    "绝": ("Jué", "Termination", "Tuyệt"),
-    "胎": ("Tāi", "Conception", "Thai"),
-    "养": ("Yǎng", "Nurture", "Dưỡng"),
-    # Symbolic Stars
-    "天乙贵人": ("Tiān Yǐ Guì Rén", "Nobleman", "Thiên Ất Quý Nhân"),
-    "文昌": ("Wén Chāng", "Academic Star", "Văn Xương"),
-    "桃花": ("Táo Huā", "Peach Blossom", "Đào Hoa"),
-    "驿马": ("Yì Mǎ", "Travel Horse", "Dịch Mã"),
-    "将星": ("Jiàng Xīng", "General Star", "Tướng Tinh"),
-    "华盖": ("Huá Gài", "Canopy", "Hoa Cái"),
-    "羊刃": ("Yáng Rèn", "Goat Blade", "Dương Nhận"),
-    "禄神": ("Lù Shén", "Prosperity Star", "Lộc Thần"),
-    "红鸾": ("Hóng Luán", "Red Cloud", "Hồng Loan"),
-    "血刃": ("Xuè Rèn", "Blood Knife", "Huyết Nhận"),
-    "空亡": ("Kōng Wáng", "Void", "Không Vong"),
-}
+FORMAT_STRING = "cn/py/en/vi" # Can be updated via CLI --format
 
+STEM_TRANS = [
+    ("甲", "Jiǎ", "Yang Wood", "Giáp"),
+    ("乙", "Yǐ", "Yin Wood", "Ất"),
+    ("丙", "Bǐng", "Yang Fire", "Bính"),
+    ("丁", "Dīng", "Yin Fire", "Đinh"),
+    ("戊", "Wù", "Yang Earth", "Mậu"),
+    ("己", "Jǐ", "Yin Earth", "Kỷ"),
+    ("庚", "Gēng", "Yang Metal", "Canh"),
+    ("辛", "Xīn", "Yin Metal", "Tân"),
+    ("壬", "Rén", "Yang Water", "Nhâm"),
+    ("癸", "Guǐ", "Yin Water", "Quý"),
+]
 
-def format_term(chinese_str: str) -> str:
-    """Format a Chinese term as 'Chinese/Pinyin/English/Vietnamese'.
-    
-    If the string is not found directly, it checks if it's a 2-character
-    GanZhi combinations (e.g., '甲子').
-    """
+BRANCH_TRANS = [
+    ("子", "Zǐ", "Rat", "Tí"),
+    ("丑", "Chǒu", "Ox", "Sửu"),
+    ("寅", "Yín", "Tiger", "Dần"),
+    ("卯", "Mǎo", "Rabbit", "Mão"),
+    ("辰", "Chén", "Dragon", "Thìn"),
+    ("巳", "Sì", "Snake", "Tỵ"),
+    ("午", "Wǔ", "Horse", "Ngọ"),
+    ("未", "Wèi", "Goat", "Mùi"),
+    ("申", "Shēn", "Monkey", "Thân"),
+    ("酉", "Yǒu", "Rooster", "Dậu"),
+    ("戌", "Xū", "Dog", "Tuất"),
+    ("亥", "Hài", "Pig", "Hợi"),
+]
+
+TENGOD_TRANS = [
+    ("比肩", "Bǐ Jiān", "Friend", "Tỷ Kiên"),
+    ("劫财", "Jié Cái", "Rob Wealth", "Kiếp Tài"),
+    ("食神", "Shí Shén", "Eating God", "Thực Thần"),
+    ("伤官", "Shāng Guān", "Hurting Officer", "Thương Quan"),
+    ("偏财", "Piān Cái", "Indirect Wealth", "Thiên Tài"),
+    ("正财", "Zhèng Cái", "Direct Wealth", "Chính Tài"),
+    ("七杀", "Qī Shā", "Seven Killings", "Thất Sát"),
+    ("正官", "Zhèng Guān", "Direct Officer", "Chính Quan"),
+    ("偏印", "Piān Yìn", "Indirect Resource", "Thiên Ấn"),
+    ("正印", "Zhèng Yìn", "Direct Resource", "Chính Ấn"),
+]
+
+INTERACTIONS_TRANS = [
+    ("合", "Hé", "Combine", "Hợp"),
+    ("冲", "Chōng", "Clash", "Xung"),
+    ("刑", "Xíng", "Punishment", "Hình"),
+    ("害", "Hài", "Harm", "Hại"),
+    ("破", "Pò", "Destruction", "Phá"),
+    ("六合", "Liù Hé", "Six Combinations", "Lục Hợp"),
+    ("三合", "Sān Hé", "Three Combinations", "Tam Hợp"),
+    ("三会", "Sān Huì", "Directional Combination", "Tam Hội"),
+    ("六冲", "Liù Chōng", "Six Clashes", "Lục Xung"),
+    ("六害", "Liù Hài", "Six Harms", "Lục Hại"),
+    ("自刑", "Zì Xíng", "Self-Punishment", "Tự Hình"),
+    ("三刑", "Sān Xíng", "Three Punishments", "Tam Hình"),
+]
+
+LIFESTAGE_TRANS = [
+    ("长生", "Cháng Shēng", "Growth", "Trường Sinh"),
+    ("沐浴", "Mù Yù", "Bath", "Mộc Dục"),
+    ("冠带", "Guàn Dài", "Crown Belt", "Quan Đới"),
+    ("临官", "Lín Guān", "Coming of Age", "Lâm Quan"),
+    ("帝旺", "Dì Wàng", "Prosperity Peak", "Đế Vượng"),
+    ("衰", "Shuāi", "Decline", "Suy"),
+    ("病", "Bìng", "Sickness", "Bệnh"),
+    ("死", "Sǐ", "Death", "Tử"),
+    ("墓", "Mù", "Grave", "Mộ"),
+    ("绝", "Jué", "Termination", "Tuyệt"),
+    ("胎", "Tāi", "Conception", "Thai"),
+    ("养", "Yǎng", "Nurture", "Dưỡng"),
+]
+
+STAR_TRANS = [
+    ("天乙贵人", "Tiān Yǐ Guì Rén", "Nobleman", "Thiên Ất Quý Nhân"),
+    ("文昌", "Wén Chāng", "Academic Star", "Văn Xương"),
+    ("桃花", "Táo Huā", "Peach Blossom", "Đào Hoa"),
+    ("驿马", "Yì Mǎ", "Travel Horse", "Dịch Mã"),
+    ("将星", "Jiàng Xīng", "General Star", "Tướng Tinh"),
+    ("华盖", "Huá Gài", "Canopy", "Hoa Cái"),
+    ("羊刃", "Yáng Rèn", "Goat Blade", "Dương Nhận"),
+    ("禄神", "Lù Shén", "Prosperity Star", "Lộc Thần"),
+    ("红鸾", "Hóng Luán", "Red Cloud", "Hồng Loan"),
+    ("血刃", "Xuè Rèn", "Blood Knife", "Huyết Nhận"),
+    ("空亡", "Kōng Wáng", "Void", "Không Vong"),
+]
+
+TRANS_GROUPS = [STEM_TRANS, BRANCH_TRANS, TENGOD_TRANS, INTERACTIONS_TRANS, LIFESTAGE_TRANS, STAR_TRANS]
+
+def get_trans_tuple(chinese_str: str) -> Optional[Tuple[str, str, str, str]]:
+    for group in TRANS_GROUPS:
+        for t in group:
+            if t[0] == chinese_str:
+                return t
+    return None
+
+def format_term(chinese_str: str, override_fmt: str = None) -> str:
+    """Format a Chinese term based on FORMAT_STRING like 'cn/py/en/vi'."""
     if not chinese_str or chinese_str == "-":
         return chinese_str
         
-    # Standard terminology lookup
-    if chinese_str in TERM_TRANSLATIONS:
-        py, eng, vi = TERM_TRANSLATIONS[chinese_str]
-        return f"{chinese_str}/{py}/{eng}/{vi}"
+    fmt = override_fmt or FORMAT_STRING
+    opts = {"cn": 0, "py": 1, "en": 2, "vi": 3}
+    parts = fmt.split("/")
+    result_parts = []
+    
+    # Check simple definition directly
+    t = get_trans_tuple(chinese_str)
+    if t:
+        for p in parts:
+            if p in opts:
+                result_parts.append(t[opts[p]])
+        return "/".join(result_parts)
         
     # Check for 2-character Stems-Branches combinations (GanZhi)
-    if len(chinese_str) == 2 and chinese_str[0] in TERM_TRANSLATIONS and chinese_str[1] in TERM_TRANSLATIONS:
-        s_t = TERM_TRANSLATIONS[chinese_str[0]]
-        b_t = TERM_TRANSLATIONS[chinese_str[1]]
-        py = f"{s_t[0]}{b_t[0].lower()}"
-        eng = f"{s_t[1]} {b_t[1]}"
-        vi = f"{s_t[2]} {b_t[2]}"
-        return f"{chinese_str}/{py}/{eng}/{vi}"
-        
+    if len(chinese_str) == 2:
+        s_t = get_trans_tuple(chinese_str[0])
+        b_t = get_trans_tuple(chinese_str[1])
+        if s_t and b_t:
+            combined_tuple = (
+                chinese_str,
+                f"{s_t[1]}{b_t[1].lower()}",
+                f"{s_t[2]} {b_t[2]}",
+                f"{s_t[3]} {b_t[3]}"
+            )
+            for p in parts:
+                if p in opts:
+                    result_parts.append(combined_tuple[opts[p]])
+            return "/".join(result_parts)
+            
     return chinese_str
 
 # ============================================================
@@ -2886,10 +2916,15 @@ if __name__ == "__main__":
     parser.add_argument("-g", "--gender", required=True, help="Gender (male/female)")
     parser.add_argument("--proj-start", help="Start date for projections (YYYY-MM-DD). Defaults to current date.")
     parser.add_argument("--proj-end", help="End date for projections (YYYY-MM-DD). If omitted, defaults to standard durations.")
+    parser.add_argument("-f", "--format", default="cn/py/en/vi", help="Format string for Chinese terminology. E.g., 'cn/py/en/vi' or 'cn/en' or 'cn'.")
     args = parser.parse_args()
     solar_date = args.date
     solar_time = args.time
     gender = args.gender
+    
+    # Update global formatting preference
+    global FORMAT_STRING
+    FORMAT_STRING = args.format
 
     dto = solar_to_lunisolar(solar_date, solar_time, quiet=True)
     chart = build_chart(
@@ -3018,8 +3053,21 @@ if __name__ == "__main__":
     active = {k: v for k, v in interactions.items() if v}
     if active:
         for kind, entries in active.items():
-            entries_fmt = [format_term(e) for e in entries]
-            print(f"  {format_term(kind)}: {entries_fmt}")
+            formatted_entries = []
+            for e in entries:
+                if isinstance(e, dict):
+                    if "pattern" in e: # San Xing from dict
+                        formatted_entries.append(f"{list(e['pattern'])} (match: {e['found']})")
+                    elif "branch" in e: # Zi Xing
+                        formatted_entries.append(f"{e['branch']} (count: {e['count']})")
+                    else:
+                        formatted_entries.append(str(e))
+                elif isinstance(e, (tuple, frozenset, set)):
+                    formatted_entries.append(f"({', '.join(format_term(b) for b in e)})")
+                else:
+                    formatted_entries.append(format_term(str(e)))
+                    
+            print(f"  {format_term(kind)}: {formatted_entries}")
     else:
         print("  None detected.")
 
