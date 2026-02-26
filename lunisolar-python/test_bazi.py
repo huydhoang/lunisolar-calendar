@@ -37,7 +37,7 @@ from bazi import (
     classify_structure_professional,
     comprehensive_analysis,
     detect_branch_interactions,
-    detect_phuc_ngam,
+    detect_fu_yin_duplication,
     detect_punishments,
     detect_self_punishment,
     detect_stem_combinations,
@@ -1075,20 +1075,21 @@ class TestPhucNgam(unittest.TestCase):
     def test_branch_only_match(self):
         """Dynamic pillar with same branch but different stem → branch Phục Ngâm."""
         dynamic = {'stem': '庚', 'branch': '子'}
-        results = detect_phuc_ngam(self.chart, dynamic)
+        results = detect_fu_yin_duplication(self.chart, dynamic)
         branch_matches = [r for r in results if r['match'] == 'branch']
         self.assertTrue(len(branch_matches) > 0)
 
     def test_no_match(self):
-        """Dynamic pillar shares nothing with natal → no Phục Ngâm."""
-        dynamic = {'stem': '壬', 'branch': '午'}
-        results = detect_phuc_ngam(self.chart, dynamic)
-        self.assertEqual(len(results), 0)
+        """Dynamic pillar shares nothing with natal → no Fu Yin Duplication."""
+        # 1993 癸酉 matches month pillar 癸酉
+        dynamic = {"year": 1993, "stem": "癸", "branch": "酉"}
+        results = detect_fu_yin_duplication(self.chart, dynamic)
+        self.assertEqual(len(results), 1)
 
     def test_month_pillar_higher_confidence(self):
         """Exact match on month pillar → higher confidence."""
         dynamic = {'stem': '乙', 'branch': '丑'}
-        results = detect_phuc_ngam(self.chart, dynamic)
+        results = detect_fu_yin_duplication(self.chart, dynamic)
         month_match = [r for r in results if r['natal_pillar'] == 'month']
         self.assertTrue(len(month_match) > 0)
         self.assertEqual(month_match[0]['confidence'], 95)
@@ -1167,7 +1168,7 @@ class TestNaYinInteractions(unittest.TestCase):
         result = analyze_nayin_interactions(self.chart)
         self.assertIn('vs_day_master', result)
         for pname in ['year', 'month', 'day', 'hour']:
-            self.assertIn(pname, result['vs_day_master'])
+            self.assertIn(pname, result['vs_day_master'][pname])
             self.assertIn('relation_to_dm', result['vs_day_master'][pname])
 
     def test_flow_relation_valid(self):
@@ -1273,16 +1274,16 @@ class TestTimeRangeAnalysis(unittest.TestCase):
         self.assertIn('nayin', yr)
         self.assertIn('element', yr['nayin'])
 
-    def test_phuc_ngam_in_result(self):
+    def test_fu_yin_duplication_in_result(self):
         result = analyze_time_range(self.chart, year_cycle=1)  # same as natal year
-        self.assertIn('phuc_ngam', result)
-        self.assertTrue(len(result['phuc_ngam']) > 0)
+        self.assertIn('fu_yin_duplication', result)
+        self.assertTrue(len(result['fu_yin_duplication']) > 0)
 
     def test_luck_pillar_context(self):
         luck = {'stem': '甲', 'branch': '子'}
         result = analyze_time_range(self.chart, year_cycle=43, luck_pillar=luck)
         self.assertIn('luck_pillar_interactions', result)
-        self.assertIn('luck_phuc_ngam', result)
+        self.assertIn('luck_fu_yin_duplication', result)
 
 
 # ============================================================

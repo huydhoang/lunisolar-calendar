@@ -32,14 +32,17 @@ import argparse
 import csv
 import os
 from collections import Counter
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import Dict, List, Optional, Tuple, Union
 
+from skyfield.api import utc
+from solar_terms import calculate_solar_terms
 from lunisolar_v2 import (
     EARTHLY_BRANCHES as _EB_TUPLES,
     HEAVENLY_STEMS as _HS_TUPLES,
     LunisolarDateDTO,
     solar_to_lunisolar,
+    solar_to_lunisolar_batch,
 )
 
 # ============================================================
@@ -48,6 +51,112 @@ from lunisolar_v2 import (
 
 HEAVENLY_STEMS: List[str] = [s[0] for s in _HS_TUPLES]
 EARTHLY_BRANCHES: List[str] = [b[0] for b in _EB_TUPLES]
+
+# ============================================================
+# Terminology Translations (Pinyin, English, Vietnamese)
+# ============================================================
+
+TERM_TRANSLATIONS: Dict[str, Tuple[str, str, str]] = {
+    # Stems
+    "甲": ("Jiǎ", "Yang Wood", "Giáp"),
+    "乙": ("Yǐ", "Yin Wood", "Ất"),
+    "丙": ("Bǐng", "Yang Fire", "Bính"),
+    "丁": ("Dīng", "Yin Fire", "Đinh"),
+    "戊": ("Wù", "Yang Earth", "Mậu"),
+    "己": ("Jǐ", "Yin Earth", "Kỷ"),
+    "庚": ("Gēng", "Yang Metal", "Canh"),
+    "辛": ("Xīn", "Yin Metal", "Tân"),
+    "壬": ("Rén", "Yang Water", "Nhâm"),
+    "癸": ("Guǐ", "Yin Water", "Quý"),
+    # Branches
+    "子": ("Zǐ", "Rat", "Tí"),
+    "丑": ("Chǒu", "Ox", "Sửu"),
+    "寅": ("Yín", "Tiger", "Dần"),
+    "卯": ("Mǎo", "Rabbit", "Mão"),
+    "辰": ("Chén", "Dragon", "Thìn"),
+    "巳": ("Sì", "Snake", "Tỵ"),
+    "午": ("Wǔ", "Horse", "Ngọ"),
+    "未": ("Wèi", "Goat", "Mùi"),
+    "申": ("Shēn", "Monkey", "Thân"),
+    "酉": ("Yǒu", "Rooster", "Dậu"),
+    "戌": ("Xū", "Dog", "Tuất"),
+    "亥": ("Hài", "Pig", "Hợi"),
+    # Ten Gods
+    "比肩": ("Bǐ Jiān", "Friend", "Tỷ Kiên"),
+    "劫财": ("Jié Cái", "Rob Wealth", "Kiếp Tài"),
+    "食神": ("Shí Shén", "Eating God", "Thực Thần"),
+    "伤官": ("Shāng Guān", "Hurting Officer", "Thương Quan"),
+    "偏财": ("Piān Cái", "Indirect Wealth", "Thiên Tài"),
+    "正财": ("Zhèng Cái", "Direct Wealth", "Chính Tài"),
+    "七杀": ("Qī Shā", "Seven Killings", "Thất Sát"),
+    "正官": ("Zhèng Guān", "Direct Officer", "Chính Quan"),
+    "偏印": ("Piān Yìn", "Indirect Resource", "Thiên Ấn"),
+    "正印": ("Zhèng Yìn", "Direct Resource", "Chính Ấn"),
+    # Interactions
+    "合": ("Hé", "Combine", "Hợp"),
+    "冲": ("Chōng", "Clash", "Xung"),
+    "刑": ("Xíng", "Punishment", "Hình"),
+    "害": ("Hài", "Harm", "Hại"),
+    "破": ("Pò", "Destruction", "Phá"),
+    "六合": ("Liù Hé", "Six Combinations", "Lục Hợp"),
+    "三合": ("Sān Hé", "Three Combinations", "Tam Hợp"),
+    "三会": ("Sān Huì", "Directional Combination", "Tam Hội"),
+    "六冲": ("Liù Chōng", "Six Clashes", "Lục Xung"),
+    "六害": ("Liù Hài", "Six Harms", "Lục Hại"),
+    "自刑": ("Zì Xíng", "Self-Punishment", "Tự Hình"),
+    "三刑": ("Sān Xíng", "Three Punishments", "Tam Hình"),
+    # Longevity Stages
+    "长生": ("Cháng Shēng", "Growth", "Trường Sinh"),
+    "沐浴": ("Mù Yù", "Bath", "Mộc Dục"),
+    "冠带": ("Guàn Dài", "Crown Belt", "Quan Đới"),
+    "临官": ("Lín Guān", "Coming of Age", "Lâm Quan"),
+    "帝旺": ("Dì Wàng", "Prosperity Peak", "Đế Vượng"),
+    "衰": ("Shuāi", "Decline", "Suy"),
+    "病": ("Bìng", "Sickness", "Bệnh"),
+    "死": ("Sǐ", "Death", "Tử"),
+    "墓": ("Mù", "Grave", "Mộ"),
+    "绝": ("Jué", "Termination", "Tuyệt"),
+    "胎": ("Tāi", "Conception", "Thai"),
+    "养": ("Yǎng", "Nurture", "Dưỡng"),
+    # Symbolic Stars
+    "天乙贵人": ("Tiān Yǐ Guì Rén", "Nobleman", "Thiên Ất Quý Nhân"),
+    "文昌": ("Wén Chāng", "Academic Star", "Văn Xương"),
+    "桃花": ("Táo Huā", "Peach Blossom", "Đào Hoa"),
+    "驿马": ("Yì Mǎ", "Travel Horse", "Dịch Mã"),
+    "将星": ("Jiàng Xīng", "General Star", "Tướng Tinh"),
+    "华盖": ("Huá Gài", "Canopy", "Hoa Cái"),
+    "羊刃": ("Yáng Rèn", "Goat Blade", "Dương Nhận"),
+    "禄神": ("Lù Shén", "Prosperity Star", "Lộc Thần"),
+    "红鸾": ("Hóng Luán", "Red Cloud", "Hồng Loan"),
+    "血刃": ("Xuè Rèn", "Blood Knife", "Huyết Nhận"),
+    "空亡": ("Kōng Wáng", "Void", "Không Vong"),
+}
+
+
+def format_term(chinese_str: str) -> str:
+    """Format a Chinese term as 'Chinese/Pinyin/English/Vietnamese'.
+    
+    If the string is not found directly, it checks if it's a 2-character
+    GanZhi combinations (e.g., '甲子').
+    """
+    if not chinese_str or chinese_str == "-":
+        return chinese_str
+        
+    # Standard terminology lookup
+    if chinese_str in TERM_TRANSLATIONS:
+        py, eng, vi = TERM_TRANSLATIONS[chinese_str]
+        return f"{chinese_str}/{py}/{eng}/{vi}"
+        
+    # Check for 2-character Stems-Branches combinations (GanZhi)
+    if len(chinese_str) == 2 and chinese_str[0] in TERM_TRANSLATIONS and chinese_str[1] in TERM_TRANSLATIONS:
+        s_t = TERM_TRANSLATIONS[chinese_str[0]]
+        b_t = TERM_TRANSLATIONS[chinese_str[1]]
+        py = f"{s_t[0]}{b_t[0].lower()}"
+        eng = f"{s_t[1]} {b_t[1]}"
+        vi = f"{s_t[2]} {b_t[2]}"
+        return f"{chinese_str}/{py}/{eng}/{vi}"
+        
+    return chinese_str
 
 # ============================================================
 # Element & Polarity Mappings
@@ -824,14 +933,13 @@ def get_day_cycle_for_date(solar_date: str, solar_time: str = "12:00") -> int:
     return dto.day_cycle
 
 
-def generate_year_projections(chart: Dict, start_year: int, count: int) -> List[Dict]:
-    """Generate year-by-year projections for the given count of years."""
+def generate_year_projections(chart: Dict, start_year: int, end_year: int) -> List[Dict]:
+    """Generate year-by-year projections from start_year up to end_year."""
     projections: List[Dict] = []
     dm_idx = HEAVENLY_STEMS.index(chart["day_master"]["stem"])
     dm_elem = chart["day_master"]["element"]
 
-    for i in range(count):
-        year = start_year + i
+    for year in range(start_year, end_year + 1):
         cycle = get_year_cycle_for_gregorian(year)
         if cycle < 1 or cycle > 60:
             cycle = ((cycle - 1) % 60) + 1
@@ -878,31 +986,50 @@ def generate_year_projections(chart: Dict, start_year: int, count: int) -> List[
                 "chinese": nayin["nayin_chinese"],
             }
 
-        phuc_ngam = detect_phuc_ngam(chart, {"stem": stem, "branch": branch})
-        if phuc_ngam:
-            entry["phuc_ngam"] = phuc_ngam
+        fu_yin_duplication = detect_fu_yin_duplication(chart, {"stem": stem, "branch": branch})
+        if fu_yin_duplication:
+            entry["fu_yin_duplication"] = fu_yin_duplication
 
         projections.append(entry)
 
     return projections
 
 
-def generate_month_projections(chart: Dict, start_date: date, count: int) -> List[Dict]:
-    """Generate month-by-month projections for the given count of months."""
+def generate_month_projections(chart: Dict, start_date: date, end_date: Optional[date]) -> List[Dict]:
+    """Generate month-by-month projections up to end_date (or a default of 36 months)."""
     projections: List[Dict] = []
     dm_idx = HEAVENLY_STEMS.index(chart["day_master"]["stem"])
     dm_elem = chart["day_master"]["element"]
 
+    target_dates: List[date] = []
     current = start_date
-    for i in range(count):
-        date_str = current.strftime("%Y-%m-%d")
+    count = 0
+    max_months = 36 if not end_date else 1200 # arbitrary large cap
+
+    while count < max_months:
+        target_dates.append(current)
+        if end_date and (current.year > end_date.year or (current.year == end_date.year and current.month >= end_date.month)):
+            break
+        
+        if current.month == 12:
+            current = date(current.year + 1, 1, 15)
+        else:
+            current = date(current.year, current.month + 1, 15)
+        count += 1
+        
+    date_tuples = [(dt.strftime("%Y-%m-%d"), "12:00") for dt in target_dates]
+    if not date_tuples:
+        return []
+        
+    dtos = solar_to_lunisolar_batch(date_tuples, quiet=True)
+    natal_branches = [p["branch"] for p in chart["pillars"].values()]
+
+    for i, (dt, dto) in enumerate(zip(target_dates, dtos)):
         try:
-            dto = solar_to_lunisolar(date_str, "12:00", quiet=True)
             month_cycle = dto.month_cycle
             stem, branch = ganzhi_from_cycle(month_cycle)
             b_idx = EARTHLY_BRANCHES.index(branch)
 
-            natal_branches = [p["branch"] for p in chart["pillars"].values()]
             interactions: List[str] = []
             for b in natal_branches:
                 pair = frozenset({b, branch})
@@ -925,9 +1052,9 @@ def generate_month_projections(chart: Dict, start_date: date, count: int) -> Lis
 
             entry: Dict = {
                 "month_num": i + 1,
-                "date": date_str,
-                "year": current.year,
-                "month": current.month,
+                "date": dt.strftime("%Y-%m-%d"),
+                "year": dt.year,
+                "month": dt.month,
                 "cycle": month_cycle,
                 "stem": stem,
                 "branch": branch,
@@ -941,30 +1068,40 @@ def generate_month_projections(chart: Dict, start_date: date, count: int) -> Lis
         except Exception:
             pass
 
-        if current.month == 12:
-            current = date(current.year + 1, 1, 15)
-        else:
-            current = date(current.year, current.month + 1, 15)
-
     return projections
 
 
-def generate_day_projections(chart: Dict, start_date: date, count: int) -> List[Dict]:
-    """Generate day-by-day projections for the given count of days."""
+def generate_day_projections(chart: Dict, start_date: date, end_date: Optional[date]) -> List[Dict]:
+    """Generate day-by-day projections up to end_date (or a default of 100 days)."""
     projections: List[Dict] = []
     dm_idx = HEAVENLY_STEMS.index(chart["day_master"]["stem"])
     dm_elem = chart["day_master"]["element"]
 
+    target_dates: List[date] = []
     current = start_date
-    for i in range(count):
-        date_str = current.strftime("%Y-%m-%d")
+    max_days = 100 if not end_date else 4000 # arbitrary large cap
+    count = 0
+
+    while count < max_days:
+        target_dates.append(current)
+        if end_date and current >= end_date:
+            break
+        current += timedelta(days=1)
+        count += 1
+
+    date_tuples = [(dt.strftime("%Y-%m-%d"), "12:00") for dt in target_dates]
+    if not date_tuples:
+        return []
+        
+    dtos = solar_to_lunisolar_batch(date_tuples, quiet=True)
+    natal_branches = [p["branch"] for p in chart["pillars"].values()]
+
+    for i, (dt, dto) in enumerate(zip(target_dates, dtos)):
         try:
-            dto = solar_to_lunisolar(date_str, "12:00", quiet=True)
             day_cycle = dto.day_cycle
             stem, branch = ganzhi_from_cycle(day_cycle)
             b_idx = EARTHLY_BRANCHES.index(branch)
 
-            natal_branches = [p["branch"] for p in chart["pillars"].values()]
             interactions: List[str] = []
             for b in natal_branches:
                 pair = frozenset({b, branch})
@@ -987,8 +1124,8 @@ def generate_day_projections(chart: Dict, start_date: date, count: int) -> List[
 
             entry: Dict = {
                 "day_num": i + 1,
-                "date": date_str,
-                "weekday": current.strftime("%a"),
+                "date": dt.strftime("%Y-%m-%d"),
+                "weekday": dt.strftime("%a"),
                 "cycle": day_cycle,
                 "stem": stem,
                 "branch": branch,
@@ -1001,8 +1138,6 @@ def generate_day_projections(chart: Dict, start_date: date, count: int) -> List[
             projections.append(entry)
         except Exception:
             pass
-
-        current += timedelta(days=1)
 
     return projections
 
@@ -1636,10 +1771,10 @@ def detect_transformations(chart: Dict) -> List[Dict]:
 # ============================================================
 
 
-def detect_phuc_ngam(chart: Dict, dynamic_pillar: Dict) -> List[Dict]:
-    """Detect Phục Ngâm events comparing a dynamic pillar to natal pillars.
+def detect_fu_yin_duplication(chart: Dict, dynamic_pillar: Dict) -> List[Dict]:
+    """Detect Fu Yin (伏吟) / Duplication between a dynamic pillar and natal chart.
 
-    Phục Ngâm occurs when a dynamic pillar (current year or luck pillar) is
+    Fu Yin (Duplication) occurs when a dynamic pillar (current year or luck pillar) is
     identical to a natal pillar (strongest) or shares the same branch (weaker).
 
     Parameters
@@ -1962,7 +2097,7 @@ def analyze_time_range(
     result["year_interactions"] = yr_interactions
 
     # Phục Ngâm check
-    result["phuc_ngam"] = detect_phuc_ngam(chart, yr_pillar)
+    result["fu_yin_duplication"] = detect_fu_yin_duplication(chart, yr_pillar)
 
     # Stem transformation check (year stem vs natal stems)
     yr_stem_combos: List[Dict] = []
@@ -2047,7 +2182,7 @@ def analyze_time_range(
             if pair in LIU_HAI:
                 lp_interactions.append("害")
         result["luck_pillar_interactions"] = lp_interactions
-        result["luck_phuc_ngam"] = detect_phuc_ngam(chart, luck_pillar)
+        result["luck_fu_yin_duplication"] = detect_fu_yin_duplication(chart, luck_pillar)
 
     return result
 
@@ -2314,6 +2449,25 @@ def _luck_direction(chart: Dict) -> bool:
     gender = normalize_gender(chart.get("gender", "male"))
     is_yang = STEM_POLARITY[year_stem] == "Yang"
     return (is_yang and gender == "male") or (not is_yang and gender == "female")
+
+
+def find_governing_jie_term(birth_dt: datetime, forward: bool) -> Optional[datetime]:
+    """Find the governing Jie (Nodal) solar term date for luck pillar calculation."""
+    if forward:
+        search_start = birth_dt
+        search_end = birth_dt + timedelta(days=35)
+    else:
+        search_start = birth_dt - timedelta(days=35)
+        search_end = birth_dt
+
+    terms = calculate_solar_terms(search_start, search_end)
+    jie_terms = [t for t in terms if t[1] % 2 != 0]
+
+    if not jie_terms:
+        return None
+
+    jie_terms.sort(key=lambda x: x[0], reverse=not forward)
+    return datetime.fromtimestamp(jie_terms[0][0], tz=utc)
 
 
 def calculate_luck_start_age(
@@ -2730,6 +2884,8 @@ if __name__ == "__main__":
         "-t", "--time", default="12:00", help="Solar time (HH:MM, default 12:00)"
     )
     parser.add_argument("-g", "--gender", required=True, help="Gender (male/female)")
+    parser.add_argument("--proj-start", help="Start date for projections (YYYY-MM-DD). Defaults to current date.")
+    parser.add_argument("--proj-end", help="End date for projections (YYYY-MM-DD). If omitted, defaults to standard durations.")
     args = parser.parse_args()
     solar_date = args.date
     solar_time = args.time
@@ -2746,7 +2902,24 @@ if __name__ == "__main__":
     structure_primary = structure_dict.get("primary", "Unknown")
     structure_quality = structure_dict.get("quality", "Unknown")
     dominance = float(structure_dict.get("dominance_score", 0.0))
-    luck = generate_luck_pillars(chart, birth_year=dto.year)
+    try:
+        birth_dt = datetime.strptime(f"{solar_date} {solar_time}", "%Y-%m-%d %H:%M").replace(tzinfo=utc)
+        forward = _luck_direction(chart)
+        target_term_dt = find_governing_jie_term(birth_dt, forward)
+
+        if target_term_dt:
+            luck = generate_luck_pillars(
+                chart,
+                birth_year=birth_dt.year,
+                birth_date=birth_dt.date(),
+                solar_term_date=target_term_dt.date(),
+            )
+        else:
+            luck = generate_luck_pillars(chart, birth_year=dto.year)
+
+    except Exception:
+        # Fallback to year-only if calculation fails
+        luck = generate_luck_pillars(chart, birth_year=dto.year)
     useful = recommend_useful_god(chart, strength, structure_dict)
     rating = rate_chart(chart)
     narrative = generate_narrative(chart, strength, structure_dict, interactions)
@@ -2776,13 +2949,13 @@ if __name__ == "__main__":
     polarity = STEM_POLARITY[dm["stem"]]
     print(f"\n{'─' * 70}")
     print("[ Day Master (日元) ]")
-    print(f"  Stem    : {dm['stem']} ({STEM_POLARITY[dm['stem']]})")
+    print(f"  Stem    : {format_term(dm['stem'])} ({STEM_POLARITY[dm['stem']]})")
     print(f"  Element : {dm['element']}")
     print(f"  Strength: {score} pts → {strength.upper()}")
 
     void1, void2 = void_branches(dto.day_cycle)
     print(f"  Xun     : {xun_name(dto.day_cycle)}")
-    print(f"  Void    : {void1}, {void2}")
+    print(f"  Void    : {format_term(void1)}, {format_term(void2)}")
 
     print(f"\n{'─' * 70}")
     print("[ Four Pillars (四柱) ]")
@@ -2802,9 +2975,10 @@ if __name__ == "__main__":
         ganzhi = p["stem"] + p["branch"]
         nayin_str = p.get("nayin", {}).get("chinese", "-") if "nayin" in p else "-"
         void_mark = " [VOID]" if void_status.get(pname) else ""
+        ganzhi_fmt = format_term(ganzhi)
         print(
-            f"  {pillar_labels[pname]:<12} {ganzhi:<6} {p['ten_god']:<8} "
-            f"{ls['chinese']:<10} ({ls['english']:<14}) {nayin_str}{void_mark}"
+            f"  {pillar_labels[pname]:<12} {ganzhi_fmt:<35} {format_term(p['ten_god']):<30} "
+            f"{format_term(ls['chinese']):<35} {nayin_str}{void_mark}"
         )
 
     print(f"\n  Hidden Stems (藏干) with Ten-Gods:")
@@ -2814,7 +2988,8 @@ if __name__ == "__main__":
         dm_idx = HEAVENLY_STEMS.index(dm["stem"])
         for role, hstem in p["hidden"]:
             tg = ten_god(dm_idx, HEAVENLY_STEMS.index(hstem))
-            hidden_strs.append(f"{role}:{hstem}({tg})")
+            tg_fmt = format_term(tg)
+            hidden_strs.append(f"{role}:{format_term(hstem)} ({tg_fmt})")
         print(f"    {pillar_labels[pname]:<10}: {', '.join(hidden_strs)}")
 
     print(f"\n{'─' * 70}")
@@ -2827,22 +3002,24 @@ if __name__ == "__main__":
     print(f"  Avoid        : {avoid_str}")
 
     if "useful_god" in useful:
-        print(f"  Dụng Thần   : {useful.get('useful_god', 'N/A')}")
-        print(f"  Hỷ Thần     : {useful.get('joyful_god', 'N/A')}")
+        print(f"  Useful God   : {useful.get('useful_god', 'N/A')}")
+        print(f"  Joyful God   : {useful.get('joyful_god', 'N/A')}")
 
     print(f"\n{'─' * 70}")
     print("[ Ten-God Distribution (十神分布, weighted) ]")
     sorted_tg = sorted(tg_dist.items(), key=lambda x: x[1], reverse=True)
     for tg_name, tg_score in sorted_tg:
         bar = "█" * int(tg_score)
-        print(f"  {tg_name:<6} {tg_score:>5.1f}  {bar}")
+        tg_fmt = format_term(tg_name)
+        print(f"  {tg_fmt:<35} {tg_score:>5.1f}  {bar}")
 
     print(f"\n{'─' * 70}")
     print("[ Branch Interactions (地支关系) ]")
     active = {k: v for k, v in interactions.items() if v}
     if active:
         for kind, entries in active.items():
-            print(f"  {kind}: {entries}")
+            entries_fmt = [format_term(e) for e in entries]
+            print(f"  {format_term(kind)}: {entries_fmt}")
     else:
         print("  None detected.")
 
@@ -2874,8 +3051,9 @@ if __name__ == "__main__":
                 if star["nature"] == "auspicious"
                 else ("⚠" if star["nature"] == "inauspicious" else "◆")
             )
+            star_fmt = format_term(star['star'].split(' ')[0]) # Extacting pure Chinese string
             print(
-                f"  {nature_icon} {star['star']} @ {star['location']}: {star['description']}"
+                f"  {nature_icon} {star_fmt} @ {star['location']}: {star['description']}"
             )
     else:
         print("  None detected.")
@@ -2902,7 +3080,7 @@ if __name__ == "__main__":
     for pname in pillar_order:
         ls = life_stages[pname]
         print(
-            f"  {pillar_labels[pname]:<10}: ({ls['index']:>2}) {ls['chinese']:<6} / {ls['english']:<16} / {ls['vietnamese']} [{ls['strength_class']}]"
+            f"  {pillar_labels[pname]:<10}: ({ls['index']:>2}) {format_term(ls['chinese'])} [{ls['strength_class']}]"
         )
 
     print(f"\n{'─' * 70}")
@@ -2922,8 +3100,11 @@ if __name__ == "__main__":
             age_info = f"  age {ay}y {am}m"
             if "start_gregorian_year" in lp:
                 age_info += f" (~{lp['start_gregorian_year']})"
+        ganzhi_fmt = format_term(ganzhi)
+        ls_fmt = format_term(ls_name) if ls_name else ""
+        tg_fmt = format_term(tg) if tg else ""
         print(
-            f"  {i:2}. {ganzhi:<4} | Ten-God: {tg:<6} | Life: {ls_name:<6} | Na Yin: {ny_str:<12}{age_info}"
+            f"  {i:2}. {ganzhi_fmt:<30} | Ten-God: {tg_fmt:<30} | Life: {ls_fmt:<30} | Na Yin: {ny_str:<12}{age_info}"
         )
 
     print(f"\n{'─' * 70}")
@@ -2937,21 +3118,31 @@ if __name__ == "__main__":
     for line in narrative.splitlines():
         print(f"  {line}")
 
-    birth_year = dto.year
     try:
-        from datetime import datetime
-
-        start_date = datetime.strptime(solar_date, "%Y-%m-%d").date()
+        if args.proj_start:
+            proj_start = datetime.strptime(args.proj_start, "%Y-%m-%d").date()
+        else:
+            proj_start = date.today()
     except Exception:
-        start_date = date(birth_year, 1, 1)
+        proj_start = date.today()
+
+    try:
+        if args.proj_end:
+            proj_end = datetime.strptime(args.proj_end, "%Y-%m-%d").date()
+        else:
+            proj_end = None
+    except Exception:
+        proj_end = None
 
     print(f"\n{'=' * 70}")
     print("  PROJECTION VIEWS (运程展望)")
+    print(f"  Start: {proj_start}  |  End: {proj_end if proj_end else 'Default'}")
     print(f"{'=' * 70}")
 
     print(f"\n{'─' * 70}")
     print("[ 10-Year Lookahead (十年展望) ]")
-    year_projections = generate_year_projections(chart, birth_year, 10)
+    end_year = proj_end.year if proj_end else proj_start.year + 9
+    year_projections = generate_year_projections(chart, proj_start.year, end_year)
     print(
         f"  {'Year':<6} {'GanZhi':<6} {'Ten-God':<8} {'Life Stage':<12} {'Interactions':<20} {'Δ':<3}"
     )
@@ -2969,8 +3160,9 @@ if __name__ == "__main__":
         )
 
     print(f"\n{'─' * 70}")
-    print("[ 36-Month Lookahead (三十六月展望) ]")
-    month_projections = generate_month_projections(chart, start_date, 36)
+    title = "[ Month Lookahead (月展望) ]" if proj_end else "[ 36-Month Lookahead (三十六月展望) ]"
+    print(title)
+    month_projections = generate_month_projections(chart, proj_start, proj_end)
     col_count = 0
     for mp in month_projections:
         interactions_str = ", ".join(mp["interactions"]) if mp["interactions"] else "-"
@@ -2988,13 +3180,14 @@ if __name__ == "__main__":
             col_count = 0
 
     print(f"\n{'─' * 70}")
-    print("[ 100-Day Lookahead (百日展望) ]")
-    day_projections = generate_day_projections(chart, start_date, 100)
+    title = "[ Day Lookahead (日展望) ]" if proj_end else "[ 100-Day Lookahead (百日展望) ]"
+    print(title)
+    day_projections = generate_day_projections(chart, proj_start, proj_end)
     notable_days = [
         dp for dp in day_projections if dp["interactions"] or dp["strength_delta"] != 0
     ]
     print(
-        f"  Showing days with interactions or strength impact (filtered from 100 days):"
+        f"  Showing days with interactions or strength impact (filtered):"
     )
     if notable_days:
         for dp in notable_days[:30]:
