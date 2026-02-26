@@ -2923,7 +2923,6 @@ if __name__ == "__main__":
     gender = args.gender
     
     # Update global formatting preference
-    global FORMAT_STRING
     FORMAT_STRING = args.format
 
     dto = solar_to_lunisolar(solar_date, solar_time, quiet=True)
