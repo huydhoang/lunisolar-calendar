@@ -37,6 +37,7 @@ from typing import Dict, List, Optional, Tuple, Union
 
 from skyfield.api import utc
 from solar_terms import calculate_solar_terms
+from moon_phases import calculate_moon_phases
 from lunisolar_v2 import (
     EARTHLY_BRANCHES as _EB_TUPLES,
     HEAVENLY_STEMS as _HS_TUPLES,
@@ -56,7 +57,7 @@ EARTHLY_BRANCHES: List[str] = [b[0] for b in _EB_TUPLES]
 # Terminology Translations (Arrays to avoid Dictionary encoding issues)
 # ============================================================
 
-FORMAT_STRING = "cn/py/en/vi" # Can be updated via CLI --format
+FORMAT_STRING = "cn/py/en/vi"  # Can be updated via CLI --format
 
 STEM_TRANS = [
     ("甲", "Jiǎ", "Yang Wood", "Giáp"),
@@ -143,7 +144,15 @@ STAR_TRANS = [
     ("空亡", "Kōng Wáng", "Void", "Không Vong"),
 ]
 
-TRANS_GROUPS = [STEM_TRANS, BRANCH_TRANS, TENGOD_TRANS, INTERACTIONS_TRANS, LIFESTAGE_TRANS, STAR_TRANS]
+TRANS_GROUPS = [
+    STEM_TRANS,
+    BRANCH_TRANS,
+    TENGOD_TRANS,
+    INTERACTIONS_TRANS,
+    LIFESTAGE_TRANS,
+    STAR_TRANS,
+]
+
 
 def get_trans_tuple(chinese_str: str) -> Optional[Tuple[str, str, str, str]]:
     for group in TRANS_GROUPS:
@@ -152,16 +161,17 @@ def get_trans_tuple(chinese_str: str) -> Optional[Tuple[str, str, str, str]]:
                 return t
     return None
 
+
 def format_term(chinese_str: str, override_fmt: str = None) -> str:
     """Format a Chinese term based on FORMAT_STRING like 'cn/py/en/vi'."""
     if not chinese_str or chinese_str == "-":
         return chinese_str
-        
+
     fmt = override_fmt or FORMAT_STRING
     opts = {"cn": 0, "py": 1, "en": 2, "vi": 3}
     parts = fmt.split("/")
     result_parts = []
-    
+
     # Check simple definition directly
     t = get_trans_tuple(chinese_str)
     if t:
@@ -169,7 +179,7 @@ def format_term(chinese_str: str, override_fmt: str = None) -> str:
             if p in opts:
                 result_parts.append(t[opts[p]])
         return "/".join(result_parts)
-        
+
     # Check for 2-character Stems-Branches combinations (GanZhi)
     if len(chinese_str) == 2:
         s_t = get_trans_tuple(chinese_str[0])
@@ -179,14 +189,15 @@ def format_term(chinese_str: str, override_fmt: str = None) -> str:
                 chinese_str,
                 f"{s_t[1]}{b_t[1].lower()}",
                 f"{s_t[2]} {b_t[2]}",
-                f"{s_t[3]} {b_t[3]}"
+                f"{s_t[3]} {b_t[3]}",
             )
             for p in parts:
                 if p in opts:
                     result_parts.append(combined_tuple[opts[p]])
             return "/".join(result_parts)
-            
+
     return chinese_str
+
 
 # ============================================================
 # Element & Polarity Mappings
@@ -362,6 +373,18 @@ SAN_HE: List[frozenset] = [
     frozenset({"巳", "酉", "丑"}),  # Metal
 ]
 
+# §8.2b Half Three Combinations (半三合)
+BAN_SAN_HE: List[frozenset] = [
+    # Water
+    frozenset({"申", "子"}), frozenset({"子", "辰"}),
+    # Fire
+    frozenset({"寅", "午"}), frozenset({"午", "戌"}),
+    # Wood
+    frozenset({"亥", "卯"}), frozenset({"卯", "未"}),
+    # Metal
+    frozenset({"巳", "酉"}), frozenset({"酉", "丑"}),
+]
+
 # §8.3 Directional Combinations (三会 / 方局)
 SAN_HUI: List[frozenset] = [
     frozenset({"寅", "卯", "辰"}),  # Wood
@@ -431,11 +454,18 @@ UNCIVIL_PUNISH_PAIRS = frozenset(
     }
 )
 
-BULLY_PUNISH_PAIRS = frozenset(
+# Graceless punishment (无恩之刑 / Vô Ân Chi Hình): Yin-Si-Shen
+GRACELESS_PUNISH_PAIRS = frozenset(
     {
         frozenset({"寅", "巳"}),
         frozenset({"巳", "申"}),
         frozenset({"寅", "申"}),
+    }
+)
+
+# Bully punishment (恃势之刑 / Ỷ Thế Chi Hình): Chou-Xu-Wei
+BULLY_PUNISH_PAIRS = frozenset(
+    {
         frozenset({"丑", "戌"}),
         frozenset({"戌", "未"}),
         frozenset({"丑", "未"}),
@@ -465,15 +495,14 @@ LIU_PO = frozenset(
     }
 )
 
-# Stem clash pairs (天干冲) — stems 6 positions apart control each other
+# Stem clash pairs (天干冲) — only the four directional-opposition pairs
+# Wu (戊) and Ji (己) are Central Earth and do not clash.
 STEM_CLASH_PAIRS = frozenset(
     {
         frozenset({"甲", "庚"}),
         frozenset({"乙", "辛"}),
         frozenset({"丙", "壬"}),
         frozenset({"丁", "癸"}),
-        frozenset({"戊", "甲"}),  # Earth–Wood (control cycle)
-        frozenset({"己", "乙"}),
     }
 )
 
@@ -963,7 +992,38 @@ def get_day_cycle_for_date(solar_date: str, solar_time: str = "12:00") -> int:
     return dto.day_cycle
 
 
-def generate_year_projections(chart: Dict, start_year: int, end_year: int) -> List[Dict]:
+def get_new_moon_dates(start_date: date, count: int = 36) -> List[date]:
+    """Return the next *count* new moon solar dates on or after *start_date*.
+
+    Uses ``calculate_moon_phases`` from the moon_phases module.  Searches
+    forward in 3-year windows until enough new moons are collected.
+    """
+    results: List[date] = []
+    window_start = datetime(
+        start_date.year, start_date.month, start_date.day, tzinfo=utc
+    )
+    while len(results) < count:
+        window_end = window_start + timedelta(days=365 * 3)
+        phases = calculate_moon_phases(window_start, window_end)
+        for ts, phase_idx, _name in phases:
+            if phase_idx == 0:  # New Moon
+                nm_date = datetime.fromtimestamp(ts, tz=utc).date()
+                if nm_date >= start_date:
+                    results.append(nm_date)
+        # Advance search window past the last result to avoid duplicates
+        if results:
+            last = results[-1]
+            window_start = datetime(
+                last.year, last.month, last.day, tzinfo=utc
+            ) + timedelta(days=1)
+        else:
+            window_start = window_end  # pragma: no cover
+    return results[:count]
+
+
+def generate_year_projections(
+    chart: Dict, start_year: int, end_year: int
+) -> List[Dict]:
     """Generate year-by-year projections from start_year up to end_year."""
     projections: List[Dict] = []
     dm_idx = HEAVENLY_STEMS.index(chart["day_master"]["stem"])
@@ -993,11 +1053,20 @@ def generate_year_projections(chart: Dict, start_year: int, end_year: int) -> Li
         nayin = nayin_for_cycle(cycle)
 
         delta = 0
-        yr_elem = STEM_ELEMENT[stem]
-        if GEN_MAP.get(yr_elem) == dm_elem:
+        elem_stem = STEM_ELEMENT[stem]
+        elem_branch = BRANCH_ELEMENT[branch]
+
+        # Stem influence
+        if GEN_MAP.get(elem_stem) == dm_elem or elem_stem == dm_elem:
             delta += 1
-        if CONTROL_MAP.get(yr_elem) == dm_elem:
+        elif CONTROL_MAP.get(elem_stem) == dm_elem or GEN_MAP.get(dm_elem) == elem_stem:
             delta -= 1
+
+        # Branch influence (Tai Sui / Root carries more weight)
+        if GEN_MAP.get(elem_branch) == dm_elem or elem_branch == dm_elem:
+            delta += 2
+        elif CONTROL_MAP.get(elem_branch) == dm_elem or GEN_MAP.get(dm_elem) == elem_branch:
+            delta -= 2
 
         entry: Dict = {
             "year": year,
@@ -1016,7 +1085,9 @@ def generate_year_projections(chart: Dict, start_year: int, end_year: int) -> Li
                 "chinese": nayin["nayin_chinese"],
             }
 
-        fu_yin_duplication = detect_fu_yin_duplication(chart, {"stem": stem, "branch": branch})
+        fu_yin_duplication = detect_fu_yin_duplication(
+            chart, {"stem": stem, "branch": branch}
+        )
         if fu_yin_duplication:
             entry["fu_yin_duplication"] = fu_yin_duplication
 
@@ -1025,36 +1096,55 @@ def generate_year_projections(chart: Dict, start_year: int, end_year: int) -> Li
     return projections
 
 
-def generate_month_projections(chart: Dict, start_date: date, end_date: Optional[date]) -> List[Dict]:
-    """Generate month-by-month projections up to end_date (or a default of 36 months)."""
+def generate_month_projections(
+    chart: Dict,
+    start_date: date,
+    end_date: Optional[date],
+    use_new_moons: bool = True,
+) -> List[Dict]:
+    """Generate month-by-month projections.
+
+    When *use_new_moons* is True (default), projects from the next 36 new
+    moon dates starting at *start_date*.  When False (explicit *end_date*
+    range), projects at 30-day intervals between *start_date* and
+    *end_date*.
+    """
     projections: List[Dict] = []
     dm_idx = HEAVENLY_STEMS.index(chart["day_master"]["stem"])
     dm_elem = chart["day_master"]["element"]
 
-    target_dates: List[date] = []
-    current = start_date
-    count = 0
-    max_months = 36 if not end_date else 1200 # arbitrary large cap
-
-    while count < max_months:
-        target_dates.append(current)
-        if end_date and (current.year > end_date.year or (current.year == end_date.year and current.month >= end_date.month)):
-            break
-        
-        if current.month == 12:
-            current = date(current.year + 1, 1, 15)
+    if use_new_moons:
+        # New-moon anchored mode: 36 new moons from start_date
+        target_dates = get_new_moon_dates(start_date, 36)
+        lunisolar_infos: List[Optional[LunisolarDateDTO]] = []
+        date_tuples = [(dt.strftime("%Y-%m-%d"), "00:00") for dt in target_dates]
+        if date_tuples:
+            lunisolar_infos = solar_to_lunisolar_batch(date_tuples, quiet=True)
         else:
-            current = date(current.year, current.month + 1, 15)
-        count += 1
-        
-    date_tuples = [(dt.strftime("%Y-%m-%d"), "12:00") for dt in target_dates]
-    if not date_tuples:
+            lunisolar_infos = []
+    else:
+        # Solar interval mode: 30-day steps from start_date to end_date
+        target_dates = []
+        current = start_date
+        max_entries = 1200  # safety cap
+        count = 0
+        while count < max_entries:
+            target_dates.append(current)
+            if end_date and current >= end_date:
+                break
+            current = current + timedelta(days=30)
+            count += 1
+        date_tuples = [(dt.strftime("%Y-%m-%d"), "12:00") for dt in target_dates]
+        lunisolar_infos = (
+            solar_to_lunisolar_batch(date_tuples, quiet=True) if date_tuples else []
+        )
+
+    if not target_dates:
         return []
-        
-    dtos = solar_to_lunisolar_batch(date_tuples, quiet=True)
+
     natal_branches = [p["branch"] for p in chart["pillars"].values()]
 
-    for i, (dt, dto) in enumerate(zip(target_dates, dtos)):
+    for i, (dt, dto) in enumerate(zip(target_dates, lunisolar_infos)):
         try:
             month_cycle = dto.month_cycle
             stem, branch = ganzhi_from_cycle(month_cycle)
@@ -1074,15 +1164,25 @@ def generate_month_projections(chart: Dict, start_date: date, end_date: Optional
             tg = ten_god(dm_idx, HEAVENLY_STEMS.index(stem))
 
             delta = 0
-            mo_elem = STEM_ELEMENT[stem]
-            if GEN_MAP.get(mo_elem) == dm_elem:
+            elem_stem = STEM_ELEMENT[stem]
+            elem_branch = BRANCH_ELEMENT[branch]
+
+            # Stem influence
+            if GEN_MAP.get(elem_stem) == dm_elem or elem_stem == dm_elem:
                 delta += 1
-            if CONTROL_MAP.get(mo_elem) == dm_elem:
+            elif CONTROL_MAP.get(elem_stem) == dm_elem or GEN_MAP.get(dm_elem) == elem_stem:
                 delta -= 1
+
+            # Branch influence (Root carries more weight)
+            if GEN_MAP.get(elem_branch) == dm_elem or elem_branch == dm_elem:
+                delta += 2
+            elif CONTROL_MAP.get(elem_branch) == dm_elem or GEN_MAP.get(dm_elem) == elem_branch:
+                delta -= 2
 
             entry: Dict = {
                 "month_num": i + 1,
-                "date": dt.strftime("%Y-%m-%d"),
+                "solar_date": dt.strftime("%Y-%m-%d"),
+                "date": dt.strftime("%Y-%m-%d"),  # kept for back-compat
                 "year": dt.year,
                 "month": dt.month,
                 "cycle": month_cycle,
@@ -1094,6 +1194,15 @@ def generate_month_projections(chart: Dict, start_date: date, end_date: Optional
                 "interactions": interactions,
                 "strength_delta": delta,
             }
+            if use_new_moons:
+                leap_tag = "*" if dto.is_leap_month else ""
+                entry["lunisolar_date"] = (
+                    dto.year,
+                    dto.month,
+                    dto.day,
+                    dto.is_leap_month,
+                    leap_tag,
+                )
             projections.append(entry)
         except Exception:
             pass
@@ -1101,7 +1210,9 @@ def generate_month_projections(chart: Dict, start_date: date, end_date: Optional
     return projections
 
 
-def generate_day_projections(chart: Dict, start_date: date, end_date: Optional[date]) -> List[Dict]:
+def generate_day_projections(
+    chart: Dict, start_date: date, end_date: Optional[date]
+) -> List[Dict]:
     """Generate day-by-day projections up to end_date (or a default of 100 days)."""
     projections: List[Dict] = []
     dm_idx = HEAVENLY_STEMS.index(chart["day_master"]["stem"])
@@ -1109,7 +1220,7 @@ def generate_day_projections(chart: Dict, start_date: date, end_date: Optional[d
 
     target_dates: List[date] = []
     current = start_date
-    max_days = 100 if not end_date else 4000 # arbitrary large cap
+    max_days = 100 if not end_date else 4000  # arbitrary large cap
     count = 0
 
     while count < max_days:
@@ -1122,7 +1233,7 @@ def generate_day_projections(chart: Dict, start_date: date, end_date: Optional[d
     date_tuples = [(dt.strftime("%Y-%m-%d"), "12:00") for dt in target_dates]
     if not date_tuples:
         return []
-        
+
     dtos = solar_to_lunisolar_batch(date_tuples, quiet=True)
     natal_branches = [p["branch"] for p in chart["pillars"].values()]
 
@@ -1146,11 +1257,20 @@ def generate_day_projections(chart: Dict, start_date: date, end_date: Optional[d
             tg = ten_god(dm_idx, HEAVENLY_STEMS.index(stem))
 
             delta = 0
-            dy_elem = STEM_ELEMENT[stem]
-            if GEN_MAP.get(dy_elem) == dm_elem:
+            elem_stem = STEM_ELEMENT[stem]
+            elem_branch = BRANCH_ELEMENT[branch]
+
+            # Stem influence
+            if GEN_MAP.get(elem_stem) == dm_elem or elem_stem == dm_elem:
                 delta += 1
-            if CONTROL_MAP.get(dy_elem) == dm_elem:
+            elif CONTROL_MAP.get(elem_stem) == dm_elem or GEN_MAP.get(dm_elem) == elem_stem:
                 delta -= 1
+
+            # Branch influence (Root carries more weight)
+            if GEN_MAP.get(elem_branch) == dm_elem or elem_branch == dm_elem:
+                delta += 2
+            elif CONTROL_MAP.get(elem_branch) == dm_elem or GEN_MAP.get(dm_elem) == elem_branch:
+                delta -= 2
 
             entry: Dict = {
                 "day_num": i + 1,
@@ -1414,19 +1534,46 @@ def from_solar_date(
 PILLAR_WEIGHTS = {
     "year": 1.0,
     "month": 3.0,  # The Season is 3x more powerful
-    "day": 1.5,    # The "Day Branch" is the spouse palace/roots
-    "hour": 1.0
+    "day": 1.5,  # The "Day Branch" is the spouse palace/roots
+    "hour": 1.0,
 }
 
 LU_MAP = {
-    '甲': '寅', '乙': '卯', '丙': '巳', '丁': '午', 
-    '戊': '巳', '己': '午', '庚': '申', '辛': '酉', 
-    '壬': '亥', '癸': '子'
+    "甲": "寅",
+    "乙": "卯",
+    "丙": "巳",
+    "丁": "午",
+    "戊": "巳",
+    "己": "午",
+    "庚": "申",
+    "辛": "酉",
+    "壬": "亥",
+    "癸": "子",
 }
+
 
 def is_jian_lu(dm_stem: str, month_branch: str) -> bool:
     "Strictly check ONLY the month branch"
     return LU_MAP.get(dm_stem) == month_branch
+
+
+def get_seasonal_strength(dm_elem: str, month_elem: str) -> int:
+    """Calculate seasonal strength (Vượng Tướng Hưu Tù Tử).
+
+    Uses the Five Elemental Seasons system instead of the 12 Longevity Stages
+    to avoid Yin-stem reverse-cycle errors.
+    """
+    if month_elem == dm_elem:
+        return 2   # Vượng (Prosperous) — same element as season
+    if GEN_MAP.get(month_elem) == dm_elem:
+        return 2   # Tướng (Strong) — season produces DM
+    if GEN_MAP.get(dm_elem) == month_elem:
+        return -1  # Hưu (Resting) — DM produces season
+    if CONTROL_MAP.get(dm_elem) == month_elem:
+        return -1  # Tù (Trapped) — DM controls season
+    if CONTROL_MAP.get(month_elem) == dm_elem:
+        return -2  # Tử (Dead) — season controls DM
+    return 0
 
 
 def score_day_master(chart: Dict) -> Tuple[float, str]:
@@ -1434,27 +1581,22 @@ def score_day_master(chart: Dict) -> Tuple[float, str]:
 
     Factors
     -------
-    1. Month-order (月令) via Longevity Stage of DM in month branch.
-       Stages 1–5 strengthen (+2); stages 6–12 weaken (−2). Weighted by PILLAR_WEIGHTS.
+    1. Month-order (月令) via Five Seasons (Vượng Tướng Hưu Tù Tử).
     2. Root depth — hidden stems matching DM element.
-       Main root +2, middle root +1. Weighted by PILLAR_WEIGHTS.
+       Main root +2, middle root +1, residual +0.5. Weighted by PILLAR_WEIGHTS.
     3. Visible-stem support — surface stems matching DM element (+1 each). Weighted by PILLAR_WEIGHTS.
     """
     dm_stem = chart["day_master"]["stem"]
     dm_elem = chart["day_master"]["element"]
     month_branch = chart["pillars"]["month"]["branch"]
+    month_elem = BRANCH_ELEMENT[month_branch]
 
     score = 0.0
-
-    # 1) Month-order (月令) via longevity stage
-    idx, _stage = changsheng_stage(
-        HEAVENLY_STEMS.index(dm_stem), EARTHLY_BRANCHES.index(month_branch)
-    )
     month_weight = PILLAR_WEIGHTS["month"]
-    if idx <= 5:
-        score += 2 * month_weight
-    else:
-        score -= 2 * month_weight
+
+    # 1) Month-order (月令) via Five Seasons (Vượng Tướng Hưu Tù Tử)
+    season_score = get_seasonal_strength(dm_elem, month_elem)
+    score += season_score * month_weight
 
     # 2) Root depth (hidden stems matching DM element)
     for pname, p in chart["pillars"].items():
@@ -1465,6 +1607,8 @@ def score_day_master(chart: Dict) -> Tuple[float, str]:
                     score += 2 * w
                 elif role == "middle":
                     score += 1 * w
+                elif role == "residual":
+                    score += 0.5 * w
 
     # 3) Visible stem support
     for pname, p in chart["pillars"].items():
@@ -1472,9 +1616,7 @@ def score_day_master(chart: Dict) -> Tuple[float, str]:
         if STEM_ELEMENT[p["stem"]] == dm_elem:
             score += 1 * w
 
-    # Classification boundaries scaled by weights (roughly 6.5 is a balanced baseline)
-    # The old logic used 3 for strong, -2 for weak on an unweighted scale.
-    # We will adjust bounds: > 6 strong, < -3 weak.
+    # Classification boundaries
     if score >= 6:
         strength = "strong"
     elif score <= -3:
@@ -1591,6 +1733,7 @@ def detect_branch_interactions(chart: Dict) -> Dict[str, list]:
         "六冲": [],
         "害": [],
         "三合": [],
+        "半三合": [],
         "三会": [],
         "刑": [],
         "自刑": [],
@@ -1612,6 +1755,15 @@ def detect_branch_interactions(chart: Dict) -> Dict[str, list]:
     for trio in SAN_HE:
         if trio.issubset(bset):
             results["三合"].append(trio)
+
+    # Half-combination checks (only when full SAN_HE not already present)
+    for pair in BAN_SAN_HE:
+        if pair.issubset(bset):
+            # Skip if the full three-combination is already detected
+            already_full = any(pair.issubset(trio) for trio in results["三合"])
+            if not already_full:
+                results["半三合"].append(pair)
+
     for trio in SAN_HUI:
         if trio.issubset(bset):
             results["三会"].append(trio)
@@ -1732,8 +1884,8 @@ def detect_transformations(chart: Dict) -> List[Dict]:
             # Obstruction check
             blocked = check_obstruction(chart, p1, p2)
 
-            # Month Command support
-            month_support = month_elem == target
+            # Month Command support (direct match or production cycle)
+            month_support = (month_elem == target) or (GEN_MAP.get(month_elem) == target)
 
             # Leading stem — target element appears in other pillars (visible or hidden)
             other_pillars = [k for k in pillar_names if k not in (p1, p2)]
@@ -1909,7 +2061,19 @@ def detect_punishments(chart: Dict) -> List[Dict]:
                     }
                 )
 
-            # Bully punishment (恃势之刑)
+            # Graceless punishment (无恩之刑) — Yin-Si-Shen
+            if pair in GRACELESS_PUNISH_PAIRS:
+                results.append(
+                    {
+                        "type": "Vô ân chi hình (Graceless)",
+                        "pair": (names[i], names[j]),
+                        "branches": (bi, bj),
+                        "severity": severity,
+                        "life_areas": ["betrayal", "ingratitude"],
+                    }
+                )
+
+            # Bully punishment (恃势之刑) — Chou-Xu-Wei
             if pair in BULLY_PUNISH_PAIRS:
                 results.append(
                     {
@@ -2212,7 +2376,9 @@ def analyze_time_range(
             if pair in LIU_HAI:
                 lp_interactions.append("害")
         result["luck_pillar_interactions"] = lp_interactions
-        result["luck_fu_yin_duplication"] = detect_fu_yin_duplication(chart, luck_pillar)
+        result["luck_fu_yin_duplication"] = detect_fu_yin_duplication(
+            chart, luck_pillar
+        )
 
     return result
 
@@ -2307,15 +2473,34 @@ def comprehensive_analysis(chart: Dict) -> Dict:
 
 
 def detect_month_pillar_structure(chart: Dict) -> Optional[str]:
-    """Detect structure based on month pillar Ten-God (月令格局)."""
+    """Detect structure based on month pillar Ten-God (月令格局) using Protrusion (透出).
+
+    A structure is formed when a hidden stem of the Month Branch appears on the
+    Heavenly Stems of the Year, Month, or Hour pillars ("protrusion").  Check in
+    order: Main → Middle → Residual.  Fall back to Main Qi if none protrude.
+    """
     month_hidden = chart["pillars"]["month"]["hidden"]
     if not month_hidden:
         return None
-    
+
     dm_idx = HEAVENLY_STEMS.index(chart["day_master"]["stem"])
+
+    # Collect protruding stems (Year, Month, Hour — excluding the Day Master)
+    protruding_stems = [
+        chart["pillars"]["year"]["stem"],
+        chart["pillars"]["month"]["stem"],
+        chart["pillars"]["hour"]["stem"],
+    ]
+
+    # Check protrusion in order: Main, Middle, Residual
+    for _role, hidden_stem in month_hidden:
+        if hidden_stem in protruding_stems:
+            hidden_idx = HEAVENLY_STEMS.index(hidden_stem)
+            return ten_god(dm_idx, hidden_idx)
+
+    # Default to Main Qi if none protrude
     main_hidden_stem = month_hidden[0][1]
     main_hidden_idx = HEAVENLY_STEMS.index(main_hidden_stem)
-    
     return ten_god(dm_idx, main_hidden_idx)
 
 
@@ -2342,8 +2527,11 @@ def _assess_structure_quality(
     chart: Dict, primary_tg: str, strength: str, dist: Dict[str, float]
 ) -> Tuple[str, bool]:
     if primary_tg in ("正官", "七杀"):
-        if strength in ("strong", "balanced"):
-            return "官杀有制, 格局清纯", False
+        has_control = dist.get("食神", 0) > 0 or dist.get("伤官", 0) > 0
+        if primary_tg == "七杀" and has_control:
+            return "七杀有制, 格局清纯", False  # Seven Killings Controlled
+        elif strength in ("strong", "balanced"):
+            return "身杀两停", False  # Balanced Master and Killer
         else:
             return "杀重身轻 (破格)", True
     elif primary_tg in ("食神", "伤官"):
@@ -2392,7 +2580,9 @@ def weighted_ten_god_distribution(chart: Dict) -> Dict[str, float]:
     return dist
 
 
-def classify_structure(chart: Dict, strength: str) -> Dict[str, Union[str, float, bool]]:
+def classify_structure(
+    chart: Dict, strength: str
+) -> Dict[str, Union[str, float, bool]]:
     """Unified structure classifier using traditional Bazi theory."""
     dm_idx = HEAVENLY_STEMS.index(chart["day_master"]["stem"])
     special = detect_special_structures(chart, strength)
@@ -2404,27 +2594,27 @@ def classify_structure(chart: Dict, strength: str) -> Dict[str, Union[str, float
             "dominance_score": 0.0,
             "is_special": True,
             "is_broken": False,
-            "notes": "Special structure takes precedence"
+            "notes": "Special structure takes precedence",
         }
-    
+
     month_tg = detect_month_pillar_structure(chart)
     dist = weighted_ten_god_distribution(chart)
-    
+
     if not dist:
         dist = {month_tg: 1.0} if month_tg else {"比肩": 1.0}
-        
+
     dominant_tg = max(dist, key=lambda k: dist[k])
     dominance_score = dist[dominant_tg]
-    
+
     month_score = dist.get(month_tg, 0) if month_tg else 0
     if month_tg and month_score >= dominance_score * 0.7:
         primary_tg = month_tg
     else:
         primary_tg = dominant_tg
-        
+
     structure_map = {
         "正官": "正官格",
-        "七杀": "七杀格", 
+        "七杀": "七杀格",
         "食神": "食神格",
         "伤官": "伤官格",
         "正财": "正财格",
@@ -2434,11 +2624,11 @@ def classify_structure(chart: Dict, strength: str) -> Dict[str, Union[str, float
         "比肩": "建禄格",
         "劫财": "羊刃格",
     }
-    
+
     primary_structure = structure_map.get(primary_tg, "普通格局")
     category = _get_structure_category(primary_tg)
     quality, is_broken = _assess_structure_quality(chart, primary_tg, strength, dist)
-    
+
     return {
         "primary": primary_structure,
         "category": category,
@@ -2446,7 +2636,7 @@ def classify_structure(chart: Dict, strength: str) -> Dict[str, Union[str, float
         "dominance_score": dominance_score,
         "is_special": False,
         "is_broken": is_broken,
-        "notes": f"Based on {primary_tg} dominance"
+        "notes": f"Based on {primary_tg} dominance",
     }
 
 
@@ -2914,14 +3104,25 @@ if __name__ == "__main__":
         "-t", "--time", default="12:00", help="Solar time (HH:MM, default 12:00)"
     )
     parser.add_argument("-g", "--gender", required=True, help="Gender (male/female)")
-    parser.add_argument("--proj-start", help="Start date for projections (YYYY-MM-DD). Defaults to current date.")
-    parser.add_argument("--proj-end", help="End date for projections (YYYY-MM-DD). If omitted, defaults to standard durations.")
-    parser.add_argument("-f", "--format", default="cn/py/en/vi", help="Format string for Chinese terminology. E.g., 'cn/py/en/vi' or 'cn/en' or 'cn'.")
+    parser.add_argument(
+        "--proj-start",
+        help="Start date for projections (YYYY-MM-DD). Defaults to current date.",
+    )
+    parser.add_argument(
+        "--proj-end",
+        help="End date for projections (YYYY-MM-DD). If omitted, defaults to standard durations.",
+    )
+    parser.add_argument(
+        "-f",
+        "--format",
+        default="cn/py",
+        help="Format string for Chinese terminology. E.g., 'cn/py/en/vi' or 'cn/en' or 'cn'.",
+    )
     args = parser.parse_args()
     solar_date = args.date
     solar_time = args.time
     gender = args.gender
-    
+
     # Update global formatting preference
     FORMAT_STRING = args.format
 
@@ -2937,7 +3138,9 @@ if __name__ == "__main__":
     structure_quality = structure_dict.get("quality", "Unknown")
     dominance = float(structure_dict.get("dominance_score", 0.0))
     try:
-        birth_dt = datetime.strptime(f"{solar_date} {solar_time}", "%Y-%m-%d %H:%M").replace(tzinfo=utc)
+        birth_dt = datetime.strptime(
+            f"{solar_date} {solar_time}", "%Y-%m-%d %H:%M"
+        ).replace(tzinfo=utc)
         forward = _luck_direction(chart)
         target_term_dt = find_governing_jie_term(birth_dt, forward)
 
@@ -3015,7 +3218,7 @@ if __name__ == "__main__":
             f"{format_term(ls['chinese']):<35} {nayin_str}{void_mark}"
         )
 
-    print(f"\n  Hidden Stems (藏干) with Ten-Gods:")
+    print("\n  Hidden Stems (藏干) with Ten-Gods:")
     for pname in pillar_order:
         p = chart["pillars"][pname]
         hidden_strs = []
@@ -3055,37 +3258,41 @@ if __name__ == "__main__":
             formatted_entries = []
             for e in entries:
                 if isinstance(e, dict):
-                    if "pattern" in e: # San Xing from dict
-                        formatted_entries.append(f"{list(e['pattern'])} (match: {e['found']})")
-                    elif "branch" in e: # Zi Xing
+                    if "pattern" in e:  # San Xing from dict
+                        formatted_entries.append(
+                            f"{list(e['pattern'])} (match: {e['found']})"
+                        )
+                    elif "branch" in e:  # Zi Xing
                         formatted_entries.append(f"{e['branch']} (count: {e['count']})")
                     else:
                         formatted_entries.append(str(e))
                 elif isinstance(e, (tuple, frozenset, set)):
-                    formatted_entries.append(f"({', '.join(format_term(b) for b in e)})")
+                    formatted_entries.append(
+                        f"({', '.join(format_term(b) for b in e)})"
+                    )
                 else:
                     formatted_entries.append(format_term(str(e)))
-                    
+
             print(f"  {format_term(kind)}: {formatted_entries}")
     else:
         print("  None detected.")
 
     if stem_combos:
-        print(f"\n  Stem Combinations (天干合):")
+        print("\n  Stem Combinations (天干合):")
         for sc in stem_combos:
             print(
                 f"    {sc['stems'][0]}+{sc['stems'][1]} → {sc['target_element']} ({sc['pair'][0]}-{sc['pair'][1]})"
             )
 
     if transformations:
-        print(f"\n  Transformations (合化):")
+        print("\n  Transformations (合化):")
         for t in transformations:
             print(
                 f"    {t['stems'][0]}+{t['stems'][1]} → {t['target_element']}: {t['status']} ({t['confidence']}%)"
             )
 
     if punishments:
-        print(f"\n  Punishments & Harms (刑害):")
+        print("\n  Punishments & Harms (刑害):")
         for p in punishments:
             print(f"    {p['type']}: {p['branches']} ({p['life_areas']})")
 
@@ -3098,7 +3305,9 @@ if __name__ == "__main__":
                 if star["nature"] == "auspicious"
                 else ("⚠" if star["nature"] == "inauspicious" else "◆")
             )
-            star_fmt = format_term(star['star'].split(' ')[0]) # Extacting pure Chinese string
+            star_fmt = format_term(
+                star["star"].split(" ")[0]
+            )  # Extacting pure Chinese string
             print(
                 f"  {nature_icon} {star_fmt} @ {star['location']}: {star['description']}"
             )
@@ -3190,64 +3399,106 @@ if __name__ == "__main__":
     print("[ 10-Year Lookahead (十年展望) ]")
     end_year = proj_end.year if proj_end else proj_start.year + 9
     year_projections = generate_year_projections(chart, proj_start.year, end_year)
-    print(
-        f"  {'Year':<6} {'GanZhi':<6} {'Ten-God':<8} {'Life Stage':<12} {'Interactions':<20} {'Δ':<3}"
-    )
-    print("  " + "-" * 60)
+    hdr_yr = f"  {'Year':<6} {'GanZhi':<20} {'Ten-God':<20} {'Life Stage':<20} {'Int':<15} {'Δ':<3}"
+    print(hdr_yr)
+    print("  " + "-" * (len(hdr_yr) - 2))
     for yp in year_projections:
-        interactions_str = ", ".join(yp["interactions"]) if yp["interactions"] else "-"
+        interactions_str = (
+            ", ".join(format_term(x) for x in yp["interactions"])
+            if yp["interactions"]
+            else "-"
+        )
         delta_str = (
             f"+{yp['strength_delta']}"
             if yp["strength_delta"] > 0
             else str(yp["strength_delta"])
         )
-        ls_name = yp["life_stage"].get("chinese", "")
+        ls = yp["life_stage"]
+        ls_fmt = format_term(ls.get("chinese", ""))
+        ls_strength = ls.get("strength_class", "")
+        ganzhi_fmt = format_term(yp["ganzhi"])
+        tg_fmt = format_term(yp["ten_god"])
         print(
-            f"  {yp['year']:<6} {yp['ganzhi']:<6} {yp['ten_god']:<8} {ls_name:<12} {interactions_str:<20} {delta_str:<3}"
+            f"  {yp['year']:<6} {ganzhi_fmt:<20} {tg_fmt:<20} {ls_fmt:<15} [{ls_strength:<5}]  {interactions_str:<15} {delta_str:<3}"
         )
 
     print(f"\n{'─' * 70}")
-    title = "[ Month Lookahead (月展望) ]" if proj_end else "[ 36-Month Lookahead (三十六月展望) ]"
+    _nm_mode = proj_end is None
+    title = (
+        "[ 36 New Moons Lookahead (三十六朔展望) ]"
+        if _nm_mode
+        else "[ Month Lookahead (月展望) ]"
+    )
     print(title)
-    month_projections = generate_month_projections(chart, proj_start, proj_end)
-    col_count = 0
+    month_projections = generate_month_projections(
+        chart, proj_start, proj_end, use_new_moons=_nm_mode
+    )
+    _lunar_hdr = f" {'Lunar Date':<22}" if _nm_mode else ""
+    hdr_mo = (
+        f"  {'#':>2}  {'Solar Date':<13}"
+        + _lunar_hdr
+        + f" {'GanZhi':<20} {'Ten-God':<20} {'Life Stage':<20} {'Int':<15} {'\u0394':<3}"
+    )
+    print(hdr_mo)
+    print("  " + "-" * (len(hdr_mo) - 2))
     for mp in month_projections:
-        interactions_str = ", ".join(mp["interactions"]) if mp["interactions"] else "-"
+        interactions_str = (
+            ", ".join(format_term(x) for x in mp["interactions"])
+            if mp["interactions"]
+            else "-"
+        )
         delta_str = (
             f"+{mp['strength_delta']}"
             if mp["strength_delta"] > 0
             else str(mp["strength_delta"])
         )
+        ls = mp["life_stage"]
+        ls_fmt = format_term(ls.get("chinese", ""))
+        ls_strength = ls.get("strength_class", "")
+        ganzhi_fmt = format_term(mp["ganzhi"])
+        tg_fmt = format_term(mp["ten_god"])
+        lunar_col = ""
+        if _nm_mode and "lunisolar_date" in mp:
+            ly, lm, ld, _is_leap, leap_tag = mp["lunisolar_date"]
+            lunar_col = f"(Lunar {ly}/{lm}{leap_tag} d{ld:<2}) "
         print(
-            f"  {mp['month_num']:>2}. {mp['date']:<12} {mp['ganzhi']:<4} | {mp['ten_god']:<6} | Int: {interactions_str:<8} | Δ: {delta_str}"
+            f"  {mp['month_num']:>2}.  {mp['solar_date']:<13}"
+            + (f" {lunar_col:<23}" if _nm_mode else "")
+            + f" {ganzhi_fmt:<20} {tg_fmt:<20} {ls_fmt:<15} [{ls_strength:<5}]  {interactions_str:<15} {delta_str:<3}"
         )
-        col_count += 1
-        if col_count >= 12:
-            print()
-            col_count = 0
 
     print(f"\n{'─' * 70}")
-    title = "[ Day Lookahead (日展望) ]" if proj_end else "[ 100-Day Lookahead (百日展望) ]"
+    title = (
+        "[ Day Lookahead (日展望) ]" if proj_end else "[ 100-Day Lookahead (百日展望) ]"
+    )
     print(title)
     day_projections = generate_day_projections(chart, proj_start, proj_end)
     notable_days = [
         dp for dp in day_projections if dp["interactions"] or dp["strength_delta"] != 0
     ]
-    print(
-        f"  Showing days with interactions or strength impact (filtered):"
-    )
+    print("  Showing days with interactions or strength impact (filtered):")
+    hdr_dy = f"  {'Date':<12} {'Day':<5} {'GanZhi':<20} {'Ten-God':<20} {'Life Stage':<15} {'Int':<15} {'Δ':<3}"
+    print(hdr_dy)
+    print("  " + "-" * (len(hdr_dy) - 2))
     if notable_days:
         for dp in notable_days[:30]:
             interactions_str = (
-                ", ".join(dp["interactions"]) if dp["interactions"] else "-"
+                ", ".join(format_term(x) for x in dp["interactions"])
+                if dp["interactions"]
+                else "-"
             )
             delta_str = (
                 f"+{dp['strength_delta']}"
                 if dp["strength_delta"] > 0
                 else str(dp["strength_delta"])
             )
+            ls = dp["life_stage"]
+            ls_fmt = format_term(ls.get("chinese", ""))
+            ls_strength = ls.get("strength_class", "")
+            ganzhi_fmt = format_term(dp["ganzhi"])
+            tg_fmt = format_term(dp["ten_god"])
             print(
-                f"  {dp['date']:<12} ({dp['weekday']:<3}) {dp['ganzhi']:<4} | {dp['ten_god']:<6} | Int: {interactions_str:<8} | Δ: {delta_str}"
+                f"  {dp['date']:<12} ({dp['weekday']:<3}) {ganzhi_fmt:<20} {tg_fmt:<20} {ls_fmt:<15} [{ls_strength:<5}]  {interactions_str:<15} {delta_str:<3}"
             )
         if len(notable_days) > 30:
             print(
