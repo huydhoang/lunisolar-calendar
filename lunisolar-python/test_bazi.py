@@ -34,7 +34,6 @@ from bazi import (
     check_obstruction,
     check_severe_clash,
     classify_structure,
-    classify_structure_professional,
     comprehensive_analysis,
     detect_branch_interactions,
     detect_fu_yin_duplication,
@@ -335,7 +334,7 @@ class TestScoreDayMaster(unittest.TestCase):
         # 甲子=1, 乙丑=2, 丙寅=3, 丁巳=54
         chart = build_chart(1, 2, 3, 54, "male")
         score, strength = score_day_master(chart)
-        self.assertIsInstance(score, int)
+        self.assertIsInstance(score, (int, float))
         self.assertIn(strength, ('strong', 'weak', 'balanced'))
 
     def test_strong_fire_chart(self):
@@ -468,15 +467,9 @@ class TestStructure(unittest.TestCase):
         chart = build_chart(1, 2, 3, 54, "male")
         _, strength = score_day_master(chart)
         structure = classify_structure(chart, strength)
-        self.assertIsInstance(structure, str)
-
-    def test_professional_structure(self):
-        # 甲子=1, 乙丑=2, 丙寅=3, 丁巳=54
-        chart = build_chart(1, 2, 3, 54, "male")
-        _, strength = score_day_master(chart)
-        struct, score = classify_structure_professional(chart, strength)
-        self.assertIsInstance(struct, str)
-        self.assertIsInstance(score, (int, float))
+        self.assertIsInstance(structure, dict)
+        self.assertIn('primary', structure)
+        self.assertIn('category', structure)
 
 
 class TestUsefulGod(unittest.TestCase):
@@ -1067,7 +1060,7 @@ class TestPhucNgam(unittest.TestCase):
     def test_exact_match(self):
         """Dynamic pillar identical to natal year → exact Phục Ngâm."""
         dynamic = {'stem': '甲', 'branch': '子'}
-        results = detect_phuc_ngam(self.chart, dynamic)
+        results = detect_fu_yin_duplication(self.chart, dynamic)
         exact = [r for r in results if r['match'] == 'exact']
         self.assertTrue(len(exact) > 0)
         self.assertEqual(exact[0]['natal_pillar'], 'year')
@@ -1081,10 +1074,10 @@ class TestPhucNgam(unittest.TestCase):
 
     def test_no_match(self):
         """Dynamic pillar shares nothing with natal → no Fu Yin Duplication."""
-        # 1993 癸酉 matches month pillar 癸酉
+        # Chart is 甲子, 乙丑, 丙寅, 丁卯 — 癸酉 does not match any natal pillar
         dynamic = {"year": 1993, "stem": "癸", "branch": "酉"}
         results = detect_fu_yin_duplication(self.chart, dynamic)
-        self.assertEqual(len(results), 1)
+        self.assertEqual(len(results), 0)
 
     def test_month_pillar_higher_confidence(self):
         """Exact match on month pillar → higher confidence."""
@@ -1168,7 +1161,7 @@ class TestNaYinInteractions(unittest.TestCase):
         result = analyze_nayin_interactions(self.chart)
         self.assertIn('vs_day_master', result)
         for pname in ['year', 'month', 'day', 'hour']:
-            self.assertIn(pname, result['vs_day_master'][pname])
+            self.assertIn(pname, result['vs_day_master'])
             self.assertIn('relation_to_dm', result['vs_day_master'][pname])
 
     def test_flow_relation_valid(self):

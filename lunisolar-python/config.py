@@ -4,7 +4,7 @@ import os
 import multiprocessing as mp
 
 # Configuration constants
-EPHEMERIS_FILE = 'nasa/de440.bsp'
+EPHEMERIS_FILE = '../nasa/de440.bsp'
 OUTPUT_DIR = 'output'
 AU_TO_M = 149597870700.0
 TIDAL_INTERVAL_MINUTES = 4
