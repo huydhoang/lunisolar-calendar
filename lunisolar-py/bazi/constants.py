@@ -6,9 +6,27 @@ All data constants, lookup tables, and interaction sets used by the Bazi
 analysis subsystems.
 """
 
+from itertools import combinations as _combs
 from typing import Dict, List, Tuple
 
 from shared.constants import STEM_CHARS, BRANCH_CHARS
+
+from .glossary import (
+    STEM_PAIR_TO_ELEMENT,
+    BRANCH_PAIR_TO_LIU_HE,
+    BRANCH_PAIR_TO_LIU_CHONG,
+    BRANCH_PAIR_TO_LIU_HAI,
+    BRANCH_PAIR_TO_LIU_PO,
+    STEM_CLASH_PAIR_TO_TERM,
+    SAN_HE_SET_TO_TERM,
+    SAN_HUI_SET_TO_TERM,
+    BAN_SAN_HE_BIRTH_PAIRS,
+    BAN_SAN_HE_GRAVE_PAIRS,
+    SELF_PUNISHMENT_BRANCHES,
+    GRACELESS_PUNISHMENT_SET,
+    BULLY_PUNISHMENT_SET,
+    UNCIVIL_PUNISHMENT_SET,
+)
 
 # Core Lists — from shared canonical constants
 HEAVENLY_STEMS: List[str] = STEM_CHARS
@@ -97,62 +115,39 @@ LONGEVITY_STAGES_VI: List[str] = [
 
 # ============================================================
 # Branch Interactions — spec §8
+# Derived from glossary (single source of truth)
 # ============================================================
 
 # §8.1 Six Combinations (六合)
-LIU_HE = frozenset({
-    frozenset({"子", "丑"}), frozenset({"寅", "亥"}),
-    frozenset({"卯", "戌"}), frozenset({"辰", "酉"}),
-    frozenset({"巳", "申"}), frozenset({"午", "未"}),
-})
+LIU_HE = frozenset(BRANCH_PAIR_TO_LIU_HE.keys())
 
 # §8.4 Six Clashes (六冲)
-LIU_CHONG = frozenset({
-    frozenset({"子", "午"}), frozenset({"丑", "未"}),
-    frozenset({"寅", "申"}), frozenset({"卯", "酉"}),
-    frozenset({"辰", "戌"}), frozenset({"巳", "亥"}),
-})
+LIU_CHONG = frozenset(BRANCH_PAIR_TO_LIU_CHONG.keys())
 
 # §8.6 Six Harms (六害)
-LIU_HAI = frozenset({
-    frozenset({"子", "未"}), frozenset({"丑", "午"}),
-    frozenset({"寅", "巳"}), frozenset({"卯", "辰"}),
-    frozenset({"申", "亥"}), frozenset({"酉", "戌"}),
-})
+LIU_HAI = frozenset(BRANCH_PAIR_TO_LIU_HAI.keys())
 
 # §8.2 Three Combinations (三合)
-SAN_HE: List[frozenset] = [
-    frozenset({"申", "子", "辰"}),  # Water
-    frozenset({"寅", "午", "戌"}),  # Fire
-    frozenset({"亥", "卯", "未"}),  # Wood
-    frozenset({"巳", "酉", "丑"}),  # Metal
-]
+SAN_HE: List[frozenset] = list(SAN_HE_SET_TO_TERM.keys())
 
 # §8.2b Half Three Combinations (半三合)
 BAN_SAN_HE: List[frozenset] = [
-    frozenset({"申", "子"}), frozenset({"子", "辰"}),
-    frozenset({"寅", "午"}), frozenset({"午", "戌"}),
-    frozenset({"亥", "卯"}), frozenset({"卯", "未"}),
-    frozenset({"巳", "酉"}), frozenset({"酉", "丑"}),
+    pair for bp, gp in zip(BAN_SAN_HE_BIRTH_PAIRS, BAN_SAN_HE_GRAVE_PAIRS)
+    for pair in (bp, gp)
 ]
 
 # §8.3 Directional Combinations (三会 / 方局)
-SAN_HUI: List[frozenset] = [
-    frozenset({"寅", "卯", "辰"}),  # Wood
-    frozenset({"巳", "午", "未"}),  # Fire
-    frozenset({"申", "酉", "戌"}),  # Metal
-    frozenset({"亥", "子", "丑"}),  # Water
-]
+SAN_HUI: List[frozenset] = list(SAN_HUI_SET_TO_TERM.keys())
 
 # §8.5 Three Punishments (三刑)
 XING: List[frozenset] = [
-    frozenset({"寅", "巳", "申"}),  # 无恩之刑 (Graceless)
-    frozenset({"丑", "戌", "未"}),  # 恃势之刑 (Bullying)
-    frozenset({"子", "卯"}),        # 无礼之刑 (Rude)
+    GRACELESS_PUNISHMENT_SET,   # 无恩之刑 (Graceless)
+    BULLY_PUNISHMENT_SET,       # 恃势之刑 (Bullying)
+    UNCIVIL_PUNISHMENT_SET,     # 无礼之刑 (Rude)
 ]
 
 # §8.5 Self-punishment (自刑)
-ZI_XING_BRANCHES = frozenset({"辰", "午", "酉", "亥"})
+ZI_XING_BRANCHES = SELF_PUNISHMENT_BRANCHES
 
 # ============================================================
 # Branch → native element mapping
@@ -168,50 +163,35 @@ BRANCH_ELEMENT: Dict[str, str] = {
 # Heavenly Stem Combinations & Transformations (天干合化)
 # ============================================================
 
-STEM_TRANSFORMATIONS: Dict[frozenset, str] = {
-    frozenset(["甲", "己"]): "Earth",
-    frozenset(["乙", "庚"]): "Metal",
-    frozenset(["丙", "辛"]): "Water",
-    frozenset(["丁", "壬"]): "Wood",
-    frozenset(["戊", "癸"]): "Fire",
-}
+STEM_TRANSFORMATIONS: Dict[frozenset, str] = dict(STEM_PAIR_TO_ELEMENT)
 
 ADJACENT_PAIRS: List[Tuple[str, str]] = [
     ("year", "month"), ("month", "day"), ("day", "hour"),
 ]
 
 # ============================================================
-# Punishments & Harms — detailed pair sets
+# Punishments & Harms — derived from glossary
 # ============================================================
 
-SELF_PUNISH_BRANCHES = frozenset({"午", "酉", "辰", "亥"})
+SELF_PUNISH_BRANCHES = SELF_PUNISHMENT_BRANCHES
 
-UNCIVIL_PUNISH_PAIRS = frozenset({frozenset({"子", "卯"})})
+UNCIVIL_PUNISH_PAIRS = frozenset(
+    frozenset(pair) for pair in _combs(UNCIVIL_PUNISHMENT_SET, 2)
+)
 
-GRACELESS_PUNISH_PAIRS = frozenset({
-    frozenset({"寅", "巳"}), frozenset({"巳", "申"}), frozenset({"寅", "申"}),
-})
+GRACELESS_PUNISH_PAIRS = frozenset(
+    frozenset(pair) for pair in _combs(GRACELESS_PUNISHMENT_SET, 2)
+)
 
-BULLY_PUNISH_PAIRS = frozenset({
-    frozenset({"丑", "戌"}), frozenset({"戌", "未"}), frozenset({"丑", "未"}),
-})
+BULLY_PUNISH_PAIRS = frozenset(
+    frozenset(pair) for pair in _combs(BULLY_PUNISHMENT_SET, 2)
+)
 
-HARM_PAIRS = frozenset({
-    frozenset({"子", "未"}), frozenset({"丑", "午"}),
-    frozenset({"寅", "巳"}), frozenset({"卯", "辰"}),
-    frozenset({"申", "亥"}), frozenset({"酉", "戌"}),
-})
+HARM_PAIRS = LIU_HAI
 
-LIU_PO = frozenset({
-    frozenset({"子", "酉"}), frozenset({"丑", "辰"}),
-    frozenset({"寅", "亥"}), frozenset({"卯", "午"}),
-    frozenset({"巳", "申"}), frozenset({"未", "戌"}),
-})
+LIU_PO = frozenset(BRANCH_PAIR_TO_LIU_PO.keys())
 
-STEM_CLASH_PAIRS = frozenset({
-    frozenset({"甲", "庚"}), frozenset({"乙", "辛"}),
-    frozenset({"丙", "壬"}), frozenset({"丁", "癸"}),
-})
+STEM_CLASH_PAIRS = frozenset(STEM_CLASH_PAIR_TO_TERM.keys())
 
 # ============================================================
 # Void Branches (空亡) — spec §IX

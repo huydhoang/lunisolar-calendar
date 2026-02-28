@@ -7,6 +7,8 @@ Translation arrays and formatting utilities for Chinese metaphysical terms.
 
 from typing import List, Optional, Tuple
 
+from .glossary import TERMINOLOGY_LOOKUP as _SC_LOOKUP
+
 FORMAT_STRING = "cn/py/en/vi"
 
 STEM_TRANS = [
@@ -105,7 +107,8 @@ def get_trans_tuple(chinese_str: str) -> Optional[Tuple[str, str, str, str]]:
         for t in group:
             if t[0] == chinese_str:
                 return t
-    return None
+    # Fall through to glossary for structures, interactions, etc.
+    return _SC_LOOKUP.get(chinese_str)
 
 
 def format_term(chinese_str: str, override_fmt: str = None) -> str:

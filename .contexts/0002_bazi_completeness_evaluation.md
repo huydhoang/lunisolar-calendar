@@ -141,3 +141,35 @@ No implementation exists for:
 | **Da Yan Zhi Shu** | 0% | Not implemented |
 
 The `bazi/` package is a **pragmatically complete Ten-God / Four-Pillars engine**, covering the computational core that most modern Bazi software uses. However, it has no coverage of numerological-cosmological systems (He Tu, Luo Shu, Ba Gua, I Ching). Those five systems are typically domain-specific to Feng Shui, Qi Men Dun Jia, or Liu Ren rather than pure Four-Pillars analysis — integrating them would require deciding on a specific school and defining clear application methods within Bazi context.
+
+---
+
+## 8. Markdown Report (`report.py`) — Output Quality Issues
+
+The report generator in `report.py` (`generate_report_markdown()`) correctly reflects the data currently available in the engine, but contains several structural and semantic deficiencies that should be addressed alongside the engine enhancements above.
+
+### ⚠️ Issues Found
+
+**A. Useful God section does not surface "Compromised" state**
+- `_a(f"- **Useful God**: {useful.get('useful_god', 'N/A')}")` prints the Useful God name unconditionally.
+- Once Phase 2 (§2.3 of the implementation plan) is implemented, this line must check for a `useful_god_compromised` flag and append a warning (e.g., `⚠ Compromised by combination`) alongside a suggested fallback deity.
+
+**B. Luck Pillars table lacks Void tracking**
+- The Four Pillars table includes a `Void` column, but the Luck Pillars table (`| # | GanZhi | Ten-God | Life Stage | Na Yin | Age |`) has no equivalent.
+- Each Luck Pillar belongs to its own Xun (旬) with distinct void branches. Once Phase 1.4 (Dynamic Void) is implemented, this table needs a `Void / Exit Void` column showing the void branches for that pillar and flagging any "Exit Void" (出空) event for natal branches.
+
+**C. Na Yin Interactions section is redundant**
+- `## Na Yin Interactions (納音)` simply iterates pilot Na Yin entries and reprints the same Chinese name and element already shown in the Four Pillars table. This section adds no analytical value in its current form.
+- It should instead display the **Global Na Yin Balance Assessment** — the chain sequence across all four pillars (e.g., *Generate → Control → Generate → Generate*), the net polarity (harmonious vs. conflicted), and any special classical interaction pairs detected (e.g., *Auspicious Tempering: Ocean Water + Sword Metal — 金水相涵*).
+
+**D. Projection tables do not visually distinguish major structural events**
+- In the 10-Year Lookahead table, `interactions` are joined as a plain comma-separated string. Minor clashes/harms and major structural events (San He completion, full Stem Transformation triggered by the annual year) are rendered identically.
+- San He completions and Stem Transformations should be highlighted (e.g., bold or a prominent icon `★`) to make life-changing years immediately identifiable.
+
+**E. Symbolic Stars do not cross-reference Void status**
+- Stars like Nobleman (贵人) or Prosperity (禄神) landing on a void branch lose their efficacy (and may invert to inauspicious). The report currently prints all stars without checking `void_status`.
+- The Symbolic Stars section should cross-reference each star's `location` against the active void branches and append `[VOID]` or `(nullified)` where appropriate.
+
+**F. Stem Combinations and Transformations do not distinguish natal vs. external origins**
+- The `### Stem Combinations` and `### Transformations` sub-sections only ever reflect natal chart interactions.
+- Once Phase 2.1 (external stem transformation detection) is implemented, these sections must clearly separate *Natal combinations* from *Dynamic combinations* triggered by the current Luck Pillar or Annual Year — the predictive significance of each is very different.
