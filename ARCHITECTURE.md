@@ -68,7 +68,7 @@ graph TD
     CE --> AT[antitransit.py]
 ```
 
-### Orchestrator (`lunisolar-python/main.py`)
+### Orchestrator (`lunisolar-py/main.py`)
 
 The orchestrator coordinates parallel computation and writes year-grouped JSON:
 
@@ -123,7 +123,7 @@ def calculate_moon_phases(start_time, end_time):
 | `celestial_events.py` | Rise/set/transit for Sun, Moon, planets | Per event |
 | `tidal_data.py` | Tidal acceleration vectors + lunar mansion | Every 4 minutes |
 
-### Lunisolar Calendar Engine (`lunisolar-python/lunisolar_v2.py`)
+### Lunisolar Calendar Engine (`lunisolar-py/lunisolar_v2.py`)
 
 The core conversion engine is decomposed into nine service classes, each with a single responsibility:
 
@@ -149,7 +149,7 @@ graph TD
 - **Continuous day count** — the day cycle uses an unbroken count from the reference date 4 AD (Jiazi day), not month-relative offsets.
 - **Wu Shu Dun (五鼠遁)** — hour stems are derived from the day stem using the traditional mapping rule.
 
-### Huangdao Systems (`lunisolar-python/huangdao_systems_v2.py`)
+### Huangdao Systems (`lunisolar-py/huangdao_systems_v2.py`)
 
 Implements two traditional Chinese auspicious day systems:
 
@@ -584,7 +584,7 @@ lunisolar-ts/
 │       └── src/
 │           ├── lib.rs          # WASM exports + C stdlib shims + in-memory FS
 │           └── bindings.rs     # FFI bindings to SE C functions
-├── lunisolar-python/           # Python data pipeline
+├── lunisolar-py/               # Python data pipeline
 │   ├── config.py               # Shared constants (ephemeris path, physics, location)
 │   ├── utils.py                # Logging, CSV/JSON I/O, argument parsing
 │   ├── timezone_handler.py     # IANA timezone conversions (pytz)

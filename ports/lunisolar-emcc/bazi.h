@@ -2,7 +2,7 @@
  * Bazi (Four Pillars of Destiny) analysis module — Emscripten C→WASM port.
  *
  * Mirrors the Rust implementation in ../lunisolar-rs/src/bazi.rs and the
- * Python implementation in ../../lunisolar-python/bazi.py.
+ * Python implementation in ../../lunisolar-py/bazi.py.
  */
 
 #ifndef BAZI_H

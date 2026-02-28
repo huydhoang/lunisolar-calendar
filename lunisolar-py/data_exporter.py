@@ -11,10 +11,10 @@ The script imports calculation functions from modular components and coordinates
 All generated data is saved as chunked JSON files under the 'output/json' directory, grouped by year.
 
 Usage:
-    python lunisolar-python/main.py --start-date YYYY-MM-DD --end-date YYYY-MM-DD
+    python lunisolar-py/main.py --start-date YYYY-MM-DD --end-date YYYY-MM-DD
 
 Example:
-    python lunisolar-python/main.py --start-date 2025-01-01 --end-date 2025-12-31
+    python lunisolar-py/main.py --start-date 2025-01-01 --end-date 2025-12-31
 """
 import os
 import time
