@@ -3,8 +3,10 @@
 import os
 import multiprocessing as mp
 
-# Configuration constants
-EPHEMERIS_FILE = '../nasa/de440.bsp'
+# Absolute path to the ephemeris file, resolved from this file's location.
+# Using an absolute path ensures correct resolution regardless of CWD.
+_MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
+EPHEMERIS_FILE = os.path.normpath(os.path.join(_MODULE_DIR, '../nasa/de440.bsp'))
 OUTPUT_DIR = 'output'
 AU_TO_M = 149597870700.0
 TIDAL_INTERVAL_MINUTES = 4

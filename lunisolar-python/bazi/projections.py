@@ -22,8 +22,9 @@ except ImportError:
     from datetime import timezone
     utc = timezone.utc
 
-from lunisolar_v2 import LunisolarDateDTO, solar_to_lunisolar, solar_to_lunisolar_batch
-from moon_phases import calculate_moon_phases
+from shared.models import LunisolarDateDTO
+from lunisolar.api import solar_to_lunisolar, solar_to_lunisolar_batch
+from ephemeris.moon_phases import calculate_moon_phases
 
 
 def get_year_cycle_for_gregorian(year: int) -> int:

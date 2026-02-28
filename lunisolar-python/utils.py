@@ -14,22 +14,13 @@ def setup_logging() -> logging.Logger:
     Returns:
         Configured logger instance
     """
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.StreamHandler(sys.stdout)
-        ]
-    )
-    # Ensure StreamHandler uses UTF-8 encoding
-    for handler in logging.getLogger().handlers:
-        if isinstance(handler, logging.StreamHandler):
-            try:
-                handler.setStream(sys.stdout)
-                handler.stream.reconfigure(encoding='utf-8')
-            except Exception:
-                pass
-    return logging.getLogger(__name__)
+    logger = logging.getLogger(__name__)
+    if not logging.getLogger().handlers:
+        handler = logging.StreamHandler(sys.stdout)
+        handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+        logging.getLogger().addHandler(handler)
+        logging.getLogger().setLevel(logging.INFO)
+    return logger
 
 def write_csv_file(filename: str, data: List[Dict[str, Any]], headers: List[str]) -> int:
     """Write data to CSV file with proper directory creation and error handling.

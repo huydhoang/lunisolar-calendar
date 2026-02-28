@@ -13,7 +13,7 @@ except ImportError:
     from datetime import timezone
     utc = timezone.utc
 
-from lunisolar_v2 import solar_to_lunisolar
+from lunisolar.api import solar_to_lunisolar
 
 from . import terminology
 from .constants import HEAVENLY_STEMS, STEM_POLARITY

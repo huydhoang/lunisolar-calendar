@@ -6,53 +6,85 @@ This document outlines the architecture for the two main components of the Lunis
 
 ### 1.1. Purpose
 
-The primary role of the Python pipeline is to perform computationally intensive astronomical calculations and pre-generate high-precision data. This approach offloads the heavy lifting from the client-side TypeScript package, ensuring the end-user application is fast and lightweight. The pipeline serves as the single source of truth for all astronomical events.
+The Python pipeline performs high-precision astronomical calculations (new moons, solar terms, sexagenary cycles, auspicious-day systems) using NASA's JPL DE440 ephemeris via Skyfield. It also exposes the full lunisolar calendar engine and the Bazi (Four Pillars) analysis framework as importable packages.
 
-### 1.2. Components
+### 1.2. Package Structure
 
-The pipeline is composed of modular, single-responsibility Python scripts.
+After the 2026-02-28 modular refactor, `lunisolar-python/` is organised into focused packages. Top-level `*.py` files are thin backward-compatible facades.
 
--   **Orchestrator (`main.py`):**
-    -   **Class:** `MainOrchestrator`
-    -   **Function:** `run_pipeline(start_date, end_date)`
-    -   **Responsibility:** Manages the entire data generation process. It uses a `ProcessPoolExecutor` to run individual calculator modules in parallel, maximizing efficiency. It takes a date range as input and coordinates the generation of all required data files.
+```
+lunisolar-python/
+├── shared/                  # Shared constants & dataclasses
+│   ├── constants.py         # HEAVENLY_STEMS, EARTHLY_BRANCHES, PRINCIPAL_TERMS, derived lookups
+│   └── models.py            # PrincipalTerm, MonthPeriod, LunisolarDateDTO
+│
+├── ephemeris/               # Low-level ephemeris wrappers
+│   ├── solar_terms.py       # calculate_solar_terms()
+│   └── moon_phases.py       # calculate_moon_phases()
+│
+├── lunisolar/               # Lunisolar calendar engine
+│   ├── api.py               # solar_to_lunisolar(), solar_to_lunisolar_batch()
+│   ├── ephemeris_service.py # EphemerisService — new moons & principal terms
+│   ├── month_builder.py     # MonthBuilder, TermIndexer, LeapMonthAssigner
+│   ├── sexagenary.py        # SexagenaryEngine — year/month/day/hour ganzhi
+│   ├── resolver.py          # LunarMonthResolver, ResultAssembler
+│   ├── timezone_service.py  # TimezoneService
+│   ├── window_planner.py    # WindowPlanner
+│   └── __main__.py          # python -m lunisolar
+│
+├── huangdao/                # Auspicious-day systems
+│   ├── constants.py         # EarthlyBranch / GreatYellowPathSpirit enums, lookup tables
+│   ├── construction_stars.py# ConstructionStars (12-star system)
+│   ├── great_yellow_path.py # GreatYellowPath.calculate_spirit()
+│   ├── calculator.py        # HuangdaoCalculator, print_month_calendar()
+│   └── __main__.py          # python -m huangdao
+│
+├── bazi/                    # Four Pillars (Bazi) analysis
+│   ├── core.py              # BaziChart
+│   ├── ten_gods.py          # Ten Gods
+│   ├── branch_interactions.py
+│   ├── luck_pillars.py
+│   ├── projections.py
+│   └── cli.py / __main__.py
+│
+├── lunisolar_v2.py          # Facade → lunisolar package
+├── huangdao_systems_v2.py   # Facade → huangdao package
+├── solar_terms.py           # Facade → ephemeris.solar_terms
+├── moon_phases.py           # Facade → ephemeris.moon_phases
+├── utils.py                 # setup_logging(), write_csv_file(), …
+├── config.py                # OUTPUT_DIR, ephemeris path
+├── timezone_handler.py      # TimezoneHandler (pytz wrapper)
+└── main.py                  # Bulk data generation orchestrator
+```
 
--   **Astronomical Calculators (`lunisolar-python/*.py`):**
-    -   Each module focuses on a specific type of calculation (e.g., `moon_phases.py`, `solar_terms.py`, `celestial_events.py`).
-    -   **Naming Convention:** Functions are named `calculate_<data_type>(...)`, e.g., `calculate_moon_phases()`.
-    -   **Input:** Each function takes a start and end `datetime` object.
-    -   **Output:** Returns a list of data points (e.g., tuples or data classes).
-    -   **Core Dependency:** They all rely on the `skyfield` library and the NASA JPL DE440 ephemeris data (`nasa/de440.bsp`).
+### 1.3. Key Data Flows
 
--   **Data Writer (`utils.py`):**
-    -   **Function:** `write_static_json(file_path, data)`
-    -   **Responsibility:** Takes the processed data from the calculators and writes it to optimized, static JSON files.
+**Lunisolar conversion** (`python -m lunisolar --date YYYY-MM-DD`):
+1. `api.solar_to_lunisolar()` creates service objects and delegates to `LunarMonthResolver`.
+2. `EphemerisService` loads `nasa/de440.bsp` via Skyfield and computes new moons + principal terms.
+3. `MonthBuilder` assembles month periods; `LeapMonthAssigner` applies the no-zhongqi leap rule.
+4. `SexagenaryEngine` derives year/month/day/hour ganzhi with the Wu Shu Dun rule.
+5. `ResultAssembler` packages everything into a `LunisolarDateDTO`.
 
-### 1.3. Data Flow
+**Auspicious days** (`python -m huangdao -y YYYY -m MM`):
+1. `HuangdaoCalculator` calls `solar_to_lunisolar_batch()` for each day in the month.
+2. `ConstructionStars.get_star()` looks up the 12-building-star for each day.
+3. `GreatYellowPath.calculate_spirit()` derives the Yellow/Black Path spirit from the day's branch.
+4. `print_month_calendar()` renders the combined table to stdout.
 
-1.  The `main.py` orchestrator is executed with a specified date range (e.g., 1900-2100).
-2.  It invokes the various `calculate_*` functions in parallel.
-3.  Each calculator loads the `de440.bsp` ephemeris data and computes its specific events within the given date range.
-4.  The results are returned to the orchestrator.
-5.  The orchestrator passes the data to the `write_static_json` utility.
-6.  The utility writes the data into chunked JSON files in the `output/` directory.
+### 1.4. Shared Constants & Models (`shared/`)
 
-### 1.4. Output: Static JSON Data
+All packages import canonical data from `shared/` rather than defining local copies:
 
-To ensure the TypeScript package can lazy-load data efficiently, the pipeline will not generate a single monolithic JSON file. Instead, it will chunk the data, typically by year.
-
--   **Directory Structure:** `output/{data_type}/{year}.json`
-    -   `output/solar_terms/2025.json`
-    -   `output/new_moons/2025.json`
--   **Format:** The JSON files will contain arrays of timestamps or simple data objects, optimized for minimum file size.
-    -   **Example (`new_moons/2025.json`):**
-        ```json
-        [
-          1738163213, // Unix timestamp for new moon in seconds
-          1740755273,
-          ...
-        ]
-        ```
+| Symbol | Description |
+|---|---|
+| `HEAVENLY_STEMS` | Tuple of 10 stem objects with char, pinyin, element, polarity |
+| `EARTHLY_BRANCHES` | Tuple of 12 branch objects with char, pinyin, animal, element |
+| `PRINCIPAL_TERMS` | List of 12 principal solar terms (zhongqi) |
+| `STEM_CHARS` / `BRANCH_CHARS` | Plain character lists derived from the above |
+| `BRANCH_INDEX` | `{char: index}` lookup |
+| `EARTHLY_BRANCH_PINYIN` | `{char: pinyin}` lookup |
+| `LunisolarDateDTO` | Frozen dataclass — canonical conversion result |
 
 ---
 

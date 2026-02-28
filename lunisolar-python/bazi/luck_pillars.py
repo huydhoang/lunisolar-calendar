@@ -18,7 +18,7 @@ except ImportError:
     from datetime import timezone
     utc = timezone.utc
 
-from solar_terms import calculate_solar_terms
+from ephemeris.solar_terms import calculate_solar_terms
 
 
 def _next_ganzhi(stem: str, branch: str, forward: bool = True) -> Tuple[str, str]:

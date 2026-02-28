@@ -8,7 +8,8 @@ from_lunisolar_dto, from_solar_date.
 
 from typing import Dict, Tuple, Union
 
-from lunisolar_v2 import LunisolarDateDTO, solar_to_lunisolar
+from shared.models import LunisolarDateDTO
+from lunisolar.api import solar_to_lunisolar
 
 from .constants import HEAVENLY_STEMS, EARTHLY_BRANCHES, STEM_ELEMENT
 from .ten_gods import ten_god

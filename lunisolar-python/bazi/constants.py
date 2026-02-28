@@ -8,14 +8,11 @@ analysis subsystems.
 
 from typing import Dict, List, Tuple
 
-from lunisolar_v2 import (
-    EARTHLY_BRANCHES as _EB_TUPLES,
-    HEAVENLY_STEMS as _HS_TUPLES,
-)
+from shared.constants import STEM_CHARS, BRANCH_CHARS
 
-# Core Lists — extracted from lunisolar_v2 tuples
-HEAVENLY_STEMS: List[str] = [s[0] for s in _HS_TUPLES]
-EARTHLY_BRANCHES: List[str] = [b[0] for b in _EB_TUPLES]
+# Core Lists — from shared canonical constants
+HEAVENLY_STEMS: List[str] = STEM_CHARS
+EARTHLY_BRANCHES: List[str] = BRANCH_CHARS
 
 # ============================================================
 # Element & Polarity Mappings
