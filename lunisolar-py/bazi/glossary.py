@@ -998,6 +998,282 @@ FAN_YIN: Term = (
 DUPLICATION_TERMS: List[Term] = [FU_YIN, FAN_YIN]
 
 # ============================================================
+# XXI. THIÊN CAN TƯƠNG KHẮC — Heavenly Stem Restraints (天干相克)
+# ============================================================
+
+STEM_RESTRAIN_JIA_WU: Term = (
+    "甲克戊", "Jiǎ Kè Wù", "Jia restrains Wu", "Giáp khắc Mậu",
+)
+STEM_RESTRAIN_YI_JI: Term = (
+    "乙克己", "Yǐ Kè Jǐ", "Yi restrains Ji", "Ất khắc Kỷ",
+)
+STEM_RESTRAIN_BING_GENG: Term = (
+    "丙克庚", "Bǐng Kè Gēng", "Bing restrains Geng", "Bính khắc Canh",
+)
+STEM_RESTRAIN_DING_XIN: Term = (
+    "丁克辛", "Dīng Kè Xīn", "Ding restrains Xin", "Đinh khắc Tân",
+)
+STEM_RESTRAIN_WU_REN: Term = (
+    "戊克壬", "Wù Kè Rén", "Wu restrains Ren", "Mậu khắc Nhâm",
+)
+STEM_RESTRAIN_JI_GUI: Term = (
+    "己克癸", "Jǐ Kè Guǐ", "Ji restrains Gui", "Kỷ khắc Quý",
+)
+STEM_RESTRAIN_GENG_JIA: Term = (
+    "庚克甲", "Gēng Kè Jiǎ", "Geng restrains Jia", "Canh khắc Giáp",
+)
+STEM_RESTRAIN_XIN_YI: Term = (
+    "辛克乙", "Xīn Kè Yǐ", "Xin restrains Yi", "Tân khắc Ất",
+)
+STEM_RESTRAIN_REN_BING: Term = (
+    "壬克丙", "Rén Kè Bǐng", "Ren restrains Bing", "Nhâm khắc Bính",
+)
+STEM_RESTRAIN_GUI_DING: Term = (
+    "癸克丁", "Guǐ Kè Dīng", "Gui restrains Ding", "Quý khắc Đinh",
+)
+
+HEAVENLY_STEM_RESTRAINTS: List[Term] = [
+    STEM_RESTRAIN_JIA_WU,
+    STEM_RESTRAIN_YI_JI,
+    STEM_RESTRAIN_BING_GENG,
+    STEM_RESTRAIN_DING_XIN,
+    STEM_RESTRAIN_WU_REN,
+    STEM_RESTRAIN_JI_GUI,
+    STEM_RESTRAIN_GENG_JIA,
+    STEM_RESTRAIN_XIN_YI,
+    STEM_RESTRAIN_REN_BING,
+    STEM_RESTRAIN_GUI_DING,
+]
+
+# Ordered pair (attacker, target) → restraint term
+STEM_RESTRAIN_PAIR_TO_TERM: Dict[tuple, Term] = {
+    ("甲", "戊"): STEM_RESTRAIN_JIA_WU,
+    ("乙", "己"): STEM_RESTRAIN_YI_JI,
+    ("丙", "庚"): STEM_RESTRAIN_BING_GENG,
+    ("丁", "辛"): STEM_RESTRAIN_DING_XIN,
+    ("戊", "壬"): STEM_RESTRAIN_WU_REN,
+    ("己", "癸"): STEM_RESTRAIN_JI_GUI,
+    ("庚", "甲"): STEM_RESTRAIN_GENG_JIA,
+    ("辛", "乙"): STEM_RESTRAIN_XIN_YI,
+    ("壬", "丙"): STEM_RESTRAIN_REN_BING,
+    ("癸", "丁"): STEM_RESTRAIN_GUI_DING,
+}
+
+# ============================================================
+# XXII. ÁM HỢP — Hidden Combinations (暗合)
+# ============================================================
+
+AN_HE_YIN_CHOU: Term = (
+    "寅丑暗合", "Yín Chǒu Àn Hé",
+    "Yin-Chou Hidden Combination", "Dần Sửu ám hợp",
+)
+AN_HE_MAO_SHEN: Term = (
+    "卯申暗合", "Mǎo Shēn Àn Hé",
+    "Mao-Shen Hidden Combination", "Mão Thân ám hợp",
+)
+AN_HE_WU_HAI: Term = (
+    "午亥暗合", "Wǔ Hài Àn Hé",
+    "Wu-Hai Hidden Combination", "Ngọ Hợi ám hợp",
+)
+
+HIDDEN_COMBINATIONS: List[Term] = [
+    AN_HE_YIN_CHOU,
+    AN_HE_MAO_SHEN,
+    AN_HE_WU_HAI,
+]
+
+BRANCH_PAIR_TO_AN_HE: Dict[frozenset, Term] = {
+    frozenset({"寅", "丑"}): AN_HE_YIN_CHOU,
+    frozenset({"卯", "申"}): AN_HE_MAO_SHEN,
+    frozenset({"午", "亥"}): AN_HE_WU_HAI,
+}
+
+# ============================================================
+# XXIII. CỦNG HỢP — Arching Combinations (拱合)
+# ============================================================
+
+ARCHING_COMBINATION: Term = (
+    "拱合", "Gǒng Hé", "Arching Combination", "Củng Hợp",
+)
+
+GONG_HE_YIN_XU: Term = (
+    "寅戌拱火", "Yín Xū Gǒng Huǒ",
+    "Yin-Xu arches Fire", "Dần Tuất củng Hỏa",
+)
+GONG_HE_HAI_WEI: Term = (
+    "亥未拱木", "Hài Wèi Gǒng Mù",
+    "Hai-Wei arches Wood", "Hợi Mùi củng Mộc",
+)
+GONG_HE_SHEN_CHEN: Term = (
+    "申辰拱水", "Shēn Chén Gǒng Shuǐ",
+    "Shen-Chen arches Water", "Thân Thìn củng Thủy",
+)
+GONG_HE_SI_CHOU: Term = (
+    "巳丑拱金", "Sì Chǒu Gǒng Jīn",
+    "Si-Chou arches Metal", "Tỵ Sửu củng Kim",
+)
+
+ARCHING_COMBINATIONS: List[Term] = [
+    GONG_HE_YIN_XU,
+    GONG_HE_HAI_WEI,
+    GONG_HE_SHEN_CHEN,
+    GONG_HE_SI_CHOU,
+]
+
+BRANCH_PAIR_TO_GONG_HE: Dict[frozenset, Term] = {
+    frozenset({"寅", "戌"}): GONG_HE_YIN_XU,
+    frozenset({"亥", "未"}): GONG_HE_HAI_WEI,
+    frozenset({"申", "辰"}): GONG_HE_SHEN_CHEN,
+    frozenset({"巳", "丑"}): GONG_HE_SI_CHOU,
+}
+
+GONG_HE_PAIR_TO_ELEMENT: Dict[frozenset, str] = {
+    frozenset({"寅", "戌"}): "Fire",
+    frozenset({"亥", "未"}): "Wood",
+    frozenset({"申", "辰"}): "Water",
+    frozenset({"巳", "丑"}): "Metal",
+}
+
+# ============================================================
+# XXIV. Lục Hợp Ngọ-Mùi Dual Transform (午未合 — Fire / Earth)
+# ============================================================
+
+LIU_HE_WU_WEI_EARTH: Term = (
+    "午未合化土", "Wǔ Wèi Hé Huà Tǔ",
+    "Wu-Wei combine, transform to Earth", "Ngọ Mùi hợp hóa Thổ",
+)
+
+# ============================================================
+# XXV. THÔNG CĂN — Rooting (通根)
+# ============================================================
+
+ROOTING: Term = (
+    "通根", "Tōng Gēn", "Rooting (stem anchored in branch)", "Thông Căn",
+)
+MAIN_QI_ROOT: Term = (
+    "本气根", "Běn Qì Gēn", "Main Qi Root", "Bản Khí Căn",
+)
+MIDDLE_QI_ROOT: Term = (
+    "中气根", "Zhōng Qì Gēn", "Middle Qi Root", "Trung Khí Căn",
+)
+RESIDUAL_QI_ROOT: Term = (
+    "余气根", "Yú Qì Gēn", "Residual Qi Root", "Dư Khí Căn",
+)
+UNROOTED: Term = (
+    "虚浮", "Xū Fú", "Unrooted (vain and floating)", "Hư Phù",
+)
+
+ROOTING_TERMS: List[Term] = [
+    ROOTING,
+    MAIN_QI_ROOT,
+    MIDDLE_QI_ROOT,
+    RESIDUAL_QI_ROOT,
+    UNROOTED,
+]
+
+# ============================================================
+# XXVI. MỘ KHỐ — Tombs & Treasuries (墓库)
+# ============================================================
+
+TOMB_TREASURY: Term = (
+    "墓库", "Mù Kù", "Tombs & Treasuries", "Mộ Khố",
+)
+ENTERING_TOMB: Term = (
+    "入墓", "Rù Mù", "Entering the Tomb", "Nhập Mộ",
+)
+ENTERING_TREASURY: Term = (
+    "入库", "Rù Kù", "Entering the Treasury", "Nhập Khố",
+)
+OPENING_TREASURY: Term = (
+    "开库", "Kāi Kù", "Opening the Treasury", "Mở Khố",
+)
+CLASHING_TREASURY: Term = (
+    "冲库", "Chōng Kù", "Clashing the Treasury Open", "Xung Khố",
+)
+
+TOMB_TREASURY_TERMS: List[Term] = [
+    TOMB_TREASURY,
+    ENTERING_TOMB,
+    ENTERING_TREASURY,
+    OPENING_TREASURY,
+    CLASHING_TREASURY,
+]
+
+# Four Tomb-Treasury branches
+TOMB_TREASURY_BRANCHES: frozenset = frozenset({"辰", "戌", "丑", "未"})
+
+# ============================================================
+# XXVII. TUẦN KHÔNG — Emptiness (旬空 / 空亡)
+# ============================================================
+
+DEATH_EMPTINESS: Term = (
+    "空亡", "Kōng Wáng", "Death and Emptiness", "Không Vong",
+)
+DECADE_EMPTINESS: Term = (
+    "旬空", "Xún Kōng", "Decade Emptiness", "Tuần Không",
+)
+INTERCEPTING_EMPTINESS: Term = (
+    "截空", "Jié Kōng", "Intercepting Emptiness", "Triệt Không",
+)
+RESOLVING_EMPTINESS: Term = (
+    "解空", "Jiě Kōng", "Resolving Emptiness", "Giải Không",
+)
+
+EMPTINESS_TERMS: List[Term] = [
+    DEATH_EMPTINESS,
+    DECADE_EMPTINESS,
+    INTERCEPTING_EMPTINESS,
+    RESOLVING_EMPTINESS,
+]
+
+# ============================================================
+# XXVIII. CUNG VỊ — Palaces & Pillars (宫位)
+# ============================================================
+
+YEAR_PALACE: Term = (
+    "年宫", "Nián Gōng", "Year Palace (Ancestor Palace)", "Niên Cung",
+)
+MONTH_PALACE: Term = (
+    "月宫", "Yuè Gōng", "Month Palace (Parents Palace)", "Nguyệt Cung",
+)
+DAY_PALACE: Term = (
+    "日宫", "Rì Gōng", "Day Palace (Spouse Palace)", "Nhật Cung",
+)
+HOUR_PALACE: Term = (
+    "时宫", "Shí Gōng", "Hour Palace (Children Palace)", "Thời Cung",
+)
+
+FOUR_PALACES: List[Term] = [
+    YEAR_PALACE,
+    MONTH_PALACE,
+    DAY_PALACE,
+    HOUR_PALACE,
+]
+
+# --- Extended Pillars ---
+
+CONCEPTION_PILLAR: Term = (
+    "胎元", "Tāi Yuán", "Conception Pillar", "Thai Nguyên",
+)
+LIFE_PALACE: Term = (
+    "命宫", "Mìng Gōng", "Life Palace", "Mệnh Cung",
+)
+BODY_PALACE: Term = (
+    "身宫", "Shēn Gōng", "Body Palace", "Thân Cung",
+)
+
+EXTENDED_PILLARS: List[Term] = [
+    CONCEPTION_PILLAR,
+    LIFE_PALACE,
+    BODY_PALACE,
+]
+
+PALACE_AND_PILLAR_TERMS: List[Term] = [
+    *FOUR_PALACES,
+    *EXTENDED_PILLARS,
+]
+
+# ============================================================
 # Composite lookup: all terminology in this module
 # ============================================================
 
@@ -1008,21 +1284,30 @@ ALL_TERMINOLOGY: List[Term] = [
     *HEAVENLY_STEM_FIVE_COMBINATIONS,
     *TRANSFORMATION_RELATED_TERMS,
     *HEAVENLY_STEM_CLASHES,
+    *HEAVENLY_STEM_RESTRAINTS,
     *COMBINATION_STATUS_TERMS,
     *SIX_BRANCH_COMBINATIONS,
+    LIU_HE_WU_WEI_EARTH,
     *THREE_COMBINATION_FRAMES,
+    HALF_THREE_COMBINATION, BAN_SAN_HE_SHENG, BAN_SAN_HE_MU,
     *DIRECTIONAL_COMBINATION_FRAMES,
     *SIX_CLASHES,
     *SIX_HARMS,
     *SIX_DESTRUCTIONS,
     *PUNISHMENT_TYPES,
     *INTERACTION_CATEGORY_TERMS,
+    *HIDDEN_COMBINATIONS,
+    ARCHING_COMBINATION, *ARCHING_COMBINATIONS,
     PROTRUSION, HIDDEN_STEM, MONTH_ORDER,
     *SIX_GOD_TERMS,
     *HIDDEN_STEM_ROLE_TERMS,
+    *ROOTING_TERMS,
+    *TOMB_TREASURY_TERMS,
+    *EMPTINESS_TERMS,
     *STRENGTH_TERMS,
     *SEASONAL_STRENGTH_TERMS,
     *DUPLICATION_TERMS,
+    *PALACE_AND_PILLAR_TERMS,
 ]
 
 # Chinese → full Term tuple (for any term in this module)
