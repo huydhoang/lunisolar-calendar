@@ -43,6 +43,17 @@ from .constants import (
     XUN_NAMES,
     PILLAR_WEIGHTS,
     LU_MAP,
+    AN_HE,
+    GONG_HE,
+    GONG_HE_ELEMENT,
+    GONG_HE_MISSING_MIDDLE,
+    SAN_HE_ELEMENT,
+    SAN_HUI_ELEMENT,
+    LIU_HE_TRANSFORM_ELEMENT,
+    STEM_RESTRAINT_PAIRS,
+    STEM_ROOT_BRANCHES,
+    ELEMENT_TO_TOMB,
+    TOMB_BRANCHES,
     NOBLEMAN_TABLE,
     ACADEMIC_STAR_TABLE,
     PEACH_BLOSSOM_TABLE,
@@ -99,6 +110,10 @@ from .branch_interactions import (
     detect_self_punishment,
     detect_xing,
     detect_branch_interactions,
+    evaluate_liu_he_transformation,
+    evaluate_san_he_transformation,
+    classify_ban_san_he,
+    resolve_interaction_conflicts,
 )
 
 # ── Stem Transformations ─────────────────────────────────
@@ -107,6 +122,9 @@ from .stem_transformations import (
     check_severe_clash,
     detect_stem_combinations,
     detect_transformations,
+    detect_jealous_combinations,
+    detect_stem_restraints,
+    detect_stem_clashes,
 )
 
 # ── Punishments ──────────────────────────────────────────
@@ -115,12 +133,21 @@ from .punishments import (
     detect_fu_yin_duplication,
 )
 
+# ── Rooting & Tomb Analysis ─────────────────────────────
+from .rooting import (
+    analyze_stem_roots,
+    analyze_dm_rooting,
+    analyze_tomb_treasury,
+)
+
 # ── Symbolic Stars ───────────────────────────────────────
 from .symbolic_stars import (
     void_branches,
     xun_name,
     void_in_pillars,
     detect_symbolic_stars,
+    get_void_branches_for_chart,
+    apply_void_effects,
 )
 
 # ── Structure ────────────────────────────────────────────

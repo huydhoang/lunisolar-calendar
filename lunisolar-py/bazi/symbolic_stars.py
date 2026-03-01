@@ -158,3 +158,57 @@ def detect_symbolic_stars(chart: Dict) -> List[Dict]:
             unique_results.append(r)
 
     return unique_results
+
+
+def get_void_branches_for_chart(chart: Dict) -> set:
+    """Return the set of void branches for this chart's day pillar."""
+    day_cycle = _cycle_from_stem_branch(
+        chart["pillars"]["day"]["stem"], chart["pillars"]["day"]["branch"]
+    )
+    v1, v2 = void_branches(day_cycle)
+    return {v1, v2} - {""}
+
+
+def apply_void_effects(chart: Dict, interactions: Dict) -> Dict:
+    """Apply Void Branch (空亡) effects to interaction results.
+
+    Void branches weaken combinations and clashes:
+    - 六合 involving a void branch → tagged as weakened
+    - 六冲 involving a void branch → tagged as weakened
+    - 三合 with a void branch → frame weakened
+    Non-void interactions are left unchanged.
+    """
+    void_set = get_void_branches_for_chart(chart)
+    if not void_set:
+        return interactions
+
+    result = {}
+    for key, items in interactions.items():
+        new_items = []
+        for item in items:
+            if key in ("六合",) and isinstance(item, dict):
+                pair = item.get("pair", ())
+                if set(pair) & void_set:
+                    item = dict(item)
+                    item["void_weakened"] = True
+                    if item.get("confidence"):
+                        item["confidence"] = max(item["confidence"] - 20, 10)
+                new_items.append(item)
+            elif key in ("六冲", "害", "六破", "暗合") and isinstance(item, tuple):
+                if set(item) & void_set:
+                    new_items.append({"pair": item, "void_weakened": True})
+                else:
+                    new_items.append(item)
+            elif key in ("三合",) and isinstance(item, dict):
+                trio = item.get("trio", frozenset())
+                if set(trio) & void_set:
+                    item = dict(item)
+                    item["void_weakened"] = True
+                    if item.get("confidence"):
+                        item["confidence"] = max(item["confidence"] - 15, 10)
+                new_items.append(item)
+            else:
+                new_items.append(item)
+        result[key] = new_items
+
+    return result

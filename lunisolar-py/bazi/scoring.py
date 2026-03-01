@@ -3,7 +3,7 @@ Day-Master Scoring, Chart Rating & Useful God (用神)
 ====================================================
 """
 
-from typing import Dict, List, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 from .constants import (
     HEAVENLY_STEMS, STEM_ELEMENT, BRANCH_ELEMENT,
@@ -33,8 +33,16 @@ def get_seasonal_strength(dm_elem: str, month_elem: str) -> int:
     return 0
 
 
-def score_day_master(chart: Dict) -> Tuple[float, str]:
-    """Score the Day Master's strength and classify as strong/weak/balanced."""
+def score_day_master(
+    chart: Dict,
+    interactions: Optional[Dict] = None,
+    rooting: Optional[Dict] = None,
+) -> Tuple[float, str]:
+    """Score the Day Master's strength and classify.
+
+    Classifications: extreme_strong / strong / balanced / weak / extreme_weak.
+    Optionally integrates interaction and rooting data for more accurate scoring.
+    """
     dm_stem = chart["day_master"]["stem"]
     dm_elem = chart["day_master"]["element"]
     month_branch = chart["pillars"]["month"]["branch"]
@@ -48,16 +56,20 @@ def score_day_master(chart: Dict) -> Tuple[float, str]:
     score += season_score * month_weight
 
     # 2) Root depth (hidden stems matching DM element)
-    for pname, p in chart["pillars"].items():
-        w = PILLAR_WEIGHTS.get(pname, 1.0)
-        for role, stem in p["hidden"]:
-            if STEM_ELEMENT[stem] == dm_elem:
-                if role == "main":
-                    score += 2 * w
-                elif role == "middle":
-                    score += 1 * w
-                elif role == "residual":
-                    score += 0.5 * w
+    if rooting:
+        # Use pre-computed rooting strength
+        score += rooting.get("total_strength", 0)
+    else:
+        for pname, p in chart["pillars"].items():
+            w = PILLAR_WEIGHTS.get(pname, 1.0)
+            for role, stem in p["hidden"]:
+                if STEM_ELEMENT[stem] == dm_elem:
+                    if role == "main":
+                        score += 2 * w
+                    elif role == "middle":
+                        score += 1 * w
+                    elif role == "residual":
+                        score += 0.5 * w
 
     # 3) Visible stem support
     for pname, p in chart["pillars"].items():
@@ -65,8 +77,35 @@ def score_day_master(chart: Dict) -> Tuple[float, str]:
         if STEM_ELEMENT[p["stem"]] == dm_elem:
             score += 1 * w
 
-    if score >= 6:
+    # 4) Interaction adjustments (if provided)
+    if interactions:
+        # 三合/三会 frame matching DM element → boost
+        for entry in interactions.get("三合", []):
+            target = entry.get("target_element") if isinstance(entry, dict) else None
+            if target == dm_elem:
+                score += 3.0
+            elif target and GEN_MAP.get(target) == dm_elem:
+                score += 1.5
+
+        for entry in interactions.get("三会", []):
+            from .constants import SAN_HUI_ELEMENT
+            if isinstance(entry, frozenset):
+                target = SAN_HUI_ELEMENT.get(entry)
+                if target == dm_elem:
+                    score += 3.0
+
+        # 六冲 on month branch → weakens seasonal support
+        for clash in interactions.get("六冲", []):
+            if isinstance(clash, tuple) and month_branch in clash:
+                score -= 2.0
+
+    # Classify with five tiers
+    if score >= 10:
+        strength = "extreme_strong"
+    elif score >= 6:
         strength = "strong"
+    elif score <= -6:
+        strength = "extreme_weak"
     elif score <= -3:
         strength = "weak"
     else:
@@ -79,24 +118,33 @@ def rate_chart(chart: Dict) -> int:
     """Quantitative 100-point chart rating."""
     total = 0
 
-    # 1. Strength balance (max 30)
+    # 1. Strength balance (max 30, 5 tiers)
     _score, strength = score_day_master(chart)
-    if strength == "balanced":
-        total += 30
-    elif strength == "strong":
-        total += 22
-    else:
-        total += 18
+    strength_points = {
+        "balanced": 30,
+        "strong": 22,
+        "weak": 18,
+        "extreme_strong": 12,
+        "extreme_weak": 10,
+    }
+    total += strength_points.get(strength, 15)
 
     # 2. Structure purity (max 25)
     struct_dict = classify_structure(chart, strength)
     s_score = struct_dict.get("dominance_score", 0)
-    if s_score > 8:
+    is_broken = struct_dict.get("is_broken", False)
+    composite = struct_dict.get("composite")
+
+    if is_broken:
+        total += 5
+    elif s_score > 8:
         total += 25
     elif s_score > 5:
         total += 18
     else:
         total += 10
+    if composite and not is_broken:
+        total += 3  # Composite structure bonus (capped by max)
 
     # 3. Element spread (max 20)
     elem_counts: Dict[str, int] = {}
@@ -122,40 +170,109 @@ def rate_chart(chart: Dict) -> int:
 
     # 5. Interaction stability (max 10)
     interactions = detect_branch_interactions(chart)
-    total += 4 if interactions["六冲"] else 10
+    stability = 10
+    if interactions.get("六冲"):
+        stability -= 3 * len(interactions["六冲"])
+    if interactions.get("刑"):
+        stability -= 2
+    if interactions.get("害"):
+        stability -= 1
+    if interactions.get("六破"):
+        stability -= 1
+    # Combinations are positive
+    if interactions.get("六合"):
+        stability += 1
+    if interactions.get("三合"):
+        stability += 2
+    total += max(0, min(stability, 10))
 
-    return total
+    return min(total, 100)
 
 
 def recommend_useful_god(
     chart: Dict, strength: str, structure: Dict = None
 ) -> Dict[str, Union[List[str], str]]:
-    """Recommend favorable/unfavorable elements based on DM strength and structure."""
+    """Structure-aware Useful God recommendation."""
     dm_elem = chart["day_master"]["element"]
     inverse_gen = {v: k for k, v in GEN_MAP.items()}
 
-    is_hurt_officer = structure and structure.get("primary") == "伤官格"
+    # Special structure handling
+    if structure:
+        primary = structure.get("primary", "")
+        category = structure.get("category", "")
 
-    if is_hurt_officer:
-        return {
-            "favorable": ["Wood"],
-            "avoid": ["Fire"],
-            "structure": "伤官格",
-            "useful_god": "Wood (Mộc) - to control Earth",
-            "joyful_god": "Fire (Hỏa) - to support Day Master",
-        }
+        # Follow structures → favor the dominant element category
+        if category == "从格":
+            if "从财" in primary:
+                wealth_elem = CONTROL_MAP[dm_elem]
+                return {
+                    "favorable": [wealth_elem, GEN_MAP[dm_elem]],
+                    "avoid": [dm_elem, inverse_gen[dm_elem]],
+                    "structure": primary,
+                    "useful_god": f"{wealth_elem} — follow wealth",
+                }
+            elif "从官" in primary:
+                officer_elem = CONTROL_MAP.get(
+                    {v: k for k, v in CONTROL_MAP.items()}.get(dm_elem, ""), ""
+                )
+                controlling_elem = [e for e, t in CONTROL_MAP.items() if t == dm_elem]
+                ctrl = controlling_elem[0] if controlling_elem else ""
+                return {
+                    "favorable": [ctrl, GEN_MAP.get(ctrl, "")],
+                    "avoid": [dm_elem],
+                    "structure": primary,
+                    "useful_god": f"{ctrl} — follow officer/killings",
+                }
 
-    if strength == "strong":
+        # Transform structures → favor the transformed element
+        if category == "化格":
+            target = structure.get("target_element", "")
+            if target:
+                return {
+                    "favorable": [target, inverse_gen.get(target, "")],
+                    "avoid": [CONTROL_MAP.get(target, "")],
+                    "structure": primary,
+                    "useful_god": f"{target} — transformation god",
+                }
+
+        # 伤官格 special handling
+        if primary == "伤官格":
+            return {
+                "favorable": ["Wood"],
+                "avoid": ["Fire"],
+                "structure": "伤官格",
+                "useful_god": "Wood (Mộc) - to control Earth",
+                "joyful_god": "Fire (Hỏa) - to support Day Master",
+            }
+
+    # Derive the five relational elements
+    officer_elem = [e for e, t in CONTROL_MAP.items() if t == dm_elem]
+    officer = officer_elem[0] if officer_elem else ""
+    resource = inverse_gen.get(dm_elem, "")
+    output = GEN_MAP.get(dm_elem, "")
+    wealth = CONTROL_MAP.get(dm_elem, "")
+
+    # Default strength-based recommendations
+    if strength in ("strong", "extreme_strong"):
+        # Strong DM: restrain with Officer, exhaust with Output/Wealth; avoid Peers + Resource
         return {
-            "favorable": [GEN_MAP[dm_elem], CONTROL_MAP[dm_elem]],
-            "avoid": [dm_elem],
+            "favorable": [officer, output, wealth],
+            "avoid": [dm_elem, resource],
+            "useful_god": f"{officer} — restrain strong DM",
+            "joyful_god": f"{output} — exhaust DM energy",
         }
-    if strength == "weak":
+    if strength in ("weak", "extreme_weak"):
+        # Weak DM: support with Resource + Peers; avoid Officer (primary threat) + Wealth
         return {
-            "favorable": [inverse_gen[dm_elem], dm_elem],
-            "avoid": [CONTROL_MAP[dm_elem]],
+            "favorable": [resource, dm_elem],
+            "avoid": [officer, wealth],
+            "useful_god": f"{resource} — support weak DM",
+            "joyful_god": f"{dm_elem} — peer support",
         }
+    # Balanced: favor moderate drainage + support
     return {
-        "favorable": [GEN_MAP[dm_elem], inverse_gen[dm_elem]],
+        "favorable": [output, resource],
         "avoid": [],
+        "useful_god": f"{output} — maintain balance via output",
+        "joyful_god": f"{resource} — gentle support",
     }

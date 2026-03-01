@@ -18,14 +18,22 @@ from .glossary import (
     BRANCH_PAIR_TO_LIU_HAI,
     BRANCH_PAIR_TO_LIU_PO,
     STEM_CLASH_PAIR_TO_TERM,
+    STEM_RESTRAIN_PAIR_TO_TERM,
     SAN_HE_SET_TO_TERM,
+    SAN_HE_SET_TO_ELEMENT,
     SAN_HUI_SET_TO_TERM,
+    SAN_HUI_SET_TO_ELEMENT,
     BAN_SAN_HE_BIRTH_PAIRS,
     BAN_SAN_HE_GRAVE_PAIRS,
     SELF_PUNISHMENT_BRANCHES,
     GRACELESS_PUNISHMENT_SET,
     BULLY_PUNISHMENT_SET,
     UNCIVIL_PUNISHMENT_SET,
+    # New glossary imports for Phases 1-5
+    BRANCH_PAIR_TO_AN_HE,
+    BRANCH_PAIR_TO_GONG_HE,
+    GONG_HE_PAIR_TO_ELEMENT,
+    LIU_HE_PAIR_TO_ELEMENT,
 )
 
 # Core Lists — from shared canonical constants
@@ -289,3 +297,71 @@ LU_MAP = {
     "戊": "巳", "己": "午", "庚": "申", "辛": "酉",
     "壬": "亥", "癸": "子",
 }
+
+# ============================================================
+# Hidden Combinations (暗合) — derived from glossary §XXII
+# ============================================================
+
+AN_HE = frozenset(BRANCH_PAIR_TO_AN_HE.keys())
+
+# ============================================================
+# Arching Combinations (拱合) — derived from glossary §XXIII
+# ============================================================
+
+GONG_HE = frozenset(BRANCH_PAIR_TO_GONG_HE.keys())
+GONG_HE_ELEMENT: Dict[frozenset, str] = dict(GONG_HE_PAIR_TO_ELEMENT)
+
+# Map arching pair → missing middle branch (the branch they "arch" over)
+GONG_HE_MISSING_MIDDLE: Dict[frozenset, str] = {
+    frozenset({"寅", "戌"}): "午",   # Fire frame: 寅午戌, missing 午
+    frozenset({"亥", "未"}): "卯",   # Wood frame: 亥卯未, missing 卯
+    frozenset({"申", "辰"}): "子",   # Water frame: 申子辰, missing 子
+    frozenset({"巳", "丑"}): "酉",   # Metal frame: 巳酉丑, missing 酉
+}
+
+# ============================================================
+# Three Combination (三合) element lookup
+# ============================================================
+
+SAN_HE_ELEMENT: Dict[frozenset, str] = dict(SAN_HE_SET_TO_ELEMENT)
+
+# ============================================================
+# Directional Combination (三会) element lookup
+# ============================================================
+
+SAN_HUI_ELEMENT: Dict[frozenset, str] = dict(SAN_HUI_SET_TO_ELEMENT)
+
+# ============================================================
+# Lục Hợp Transformation element map — derived from glossary §VIII
+# ============================================================
+
+LIU_HE_TRANSFORM_ELEMENT: Dict[frozenset, str] = dict(LIU_HE_PAIR_TO_ELEMENT)
+LIU_HE_WU_WEI_PAIR = frozenset({"午", "未"})
+LIU_HE_WU_WEI_ELEMENTS = ("Fire", "Earth")
+
+# ============================================================
+# Stem Restraints (天干相克) — derived from glossary §XXI
+# ============================================================
+
+STEM_RESTRAINT_PAIRS: Dict[tuple, str] = {
+    k: STEM_ELEMENT[k[0]]
+    for k in STEM_RESTRAIN_PAIR_TO_TERM
+}
+
+# ============================================================
+# Rooting map — stem → branches where it takes root
+# ============================================================
+
+STEM_ROOT_BRANCHES: Dict[str, List[str]] = {}
+for _branch, _hidden_list in BRANCH_HIDDEN_STEMS.items():
+    for _stem in _hidden_list:
+        STEM_ROOT_BRANCHES.setdefault(_stem, []).append(_branch)
+
+# ============================================================
+# Tomb/Treasury — element → tomb branch
+# ============================================================
+
+ELEMENT_TO_TOMB: Dict[str, str] = {
+    "Wood": "未", "Fire": "戌", "Metal": "丑", "Water": "辰", "Earth": "戌",
+}
+TOMB_BRANCHES = frozenset({"辰", "戌", "丑", "未"})

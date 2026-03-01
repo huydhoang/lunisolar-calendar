@@ -16,8 +16,14 @@ from .longevity import life_stage_detail, life_stages_for_chart
 from .nayin import nayin_for_cycle, _nayin_pure_element, analyze_nayin_interactions
 from .scoring import score_day_master
 from .branch_interactions import detect_branch_interactions
-from .stem_transformations import detect_stem_combinations, detect_transformations
+from .stem_transformations import (
+    detect_stem_combinations, detect_transformations,
+    detect_jealous_combinations, detect_stem_restraints, detect_stem_clashes,
+)
 from .punishments import detect_punishments, detect_fu_yin_duplication
+from .rooting import analyze_dm_rooting, analyze_tomb_treasury
+from .symbolic_stars import apply_void_effects
+from .structure import classify_structure
 
 
 def analyze_time_range(
@@ -166,15 +172,19 @@ def analyze_time_range(
 
 
 def comprehensive_analysis(chart: Dict) -> Dict:
-    """Produce a comprehensive interaction and transformation analysis."""
+    """Produce a comprehensive interaction and transformation analysis.
+
+    Integrates all subsystems: branch interactions, stem transformations,
+    rooting, tomb/treasury, void effects, structure classification, and scoring.
+    """
     dm = chart["day_master"]
     dm_stem = dm["stem"]
     dm_elem = dm["element"]
-    score, strength = score_day_master(chart)
 
     month_branch = chart["pillars"]["month"]["branch"]
     month_elem = BRANCH_ELEMENT[month_branch]
 
+    # Core subsystem outputs
     interactions = detect_branch_interactions(chart)
     stem_combos = detect_stem_combinations(chart)
     transformations = detect_transformations(chart)
@@ -182,9 +192,34 @@ def comprehensive_analysis(chart: Dict) -> Dict:
     life_stages = life_stages_for_chart(chart)
     nayin_analysis = analyze_nayin_interactions(chart)
 
+    # New subsystem outputs
+    dm_rooting = analyze_dm_rooting(chart)
+    tomb_analysis = analyze_tomb_treasury(chart)
+    jealous_combos = detect_jealous_combinations(chart)
+    stem_restraints = detect_stem_restraints(chart)
+    stem_clashes = detect_stem_clashes(chart)
+
+    # Apply void effects to interactions
+    interactions = apply_void_effects(chart, interactions)
+
+    # Score with interaction and rooting awareness
+    score, strength = score_day_master(chart, interactions=interactions, rooting=dm_rooting)
+
+    # Structure classification with full context
+    structure = classify_structure(
+        chart, strength,
+        score=score,
+        rooting=dm_rooting,
+        interactions=interactions,
+        transformations=transformations,
+    )
+
+    # Build summary
     summary_parts = [
-        f"Day Master {dm_stem} {dm_elem}; strength: {strength} ({score} pts).",
+        f"Day Master {dm_stem} {dm_elem}; strength: {strength} ({score:.1f} pts).",
         f"Born in {month_branch} ({month_elem} month).",
+        f"Rooting: {dm_rooting['classification']} (strength {dm_rooting['total_strength']}).",
+        f"Structure: {structure['primary']} ({structure['quality']}).",
     ]
     for t in transformations:
         if t["status"].startswith("Hóa"):
@@ -197,6 +232,10 @@ def comprehensive_analysis(chart: Dict) -> Dict:
     if punishments:
         p_types = {p["type"] for p in punishments}
         summary_parts.append(f"Punishments: {', '.join(p_types)}.")
+    if tomb_analysis:
+        for tomb in tomb_analysis:
+            if tomb["dm_enters_tomb"]:
+                summary_parts.append(f"DM enters tomb at {tomb['branch']} ({tomb['pillar']}).")
 
     return {
         "day_master": {
@@ -207,18 +246,30 @@ def comprehensive_analysis(chart: Dict) -> Dict:
             "strength_score": score,
             "born_in": f"{month_branch} ({month_elem} month)",
         },
+        "rooting": dm_rooting,
+        "structure": structure,
         "natal_interactions": {
-            "clashes": interactions.get("六冲", []),
             "combinations": interactions.get("六合", []),
+            "clashes": interactions.get("六冲", []),
             "san_he": interactions.get("三合", []),
+            "ban_san_he": interactions.get("半三合", []),
             "san_hui": interactions.get("三会", []),
-            "stem_combinations": stem_combos,
-            "transformations": transformations,
-            "punishments": punishments,
             "harms": interactions.get("害", []),
+            "destructions": interactions.get("六破", []),
+            "hidden_combinations": interactions.get("暗合", []),
+            "arching_combinations": interactions.get("拱合", []),
             "xing": interactions.get("刑", []),
             "self_punishment": interactions.get("自刑", []),
         },
+        "stem_interactions": {
+            "combinations": stem_combos,
+            "transformations": transformations,
+            "jealous_combinations": jealous_combos,
+            "restraints": stem_restraints,
+            "clashes": stem_clashes,
+        },
+        "tomb_treasury": tomb_analysis,
+        "punishments": punishments,
         "life_stages": life_stages,
         "nayin_analysis": nayin_analysis,
         "summary": " ".join(summary_parts),

@@ -156,6 +156,7 @@ def main() -> None:
             use_new_moons=use_new_moons,
             solar_date=solar_date,
             solar_time=solar_time,
+            comprehensive=comprehensive,
         )
         with open(args.output, "w", encoding="utf-8") as f:
             f.write(md)

@@ -338,11 +338,11 @@ class TestScoreDayMaster(unittest.TestCase):
         self.assertIn(strength, ('strong', 'weak', 'balanced'))
 
     def test_strong_fire_chart(self):
-        """丙 DM in month branch 午 (Fire peak) should be strong."""
+        """丙 DM in month branch 午 (Fire peak) should be strong or extreme_strong."""
         # 甲午=31, 丙午=43, 丁巳=54
         chart = build_chart(31, 43, 43, 54, "male")
         score, strength = score_day_master(chart)
-        self.assertEqual(strength, 'strong')
+        self.assertIn(strength, ('strong', 'extreme_strong'))
 
 
 class TestBranchInteractions(unittest.TestCase):
@@ -352,7 +352,11 @@ class TestBranchInteractions(unittest.TestCase):
         # 甲子=1, 乙丑=2, 丙寅=3, 丁巳=54
         chart = build_chart(1, 2, 3, 54, "male")
         interactions = detect_branch_interactions(chart)
-        self.assertTrue(any('子' in p and '丑' in p for p in interactions['六合']))
+        self.assertTrue(len(interactions['六合']) > 0)
+        item = interactions['六合'][0]
+        self.assertIn('pair', item)
+        self.assertIn('子', item['pair'])
+        self.assertIn('丑', item['pair'])
 
     def test_six_clash(self):
         """子 + 午 should trigger 六冲."""
@@ -478,9 +482,9 @@ class TestUsefulGod(unittest.TestCase):
         result = recommend_useful_god(
             {'day_master': {'element': 'Fire'}}, 'strong'
         )
-        # Strong Fire DM: favorable = [Earth (output), Metal (wealth)]
-        self.assertEqual(result['favorable'], ['Earth', 'Metal'])
-        self.assertEqual(result['avoid'], ['Fire'])
+        # Strong Fire DM: favorable = [Water (officer), Earth (output), Metal (wealth)]
+        self.assertEqual(result['favorable'], ['Water', 'Earth', 'Metal'])
+        self.assertEqual(result['avoid'], ['Fire', 'Wood'])
 
     def test_weak_dm(self):
         result = recommend_useful_god(
@@ -488,7 +492,8 @@ class TestUsefulGod(unittest.TestCase):
         )
         # Weak Fire DM: favorable = [Wood (resource), Fire (companion)]
         self.assertEqual(result['favorable'], ['Wood', 'Fire'])
-        self.assertEqual(result['avoid'], ['Metal'])
+        # Avoid Water (officer, primary threat) + Metal (wealth, depletes)
+        self.assertEqual(result['avoid'], ['Water', 'Metal'])
 
 
 class TestChartRating(unittest.TestCase):
@@ -1300,9 +1305,11 @@ class TestComprehensiveAnalysis(unittest.TestCase):
         ni = result['natal_interactions']
         self.assertIn('clashes', ni)
         self.assertIn('combinations', ni)
-        self.assertIn('transformations', ni)
-        self.assertIn('punishments', ni)
-        self.assertIn('stem_combinations', ni)
+        # Stem transformations now live under stem_interactions
+        si = result['stem_interactions']
+        self.assertIn('transformations', si)
+        self.assertIn('combinations', si)
+        self.assertIn('punishments', result)
 
     def test_has_life_stages(self):
         result = comprehensive_analysis(self.chart)
@@ -1325,7 +1332,7 @@ class TestComprehensiveAnalysis(unittest.TestCase):
         """Chart with 乙+庚 in Metal month → transformation in comprehensive output."""
         chart = build_chart(1, 22, 7, 4, 'male')  # 甲子, 乙酉, 庚午, 丁卯
         result = comprehensive_analysis(chart)
-        transforms = result['natal_interactions']['transformations']
+        transforms = result['stem_interactions']['transformations']
         hoa = [t for t in transforms if 'Hóa' in t['status']]
         self.assertTrue(len(hoa) > 0, "Expected successful transformation")
 
