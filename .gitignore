@@ -240,3 +240,7 @@ pkg/lunisolar_emcc.wasm
 
 # CodeQL
 _codeql_detected_source_root
+
+# Artifacts from testing
+lunisolar-py/report.md
+temp.md

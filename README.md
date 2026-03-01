@@ -4,7 +4,7 @@
 
 A comprehensive, high-precision astronomical and astrological calculator focused on the traditional Chinese lunisolar calendar. The project includes:
 
-1. **Python Data Pipeline** (`lunisolar-python/`) — Generates high-precision astronomical data (moon phases, solar terms, planetary events) using NASA's JPL DE440 ephemeris via Skyfield.
+1. **Python Data Pipeline** (`lunisolar-py/`) — Generates high-precision astronomical data (moon phases, solar terms, planetary events) using NASA's JPL DE440 ephemeris via Skyfield.
 2. **WebAssembly Modules** (`ports/`) — Three WASM implementations, all integrating with the Swiss Ephemeris for standalone operation:
    - **`lunisolar-rs/`** — Rust port using wasm-pack / wasm-bindgen (depends on `swisseph-rs`)
    - **`lunisolar-emcc/`** — C port using Emscripten / emcc (main package, published to npm)
@@ -28,7 +28,7 @@ lunisolar-ts/
 │   ├── lunisolar-rs/        # Rust WASM port (standalone with SE via swisseph-rs)
 │   ├── lunisolar-emcc/      # C WASM port (standalone with SE, builds to pkg/)
 │   └── swisseph-rs/         # Swiss Ephemeris Rust bindings + embedded .se1
-├── lunisolar-python/        # Python data pipeline
+├── lunisolar-py/            # Python data pipeline
 ├── docs/                    # Documentation
 ├── nasa/                    # JPL ephemeris data
 ├── output/                  # Generated data (CSV)
@@ -51,68 +51,84 @@ Activate with: source .venv/Scripts/activate
 
 ### Dependencies
 
-The project relies on several Python libraries. You can install them using pip. A `requirements.txt` file should be created with the following content:
+Install all Python dependencies into the venv:
 
-```txt
-skyfield
-pytz
-rich
-InquirerPy
-```
-
-Install the dependencies with the following command:
-
-```bash
+```powershell
+# Windows (PowerShell)
+.venv\Scripts\Activate.ps1
 uv pip install -r requirements.txt
 ```
 
-### Running the Calculators
+```bash
+# macOS / Linux
+source .venv/bin/activate
+uv pip install -r requirements.txt
+```
 
-The project has two main entry points:
+`requirements.txt` contains: `skyfield pytz rich InquirerPy pytest`
 
-1.  **Main Data Orchestrator (`data/main.py`)**
-    This script provides an interactive command-line interface to generate various astronomical data files.
+### Running the Python Implementation
 
-    **Usage:**
+All commands below assume the venv is active and cwd is `lunisolar-py/`.
 
-    ```bash
-    python lunisolar-python/main.py --start-date YYYY-MM-DD --end-date YYYY-MM-DD
-    ```
+#### Lunisolar calendar conversion
 
-    - `--start-date`: The beginning of the calculation period.
-    - `--end-date`: The end of the calculation period.
-    - `--batch-mode`: (Optional) Runs without the interactive prompt and generates all available data files.
+```bash
+python -m lunisolar --date 2025-06-15
+python -m lunisolar --date 2025-06-15 --time 08:30 --tz Asia/Shanghai
+```
 
-    The script will save the generated data into CSV files in an `output/` directory (which it will create if it doesn't exist).
+Outputs the full Gregorian → lunisolar conversion with year/month/day/hour ganzhi in the sexagenary cycle.
 
-2.  **Auspicious Days Calculator (`data/calculate_auspicious_days.py`)**
-    This script provides a detailed daily analysis based on the integrated "Twelve Construction Stars" and "Great Yellow Path" systems.
+#### Auspicious days calendar (Huangdao systems)
 
-    **Usage:**
+```bash
+python -m huangdao -y 2025 -m 6
+python -m huangdao -y 2025 -m 6 --timezone Asia/Shanghai
+```
 
-    ```bash
-    python lunisolar-python/calculate_auspicious_days.py --year YYYY --timezone TZ
-    ```
+Prints a monthly table combining the **12 Construction Stars** (十二建星) and the **Great Yellow Path** (大黄道).
 
-    - `--year`: The year to analyze (e.g., 2025).
-    - `--timezone`: (Optional) The timezone for calculations (e.g., `Asia/Ho_Chi_Minh`). Defaults to `Asia/Ho_Chi_Minh`.
+#### Bazi (Four Pillars) analysis
 
-    This script prints a formatted calendar and detailed daily information directly to the console.
+```bash
+python -m bazi --date 1990-05-15 --time 08:00 --tz Asia/Shanghai
+```
+
+#### Bulk data generation
+
+```bash
+python main.py --start-date 2025-01-01 --end-date 2025-12-31
+```
+
+Generates CSV files for moon phases, solar terms, and celestial events into `output/`.
+
+#### Tests
+
+```bash
+python -m pytest test_lunisolar_v2.py test_bazi.py -v
+```
+
+Expected: **179 tests pass** (9 lunisolar + 170 bazi).
 
 ## Development Conventions
 
-- **Modularity:** The codebase is well-organized into modules, each with a specific responsibility (e.g., `moon_phases.py`, `solar_terms.py`). This separation of concerns makes the project maintainable and easy to extend.
-- **Configuration:** A central `data/config.py` file is used to store shared constants like file paths, astronomical constants, and processing settings.
-- **Documentation:** The code is extensively documented with detailed docstrings that not only explain the code's function but also the traditional Chinese calendar rules and astronomical principles behind the calculations. The `docs/` directory provides further in-depth explanations.
-- **Data-Driven:** The calculations are driven by high-precision ephemeris data from NASA, located in the `nasa/` directory.
-- **Clarity and Rules-Compliance:** The `data/lunisolar_v2.py` module is a prime example of the project's focus on correctly implementing the complex, nuanced rules of the traditional lunisolar calendar, such as the "no-zhongqi" rule for leap months and proper timezone handling (CST).
+- **Modularity:** Code is organised into focused packages (`lunisolar/`, `huangdao/`, `bazi/`, `ephemeris/`, `shared/`). Top-level `.py` files are backward-compatible facades.
+- **Shared constants:** All packages import from `shared/constants.py` and `shared/models.py` — no local copies of stems/branches/terms.
+- **Configuration:** `config.py` holds the output directory and ephemeris path. All paths are relative to the repo root.
+- **Logging:** `utils.setup_logging()` returns a standard Python logger. It never calls `sys.stdout.reconfigure()`, making it safe under pytest capture.
+- **Data-Driven:** All astronomical calculations use NASA JPL DE440 via Skyfield (`nasa/de440.bsp`).
+- **Documentation:** The `docs/` directory explains the traditional calendar rules, Huangdao systems, and architecture in depth.
 
 ## Key Files
 
-- `lunisolar-python/main.py`: The main entry point for generating bulk astronomical data.
-- `lunisolar-python/huangdao_systems.py`: A comprehensive, standalone tool for calculating and displaying auspicious days based on the two traditional Chinese systems: Great Yellow Path (also referred to as the 12 Spirits) and the 12 Construction Stars (also referred to as the Lesser or Small Yellow Path).
-- `lunisolar-python/lunisolar_v2.py`: A clean, modular, and rule-compliant engine for converting solar dates to the full lunisolar representation, including the sexagenary cycles (Gan-Zhi). It depends on `lunisolar-python/timezone_handler.py` for timezone handling.
-- `lunisolar-python/config.py`: Contains all shared configuration variables and constants.
-- `lunisolar-python/*.py`: Other files in this directory (`celestial_events.py`, `moon_phases.py`, `solar_terms.py`, etc.) are specialized modules for specific calculations.
-- `docs/`: Contains essential documentation explaining the lunisolar calendar rules, including the two main Huangdao (Yellow Path) systems: the Great Yellow Path and the 12 Construction Stars.
-- `nasa/de440.bsp`: The JPL ephemeris data file, which is the core data source for all astronomical calculations.
+- `lunisolar-py/lunisolar/` — Lunisolar calendar engine package. Public API: `lunisolar.api.solar_to_lunisolar()`. Entry point: `python -m lunisolar`.
+- `lunisolar-py/huangdao/` — Auspicious-day systems (12 Construction Stars + Great Yellow Path). Entry point: `python -m huangdao`.
+- `lunisolar-py/bazi/` — Four Pillars (Bazi) analysis package. Entry point: `python -m bazi`.
+- `lunisolar-py/shared/` — Canonical constants (`HEAVENLY_STEMS`, `EARTHLY_BRANCHES`, …) and dataclasses (`LunisolarDateDTO`) shared across all packages.
+- `lunisolar-py/ephemeris/` — Low-level Skyfield wrappers for solar terms and moon phases.
+- `lunisolar-py/lunisolar_v2.py` — Backward-compatible facade → `lunisolar` package.
+- `lunisolar-py/huangdao_systems_v2.py` — Backward-compatible facade → `huangdao` package.
+- `lunisolar-py/config.py` — Shared configuration (output directory, ephemeris path).
+- `docs/architecture.md` — Full package architecture and data-flow diagrams.
+- `nasa/de440.bsp` — NASA JPL DE440 ephemeris (core data source for all astronomical calculations).

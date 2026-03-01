@@ -1,5 +1,5 @@
-use wasm_bindgen::prelude::*;
 use serde::{Deserialize, Serialize};
+use wasm_bindgen::prelude::*;
 
 pub mod bazi;
 mod ephemeris;
@@ -7,24 +7,34 @@ mod ephemeris;
 // ── Constants ────────────────────────────────────────────────────────────────
 
 const HEAVENLY_STEMS: [&str; 10] = ["甲", "乙", "丙", "丁", "戊", "己", "庚", "辛", "壬", "癸"];
-const EARTHLY_BRANCHES: [&str; 12] = ["子", "丑", "寅", "卯", "辰", "巳", "午", "未", "申", "酉", "戌", "亥"];
+const EARTHLY_BRANCHES: [&str; 12] = [
+    "子", "丑", "寅", "卯", "辰", "巳", "午", "未", "申", "酉", "戌", "亥",
+];
 
 // Construction Stars (十二建星)
-const CONSTRUCTION_STARS: [&str; 12] = ["建", "除", "满", "平", "定", "执", "破", "危", "成", "收", "开", "闭"];
+const CONSTRUCTION_STARS: [&str; 12] = [
+    "建", "除", "满", "平", "定", "执", "破", "危", "成", "收", "开", "闭",
+];
 // Building branch for each lunar month (index 0 unused; 1..12)
 const BUILDING_BRANCH: [usize; 13] = [
     0, // placeholder for index 0
-    2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 0, 1,
+    2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 0,
+    1,
     // month 1→寅(2), 2→卯(3), ..., 11→子(0), 12→丑(1)
 ];
 
 // Great Yellow Path (大黄道) spirit names and Azure Dragon monthly start branch indices
-const GYP_SPIRITS: [&str; 12] = ["青龙", "明堂", "天刑", "朱雀", "金匮", "天德", "白虎", "玉堂", "天牢", "玄武", "司命", "勾陈"];
-const GYP_AUSPICIOUS: [bool; 12] = [true, true, false, false, true, true, false, true, false, false, true, false];
+const GYP_SPIRITS: [&str; 12] = [
+    "青龙", "明堂", "天刑", "朱雀", "金匮", "天德", "白虎", "玉堂", "天牢", "玄武", "司命", "勾陈",
+];
+const GYP_AUSPICIOUS: [bool; 12] = [
+    true, true, false, false, true, true, false, true, false, false, true, false,
+];
 // Azure Dragon start branch index by lunar month (index 0 unused; 1..12)
 const AZURE_START: [usize; 13] = [
     0, // placeholder
-    0, 2, 4, 6, 8, 10, 0, 2, 4, 6, 8, 10,
+    0, 2, 4, 6, 8, 10, 0, 2, 4, 6, 8,
+    10,
     // month 1→子(0), 2→寅(2), ..., 7→子(0), 8→寅(2), ...
 ];
 
@@ -38,8 +48,12 @@ struct DateOnly {
 }
 
 fn date_only_compare(a: &DateOnly, b: &DateOnly) -> i64 {
-    if a.y != b.y { return (a.y - b.y) as i64; }
-    if a.m != b.m { return (a.m as i64) - (b.m as i64); }
+    if a.y != b.y {
+        return (a.y - b.y) as i64;
+    }
+    if a.m != b.m {
+        return (a.m as i64) - (b.m as i64);
+    }
     (a.d as i64) - (b.d as i64)
 }
 
@@ -112,7 +126,9 @@ fn cycle_from_stem_branch(stem_idx1: usize, branch_idx1: usize) -> usize {
 
 fn year_ganzhi(lunar_year: i32) -> (&'static str, &'static str, usize) {
     let mut year_cycle = ((lunar_year - 4) % 60) + 1;
-    if year_cycle <= 0 { year_cycle += 60; }
+    if year_cycle <= 0 {
+        year_cycle += 60;
+    }
     let stem = HEAVENLY_STEMS[((year_cycle - 1) % 10) as usize];
     let branch = EARTHLY_BRANCHES[((year_cycle - 1) % 12) as usize];
     (stem, branch, year_cycle as usize)
@@ -133,7 +149,9 @@ fn month_ganzhi(lunar_year: i32, lunar_month: u32) -> (&'static str, &'static st
 
     let month_stem_idx = ((first_month_stem_idx - 1 + (lunar_month as usize - 1)) % 10) + 1;
     let mut month_branch_idx = ((lunar_month as usize + 2) % 12) as usize;
-    if month_branch_idx == 0 { month_branch_idx = 12; }
+    if month_branch_idx == 0 {
+        month_branch_idx = 12;
+    }
 
     let stem_char = HEAVENLY_STEMS[month_stem_idx - 1];
     let branch_char = EARTHLY_BRANCHES[month_branch_idx - 1];
@@ -167,13 +185,20 @@ fn hour_ganzhi(local_date_utc_ms: f64, base_day_stem: &str) -> (&'static str, &'
         0 // Zi
     } else {
         let idx = ((decimal - 1.0) / 2.0).floor() as usize + 1;
-        if idx >= 12 { 11 } else { idx }
+        if idx >= 12 {
+            11
+        } else {
+            idx
+        }
     };
 
     let branch_idx1 = branch_index0 + 1;
 
     let day_stem_for_hour = if hour >= 23 {
-        let day_stem_idx = HEAVENLY_STEMS.iter().position(|&s| s == base_day_stem).unwrap();
+        let day_stem_idx = HEAVENLY_STEMS
+            .iter()
+            .position(|&s| s == base_day_stem)
+            .unwrap();
         HEAVENLY_STEMS[(day_stem_idx + 1) % 10]
     } else {
         base_day_stem
@@ -289,9 +314,17 @@ fn from_solar_date_core(
             // Map even-indexed solar terms to principal term numbers (Z1..Z12):
             // idx 0→Z2, 2→Z3, ..., 18→Z11 (Winter Solstice), 20→Z12, 22→Z1
             let term_index_raw = (idx / 2) + 2;
-            let term_index = if term_index_raw > 12 { term_index_raw - 12 } else { term_index_raw };
+            let term_index = if term_index_raw > 12 {
+                term_index_raw - 12
+            } else {
+                term_index_raw
+            };
             let cst_date = cst_date_of(utc_ms, cst_offset);
-            PrincipalTerm { instant_utc_ms: utc_ms, cst_date, term_index }
+            PrincipalTerm {
+                instant_utc_ms: utc_ms,
+                cst_date,
+                term_index,
+            }
         })
         .collect();
     principal_terms.sort_by(|a, b| a.instant_utc_ms.partial_cmp(&b.instant_utc_ms).unwrap());
@@ -329,13 +362,17 @@ fn from_solar_date_core(
     }
 
     // Find Winter Solstice (Z11) terms
-    let z11: Vec<&PrincipalTerm> = principal_terms.iter().filter(|t| t.term_index == 11).collect();
+    let z11: Vec<&PrincipalTerm> = principal_terms
+        .iter()
+        .filter(|t| t.term_index == 11)
+        .collect();
     if z11.is_empty() {
         return Err("No Winter Solstice (Z11) term found".to_string());
     }
 
     let target_year = local_year;
-    let current_year_z11 = z11.iter()
+    let current_year_z11 = z11
+        .iter()
         .find(|t| {
             let (y, _, _, _, _, _) = utc_ms_to_date_parts(t.instant_utc_ms, 0);
             y == target_year
@@ -361,9 +398,10 @@ fn from_solar_date_core(
     };
 
     // Find Zi month (contains Winter Solstice)
-    let zi_index = periods.iter().position(|p| {
-        p.start_utc_ms <= anchor_solstice_ms && anchor_solstice_ms < p.end_utc_ms
-    }).ok_or("Failed to locate Zi-month containing Winter Solstice")?;
+    let zi_index = periods
+        .iter()
+        .position(|p| p.start_utc_ms <= anchor_solstice_ms && anchor_solstice_ms < p.end_utc_ms)
+        .ok_or("Failed to locate Zi-month containing Winter Solstice")?;
 
     periods[zi_index].month_number = 11;
     periods[zi_index].is_leap = false;
@@ -398,12 +436,17 @@ fn from_solar_date_core(
 
     // Find target period by CST date-only comparison
     let target_cst = cst_date_of(timestamp_ms, cst_offset);
-    let target_period = periods.iter().find(|p| {
-        within_cst_range(&target_cst, &p.start_cst, &p.end_cst)
-    }).ok_or("No lunar month period found for target date")?;
+    let target_period = periods
+        .iter()
+        .find(|p| within_cst_range(&target_cst, &p.start_cst, &p.end_cst))
+        .ok_or("No lunar month period found for target date")?;
 
     // Lunar day
-    let start_days = days_from_civil(target_period.start_cst.y, target_period.start_cst.m, target_period.start_cst.d);
+    let start_days = days_from_civil(
+        target_period.start_cst.y,
+        target_period.start_cst.m,
+        target_period.start_cst.d,
+    );
     let tgt_days = days_from_civil(target_cst.y, target_cst.m, target_cst.d);
     let lunar_day_raw = (tgt_days - start_days + 1) as u32;
     let lunar_day = lunar_day_raw.max(1).min(30);
@@ -443,7 +486,9 @@ fn from_solar_date_core(
     let (h_stem, h_branch, h_cycle) = hour_ganzhi(wall_ms, d_stem);
 
     // Huangdao: Construction Star + Great Yellow Path
-    let day_branch_idx = EARTHLY_BRANCHES.iter().position(|&b| b == d_branch)
+    let day_branch_idx = EARTHLY_BRANCHES
+        .iter()
+        .position(|&b| b == d_branch)
         .expect("day_ganzhi returned an invalid branch character");
     let cs = construction_star(target_period.month_number, day_branch_idx);
     let (spirit, spirit_auspicious) = gyp_spirit(target_period.month_number, day_branch_idx);
@@ -467,7 +512,11 @@ fn from_solar_date_core(
         hour_cycle: h_cycle,
         construction_star: cs.to_string(),
         gyp_spirit: spirit.to_string(),
-        gyp_path_type: if spirit_auspicious { "黄道".to_string() } else { "黑道".to_string() },
+        gyp_path_type: if spirit_auspicious {
+            "黄道".to_string()
+        } else {
+            "黑道".to_string()
+        },
     })
 }
 
@@ -515,10 +564,7 @@ pub fn from_solar_date(
 /// # Returns
 /// JSON string with lunisolar date result
 #[wasm_bindgen(js_name = "fromSolarDateAuto")]
-pub fn from_solar_date_auto(
-    timestamp_ms: f64,
-    tz_offset_seconds: i32,
-) -> Result<String, JsError> {
+pub fn from_solar_date_auto(timestamp_ms: f64, tz_offset_seconds: i32) -> Result<String, JsError> {
     // Determine which years of data we need
     let (local_year, _, _, _, _, _) = utc_ms_to_date_parts(timestamp_ms, tz_offset_seconds);
     let start_year = local_year - 1;
@@ -529,7 +575,9 @@ pub fn from_solar_date_auto(
     let solar_terms = ephemeris::compute_solar_terms(start_year, end_year);
 
     if new_moons.len() < 2 {
-        return Err(JsError::new("Insufficient new moon data from Swiss Ephemeris"));
+        return Err(JsError::new(
+            "Insufficient new moon data from Swiss Ephemeris",
+        ));
     }
     if solar_terms.is_empty() {
         return Err(JsError::new("No solar terms computed from Swiss Ephemeris"));
@@ -591,7 +639,9 @@ pub fn from_solar_date_range(
     let solar_terms = ephemeris::compute_solar_terms(min_year, max_year);
 
     if new_moons.len() < 2 {
-        return Err(JsError::new("Insufficient new moon data from Swiss Ephemeris"));
+        return Err(JsError::new(
+            "Insufficient new moon data from Swiss Ephemeris",
+        ));
     }
     if solar_terms.is_empty() {
         return Err(JsError::new("No solar terms computed from Swiss Ephemeris"));
@@ -606,14 +656,151 @@ pub fn from_solar_date_range(
         let timestamp_ms = d as f64 * 86400000.0 + 12.0 * 3600000.0;
         match from_solar_date_core(timestamp_ms, tz_offset_seconds, &new_moons, &solar_terms) {
             Ok(r) => results.push(r),
-            Err(e) => return Err(JsError::new(&format!(
-                "Failed for {}-{:02}-{:02}: {}", y, m, dd, e
-            ))),
+            Err(e) => {
+                return Err(JsError::new(&format!(
+                    "Failed for {}-{:02}-{:02}: {}",
+                    y, m, dd, e
+                )))
+            }
         }
     }
 
     serde_json::to_string(&results)
         .map_err(|e| JsError::new(&format!("Failed to serialize results: {}", e)))
+}
+
+// ── Bazi WASM Exports ────────────────────────────────────────────────────────
+
+#[wasm_bindgen(js_name = "baziStemElement")]
+pub fn bazi_stem_element(stem_idx: usize) -> String {
+    if stem_idx >= 10 {
+        return String::new();
+    }
+    bazi::STEM_ELEMENT[stem_idx].to_string()
+}
+
+#[wasm_bindgen(js_name = "baziStemPolarity")]
+pub fn bazi_stem_polarity(stem_idx: usize) -> String {
+    if stem_idx >= 10 {
+        return String::new();
+    }
+    bazi::STEM_POLARITY[stem_idx].to_string()
+}
+
+#[wasm_bindgen(js_name = "baziBranchElement")]
+pub fn bazi_branch_element(branch_idx: usize) -> String {
+    if branch_idx >= 12 {
+        return String::new();
+    }
+    bazi::BRANCH_ELEMENT[branch_idx].to_string()
+}
+
+#[wasm_bindgen(js_name = "baziTenGod")]
+pub fn bazi_ten_god(dm_stem_idx: usize, target_stem_idx: usize) -> String {
+    if dm_stem_idx >= 10 || target_stem_idx >= 10 {
+        return String::new();
+    }
+    bazi::ten_god(dm_stem_idx, target_stem_idx).to_string()
+}
+
+#[wasm_bindgen(js_name = "baziChangshengStage")]
+pub fn bazi_changsheng_stage(stem_idx: usize, branch_idx: usize) -> Result<String, JsError> {
+    if stem_idx >= 10 || branch_idx >= 12 {
+        return Err(JsError::new("Invalid stem or branch index"));
+    }
+    let (stage_idx, stage_name) = bazi::changsheng_stage(stem_idx, branch_idx);
+    Ok(serde_json::to_string(&serde_json::json!({
+        "index": stage_idx,
+        "chinese": stage_name,
+        "english": bazi::LONGEVITY_STAGES_EN[stage_idx - 1],
+        "vietnamese": bazi::LONGEVITY_STAGES_VI[stage_idx - 1],
+        "strengthClass": if stage_idx <= 5 { "strong" } else { "weak" }
+    }))
+    .map_err(|e| JsError::new(&format!("Serialization error: {}", e)))?)
+}
+
+#[wasm_bindgen(js_name = "baziNaYin")]
+pub fn bazi_nayin(cycle: usize) -> Result<String, JsError> {
+    if !(1..=60).contains(&cycle) {
+        return Err(JsError::new("Cycle must be 1-60"));
+    }
+    let entry =
+        bazi::nayin_for_cycle(cycle).ok_or_else(|| JsError::new("Na Yin entry not found"))?;
+    Ok(serde_json::to_string(&serde_json::json!({
+        "element": entry.element,
+        "chinese": entry.chinese,
+        "vietnamese": entry.vietnamese,
+        "english": entry.english
+    }))
+    .map_err(|e| JsError::new(&format!("Serialization error: {}", e)))?)
+}
+
+#[wasm_bindgen(js_name = "baziDetectStemCombinations")]
+pub fn bazi_detect_stem_combinations(pillars_json: &str) -> Result<String, JsError> {
+    let pillars: bazi::FourPillars = serde_json::from_str(pillars_json)
+        .map_err(|e| JsError::new(&format!("Failed to parse pillars JSON: {}", e)))?;
+    let results = bazi::detect_stem_combinations(&pillars);
+    Ok(serde_json::to_string(&results)
+        .map_err(|e| JsError::new(&format!("Serialization error: {}", e)))?)
+}
+
+#[wasm_bindgen(js_name = "baziDetectTransformations")]
+pub fn bazi_detect_transformations(
+    pillars_json: &str,
+    month_branch_idx: usize,
+) -> Result<String, JsError> {
+    if month_branch_idx >= 12 {
+        return Err(JsError::new(&format!(
+            "month_branch_idx must be 0-11, got {}",
+            month_branch_idx
+        )));
+    }
+    let pillars: bazi::FourPillars = serde_json::from_str(pillars_json)
+        .map_err(|e| JsError::new(&format!("Failed to parse pillars JSON: {}", e)))?;
+    let results = bazi::detect_transformations(&pillars, month_branch_idx);
+    Ok(serde_json::to_string(&results)
+        .map_err(|e| JsError::new(&format!("Serialization error: {}", e)))?)
+}
+
+#[wasm_bindgen(js_name = "baziDetectPunishments")]
+pub fn bazi_detect_punishments(pillars_json: &str) -> Result<String, JsError> {
+    let pillars: bazi::FourPillars = serde_json::from_str(pillars_json)
+        .map_err(|e| JsError::new(&format!("Failed to parse pillars JSON: {}", e)))?;
+    let results = bazi::detect_punishments(&pillars);
+    Ok(serde_json::to_string(&results)
+        .map_err(|e| JsError::new(&format!("Serialization error: {}", e)))?)
+}
+
+#[wasm_bindgen(js_name = "baziDetectPhucNgam")]
+pub fn bazi_detect_phuc_ngam(
+    pillars_json: &str,
+    dynamic_stem_idx: usize,
+    dynamic_branch_idx: usize,
+) -> Result<String, JsError> {
+    let pillars: bazi::FourPillars = serde_json::from_str(pillars_json)
+        .map_err(|e| JsError::new(&format!("Failed to parse pillars JSON: {}", e)))?;
+    let results = bazi::detect_phuc_ngam(&pillars, dynamic_stem_idx, dynamic_branch_idx);
+    Ok(serde_json::to_string(&results)
+        .map_err(|e| JsError::new(&format!("Serialization error: {}", e)))?)
+}
+
+#[wasm_bindgen(js_name = "baziElementRelation")]
+pub fn bazi_element_relation(dm_elem: &str, other_elem: &str) -> String {
+    bazi::element_relation(dm_elem, other_elem).to_string()
+}
+
+#[wasm_bindgen(js_name = "baziGanzhiFromCycle")]
+pub fn bazi_ganzhi_from_cycle(cycle: usize) -> Result<String, JsError> {
+    if !(1..=60).contains(&cycle) {
+        return Err(JsError::new("Cycle must be 1-60"));
+    }
+    let (stem, branch) = bazi::ganzhi_from_cycle(cycle);
+    Ok(serde_json::to_string(&serde_json::json!({
+        "stem": stem,
+        "branch": branch,
+        "cycle": cycle
+    }))
+    .map_err(|e| JsError::new(&format!("Serialization error: {}", e)))?)
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────────

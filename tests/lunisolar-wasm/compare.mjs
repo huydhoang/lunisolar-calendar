@@ -6,6 +6,8 @@
  * TypeScript package.  Compares all three JS/WASM variants against
  * the Python ground truth in a markdown table.
  *
+ * Includes Bazi (Four Pillars) analysis verification.
+ *
  * Usage:  node compare.mjs
  * Outputs: compare-report.md
  */
@@ -62,10 +64,6 @@ function loadDataForYears(years) {
 const STEMS = ['甲', '乙', '丙', '丁', '戊', '己', '庚', '辛', '壬', '癸'];
 const BRANCHES = ['子', '丑', '寅', '卯', '辰', '巳', '午', '未', '申', '酉', '戌', '亥'];
 
-/**
- * Compute sexagenary cycle number (1–60) from stem and branch characters.
- * Returns -1 if the character is not found (encoding mismatch).
- */
 function cycleFromChars(stem, branch) {
   const s = STEMS.indexOf(stem);
   const b = BRANCHES.indexOf(branch);
@@ -76,12 +74,16 @@ function cycleFromChars(stem, branch) {
   return -1;
 }
 
+function stemIdx(stem) {
+  return STEMS.indexOf(stem);
+}
+
+function branchIdx(branch) {
+  return BRANCHES.indexOf(branch);
+}
+
 // ── 6. Timezone offset helper ───────────────────────────────────────────────
 
-/**
- * Compute the actual UTC offset in seconds for a given timestamp in a timezone.
- * This handles historical DST (e.g. China's DST during 1986–1991).
- */
 function getTzOffsetSeconds(dateMs, tz) {
   const d = new Date(dateMs);
   const parts = new Intl.DateTimeFormat('en-US', {
@@ -98,7 +100,6 @@ function getTzOffsetSeconds(dateMs, tz) {
   const get = (type) => {
     const p = parts.find((p) => p.type === type);
     let v = p ? parseInt(p.value) : 0;
-    // Intl.DateTimeFormat can represent midnight as hour 24 of the prior day
     if (type === 'hour' && v === 24) v = 0;
     return v;
   };
@@ -121,10 +122,6 @@ function getTzOffsetSeconds(dateMs, tz) {
 
 // ── 7. Emscripten WASM wrapper (standalone) ─────────────────────────────────
 
-/**
- * Call the standalone Emscripten-compiled from_solar_date_auto function.
- * Uses embedded Swiss Ephemeris to compute new moons and solar terms internally.
- */
 function emccFromSolarDateAuto(timestampMs, tzOffsetSeconds) {
   const outBufLen = 1024;
   const outPtr = emccModule._malloc(outBufLen);
@@ -144,9 +141,151 @@ function emccFromSolarDateAuto(timestampMs, tzOffsetSeconds) {
   return json ? JSON.parse(json) : null;
 }
 
-// ── 8. Generate random timestamps ──────────────────────────────────────────
+// ── 8. Emscripten Bazi helpers ──────────────────────────────────────────────
 
-// Use a simple seeded RNG for reproducibility
+const ELEMENT_NAMES = ['Wood', 'Fire', 'Earth', 'Metal', 'Water'];
+const POLARITY_NAMES = ['Yang', 'Yin'];
+
+function emccBaziStemElement(stemIdx) {
+  return ELEMENT_NAMES[emccModule._bazi_stem_element(stemIdx)] || '';
+}
+
+function emccBaziStemPolarity(stemIdx) {
+  return POLARITY_NAMES[emccModule._bazi_stem_polarity(stemIdx)] || '';
+}
+
+function emccBaziBranchElement(branchIdx) {
+  return ELEMENT_NAMES[emccModule._bazi_branch_element(branchIdx)] || '';
+}
+
+function emccBaziTenGod(dmStemIdx, targetStemIdx) {
+  const ptr = emccModule._bazi_ten_god(dmStemIdx, targetStemIdx);
+  return emccModule.UTF8ToString(ptr);
+}
+
+function emccBaziLifeStage(stemIdx, branchIdx) {
+  const outPtr = emccModule._malloc(64);
+  emccModule._bazi_life_stage_detail(stemIdx, branchIdx, outPtr);
+  const idx = emccModule.HEAP32[outPtr >> 2];
+  const cnPtr = emccModule.HEAP32[(outPtr >> 2) + 1];
+  const enPtr = emccModule.HEAP32[(outPtr >> 2) + 2];
+  const viPtr = emccModule.HEAP32[(outPtr >> 2) + 3];
+  const scPtr = emccModule.HEAP32[(outPtr >> 2) + 4];
+  const result = {
+    index: idx,
+    chinese: emccModule.UTF8ToString(cnPtr),
+    english: emccModule.UTF8ToString(enPtr),
+    vietnamese: emccModule.UTF8ToString(viPtr),
+    strengthClass: emccModule.UTF8ToString(scPtr),
+  };
+  emccModule._free(outPtr);
+  return result;
+}
+
+function emccBaziNaYin(cycle) {
+  const entryPtr = emccModule._bazi_nayin_for_cycle(cycle);
+  if (!entryPtr) return null;
+  const elemIdx = emccModule.HEAP32[entryPtr >> 2];
+  const cnPtr = emccModule.HEAP32[(entryPtr >> 2) + 1];
+  const viPtr = emccModule.HEAP32[(entryPtr >> 2) + 2];
+  const enPtr = emccModule.HEAP32[(entryPtr >> 2) + 3];
+  return {
+    element: ELEMENT_NAMES[elemIdx],
+    chinese: emccModule.UTF8ToString(cnPtr),
+    vietnamese: emccModule.UTF8ToString(viPtr),
+    english: emccModule.UTF8ToString(enPtr),
+  };
+}
+
+const STEM_COMBINATION_SIZE = 20;
+const TRANSFORMATION_SIZE = 48;
+const PUNISHMENT_SIZE = 32;
+
+function emccBaziDetectStemCombinations(pillars) {
+  const maxCount = 50;
+  const outPtr = emccModule._malloc(4 * 5 * maxCount);
+  const pillarsPtr = emccModule._malloc(4 * 8);
+  for (let i = 0; i < 4; i++) {
+    emccModule.HEAP32[pillarsPtr / 4 + i * 2] = stemIdx(pillars[i].stem);
+    emccModule.HEAP32[pillarsPtr / 4 + i * 2 + 1] = branchIdx(pillars[i].branch);
+  }
+  const count = emccModule._bazi_detect_stem_combinations(pillarsPtr, outPtr, maxCount);
+  const results = [];
+  for (let i = 0; i < count; i++) {
+    const base = outPtr / 4 + i * 5;
+    results.push({
+      pairA: emccModule.HEAP32[base],
+      pairB: emccModule.HEAP32[base + 1],
+      stemA: STEMS[emccModule.HEAP32[base + 2]],
+      stemB: STEMS[emccModule.HEAP32[base + 3]],
+      targetElement: ELEMENT_NAMES[emccModule.HEAP32[base + 4]],
+    });
+  }
+  emccModule._free(outPtr);
+  emccModule._free(pillarsPtr);
+  return results;
+}
+
+function emccBaziDetectTransformations(pillars) {
+  const outPtr = emccModule._malloc(TRANSFORMATION_SIZE * 20);
+  const pillarsPtr = emccModule._malloc(4 * 8);
+  for (let i = 0; i < 4; i++) {
+    emccModule.HEAP32[pillarsPtr / 4 + i * 2] = stemIdx(pillars[i].stem);
+    emccModule.HEAP32[pillarsPtr / 4 + i * 2 + 1] = branchIdx(pillars[i].branch);
+  }
+  const count = emccModule._bazi_detect_transformations(pillarsPtr, outPtr, 20);
+  const results = [];
+  for (let i = 0; i < count; i++) {
+    const base = outPtr + i * TRANSFORMATION_SIZE;
+    results.push({
+      pairA: emccModule.HEAP32[base / 4],
+      pairB: emccModule.HEAP32[base / 4 + 1],
+      stemA: STEMS[emccModule.HEAP32[base / 4 + 2]],
+      stemB: STEMS[emccModule.HEAP32[base / 4 + 3]],
+      targetElement: ELEMENT_NAMES[emccModule.HEAP32[base / 4 + 4]],
+      monthSupport: emccModule.HEAP32[base / 4 + 5] !== 0,
+      leadingPresent: emccModule.HEAP32[base / 4 + 6] !== 0,
+      blocked: emccModule.HEAP32[base / 4 + 7] !== 0,
+      severelyClashed: emccModule.HEAP32[base / 4 + 8] !== 0,
+      proximityScore: emccModule.HEAP32[base / 4 + 9],
+      status: emccModule.UTF8ToString(emccModule.HEAP32[base / 4 + 10]),
+      confidence: emccModule.HEAP32[base / 4 + 11],
+    });
+  }
+  emccModule._free(outPtr);
+  emccModule._free(pillarsPtr);
+  return results;
+}
+
+function emccBaziDetectPunishments(pillars) {
+  const outPtr = emccModule._malloc(PUNISHMENT_SIZE * 20);
+  const pillarsPtr = emccModule._malloc(4 * 8);
+  for (let i = 0; i < 4; i++) {
+    emccModule.HEAP32[pillarsPtr / 4 + i * 2] = stemIdx(pillars[i].stem);
+    emccModule.HEAP32[pillarsPtr / 4 + i * 2 + 1] = branchIdx(pillars[i].branch);
+  }
+  const count = emccModule._bazi_detect_punishments(pillarsPtr, outPtr, 20);
+  const results = [];
+  for (let i = 0; i < count; i++) {
+    const base = outPtr + i * PUNISHMENT_SIZE;
+    results.push({
+      type: emccModule.UTF8ToString(emccModule.HEAP32[base / 4]),
+      pairA: emccModule.HEAP32[base / 4 + 1],
+      pairB: emccModule.HEAP32[base / 4 + 2],
+      branchA: BRANCHES[emccModule.HEAP32[base / 4 + 3]],
+      branchB: BRANCHES[emccModule.HEAP32[base / 4 + 4]],
+      severity: emccModule.HEAP32[base / 4 + 5],
+      lifeArea1: emccModule.UTF8ToString(emccModule.HEAP32[base / 4 + 6]),
+      lifeArea2: emccModule.UTF8ToString(emccModule.HEAP32[base / 4 + 7]),
+    });
+  }
+  emccModule._free(outPtr);
+  emccModule._free(pillarsPtr);
+  return results;
+}
+
+// ── 9. Generate random timestamps ──────────────────────────────────────────
+
 function mulberry32(seed) {
   return function () {
     let t = (seed += 0x6d2b79f5);
@@ -171,19 +310,18 @@ function randomTimestamps(count) {
 }
 
 const TZ = 'Asia/Shanghai';
-const CST_OFFSET_SEC = 28800; // fixed UTC+8
+const CST_OFFSET_SEC = 28800;
 
-// ── 9. Run comparison for 50 timestamps ─────────────────────────────────────
+// ── 10. Run comparison for 50 timestamps ─────────────────────────────────────
 
 const timestamps50 = randomTimestamps(50);
 
 console.log('Generating Python reference results (DE440s) for 50 timestamps...');
 
-// Call Python batch reference script
 const pyScript = resolve(__dirname, 'python_reference.py');
 let pyResults;
 try {
-  const pyOut = execFileSync('python3', [pyScript, '--tz', TZ], {
+  const pyOut = execFileSync('python3', [pyScript, '--tz', TZ, '--gender', 'male'], {
     input: JSON.stringify(timestamps50),
     maxBuffer: 10 * 1024 * 1024,
     timeout: 120_000,
@@ -194,7 +332,6 @@ try {
   process.exit(1);
 }
 
-// Build a map of Python results by timestamp
 const pyMap = new Map();
 for (const r of pyResults) pyMap.set(r.tsMs, r);
 
@@ -202,7 +339,6 @@ console.log('Running comparison for 50 random timestamps...');
 
 const results = [];
 
-// Helper: compare all ganzhi fields between a reference and a candidate
 function ganzhiMatch(ref, cand) {
   if (!ref || !cand || ref.error || cand.error) return false;
   return (
@@ -225,7 +361,6 @@ function ganzhiMatch(ref, cand) {
   );
 }
 
-// Helper: compare huangdao fields (construction star + great yellow path)
 function huangdaoMatch(ref, cand) {
   if (!ref || !cand || ref.error || cand.error) return false;
   if (!ref.constructionStar || !cand.constructionStar) return false;
@@ -234,6 +369,100 @@ function huangdaoMatch(ref, cand) {
     ref.gypSpirit === cand.gypSpirit &&
     ref.gypPathType === cand.gypPathType
   );
+}
+
+function baziMatch(ref, cand) {
+  if (!ref || !cand || ref.error || cand.error) return false;
+  if (!ref.bazi || !cand.bazi) return false;
+  const refB = ref.bazi;
+  const candB = cand.bazi;
+  return (
+    refB.dayMasterStem === candB.dayMasterStem &&
+    refB.dayMasterElement === candB.dayMasterElement &&
+    refB.dayMasterPolarity === candB.dayMasterPolarity &&
+    JSON.stringify(refB.tenGods) === JSON.stringify(candB.tenGods)
+  );
+}
+
+function baziLifeStagesMatch(ref, cand) {
+  if (!ref?.bazi?.lifeStages || !cand?.bazi?.lifeStages) return false;
+  const refLs = ref.bazi.lifeStages;
+  const candLs = cand.bazi.lifeStages;
+  for (const pname of ['year', 'month', 'day', 'hour']) {
+    if (!refLs[pname] || !candLs[pname]) return false;
+    if (refLs[pname].index !== candLs[pname].index) return false;
+    if (refLs[pname].chinese !== candLs[pname].chinese) return false;
+  }
+  return true;
+}
+
+function baziNaYinMatch(ref, cand) {
+  if (!ref?.bazi?.naYin || !cand?.bazi?.naYin) return false;
+  const refNy = ref.bazi.naYin;
+  const candNy = cand.bazi.naYin;
+  for (const pname of ['year', 'month', 'day', 'hour']) {
+    if (!refNy[pname] || !candNy[pname]) return false;
+    if (refNy[pname].element !== candNy[pname].element) return false;
+    if (refNy[pname].chinese !== candNy[pname].chinese) return false;
+  }
+  return true;
+}
+
+function baziStemCombinationsMatch(ref, cand) {
+  if (!ref?.bazi?.stemCombinations || !cand?.bazi?.stemCombinations) return false;
+  const refSc = ref.bazi.stemCombinations;
+  const candSc = cand.bazi.stemCombinations;
+  if (refSc.length !== candSc.length) return false;
+  for (const refItem of refSc) {
+    const found = candSc.find(c => {
+      const pairA = c.pairA ?? c.pair?.[0];
+      const pairB = c.pairB ?? c.pair?.[1];
+      const targetElement = c.targetElement ?? c.target_element;
+      return targetElement === refItem.targetElement &&
+        ((pairA === refItem.pair[0] && pairB === refItem.pair[1]) ||
+         (pairA === refItem.pair[1] && pairB === refItem.pair[0]));
+    });
+    if (!found) return false;
+  }
+  return true;
+}
+
+function baziTransformationsMatch(ref, cand) {
+  if (!ref?.bazi?.transformations || !cand?.bazi?.transformations) return false;
+  const refT = ref.bazi.transformations;
+  const candT = cand.bazi.transformations;
+  if (refT.length !== candT.length) return false;
+  for (const refItem of refT) {
+    const found = candT.find(c => {
+      const pairA = c.pairA ?? c.pair?.[0];
+      const pairB = c.pairB ?? c.pair?.[1];
+      const targetElement = c.targetElement ?? c.target_element;
+      const status = c.status;
+      const confidence = c.confidence;
+      return targetElement === refItem.targetElement &&
+        status === refItem.status &&
+        confidence === refItem.confidence &&
+        ((pairA === refItem.pair[0] && pairB === refItem.pair[1]) ||
+         (pairA === refItem.pair[1] && pairB === refItem.pair[0]));
+    });
+    if (!found) return false;
+  }
+  return true;
+}
+
+function baziPunishmentsMatch(ref, cand) {
+  if (!ref?.bazi?.punishments || !cand?.bazi?.punishments) return false;
+  const refP = ref.bazi.punishments;
+  const candP = cand.bazi.punishments;
+  if (refP.length !== candP.length) return false;
+  for (const refItem of refP) {
+    const found = candP.find(c => {
+      const type = c.type ?? c.punishment_type;
+      return type === refItem.type && c.severity === refItem.severity;
+    });
+    if (!found) return false;
+  }
+  return true;
 }
 
 for (const tsMs of timestamps50) {
@@ -256,7 +485,6 @@ for (const tsMs of timestamps50) {
     const dc = cycleFromChars(cal.dayStem, cal.dayBranch);
     const hc = cycleFromChars(cal.hourStem, cal.hourBranch);
 
-    // Construction star + Great Yellow Path
     const cs = new ConstructionStars(cal).getStar();
     const gyp = new GreatYellowPath(cal).getSpirit();
 
@@ -283,7 +511,7 @@ for (const tsMs of timestamps50) {
     wasmResult = { error: e.message };
   }
 
-  // Emscripten WASM (standalone — uses embedded Swiss Ephemeris)
+  // Emscripten WASM (standalone)
   try {
     emccResult = emccFromSolarDateAuto(tsMs, tzOffsetSec);
     if (!emccResult) emccResult = { error: 'from_solar_date_auto returned -1' };
@@ -291,18 +519,134 @@ for (const tsMs of timestamps50) {
     emccResult = { error: e.message };
   }
 
-  // Compare each variant against the Python reference
+  // Emscripten Bazi analysis
+  if (emccResult && !emccResult.error && pyRef && !pyRef.error && pyRef.bazi) {
+    try {
+      const dmStem = pyRef.dayStem;
+      const dmIdx = stemIdx(dmStem);
+      emccResult.bazi = {
+        dayMasterStem: dmStem,
+        dayMasterElement: emccBaziStemElement(dmIdx),
+        dayMasterPolarity: emccBaziStemPolarity(dmIdx),
+        tenGods: {
+          year: emccBaziTenGod(dmIdx, stemIdx(pyRef.yearStem)),
+          month: emccBaziTenGod(dmIdx, stemIdx(pyRef.monthStem)),
+          day: '比肩',
+          hour: emccBaziTenGod(dmIdx, stemIdx(pyRef.hourStem)),
+        },
+        lifeStages: {},
+        naYin: {},
+        stemCombinations: [],
+        transformations: [],
+        punishments: [],
+      };
+      for (const pname of ['year', 'month', 'day', 'hour']) {
+        const cycle = pname === 'year' ? pyRef.yearCycle :
+                      pname === 'month' ? pyRef.monthCycle :
+                      pname === 'day' ? pyRef.dayCycle : pyRef.hourCycle;
+        const branch = pname === 'year' ? pyRef.yearBranch :
+                       pname === 'month' ? pyRef.monthBranch :
+                       pname === 'day' ? pyRef.dayBranch : pyRef.hourBranch;
+        emccResult.bazi.lifeStages[pname] = emccBaziLifeStage(dmIdx, branchIdx(branch));
+        const nayin = emccBaziNaYin(cycle);
+        if (nayin) {
+          emccResult.bazi.naYin[pname] = nayin;
+        }
+      }
+      const pillars = [
+        { stem: pyRef.yearStem, branch: pyRef.yearBranch },
+        { stem: pyRef.monthStem, branch: pyRef.monthBranch },
+        { stem: pyRef.dayStem, branch: pyRef.dayBranch },
+        { stem: pyRef.hourStem, branch: pyRef.hourBranch },
+      ];
+      emccResult.bazi.stemCombinations = emccBaziDetectStemCombinations(pillars);
+      emccResult.bazi.transformations = emccBaziDetectTransformations(pillars);
+      emccResult.bazi.punishments = emccBaziDetectPunishments(pillars);
+    } catch (e) {
+      emccResult.baziError = e.message;
+    }
+  }
+
+  // Rust WASM Bazi analysis
+  if (wasmResult && !wasmResult.error && pyRef && !pyRef.error && pyRef.bazi) {
+    try {
+      const dmStem = pyRef.dayStem;
+      const dmIdx = stemIdx(dmStem);
+      wasmResult.bazi = {
+        dayMasterStem: dmStem,
+        dayMasterElement: wasm.baziStemElement(dmIdx),
+        dayMasterPolarity: wasm.baziStemPolarity(dmIdx),
+        tenGods: {
+          year: wasm.baziTenGod(dmIdx, stemIdx(pyRef.yearStem)),
+          month: wasm.baziTenGod(dmIdx, stemIdx(pyRef.monthStem)),
+          day: '比肩',
+          hour: wasm.baziTenGod(dmIdx, stemIdx(pyRef.hourStem)),
+        },
+        lifeStages: {},
+        naYin: {},
+        stemCombinations: [],
+        transformations: [],
+        punishments: [],
+      };
+      for (const pname of ['year', 'month', 'day', 'hour']) {
+        const cycle = pname === 'year' ? pyRef.yearCycle :
+                      pname === 'month' ? pyRef.monthCycle :
+                      pname === 'day' ? pyRef.dayCycle : pyRef.hourCycle;
+        const branch = pname === 'year' ? pyRef.yearBranch :
+                       pname === 'month' ? pyRef.monthBranch :
+                       pname === 'day' ? pyRef.dayBranch : pyRef.hourBranch;
+        const lsJson = wasm.baziChangshengStage(dmIdx, branchIdx(branch));
+        wasmResult.bazi.lifeStages[pname] = JSON.parse(lsJson);
+        const nayinJson = wasm.baziNaYin(cycle);
+        if (nayinJson) {
+          wasmResult.bazi.naYin[pname] = JSON.parse(nayinJson);
+        }
+      }
+      const pillarsJson = JSON.stringify([
+        [stemIdx(pyRef.yearStem), branchIdx(pyRef.yearBranch)],
+        [stemIdx(pyRef.monthStem), branchIdx(pyRef.monthBranch)],
+        [stemIdx(pyRef.dayStem), branchIdx(pyRef.dayBranch)],
+        [stemIdx(pyRef.hourStem), branchIdx(pyRef.hourBranch)],
+      ]);
+      wasmResult.bazi.stemCombinations = JSON.parse(wasm.baziDetectStemCombinations(pillarsJson));
+      wasmResult.bazi.transformations = JSON.parse(wasm.baziDetectTransformations(pillarsJson, branchIdx(pyRef.monthBranch)));
+      wasmResult.bazi.punishments = JSON.parse(wasm.baziDetectPunishments(pillarsJson));
+    } catch (e) {
+      wasmResult.baziError = e.message;
+    }
+  }
+
   const tsMatch = ganzhiMatch(pyRef, tsResult);
   const rustMatch = ganzhiMatch(pyRef, wasmResult);
   const emccMatch = ganzhiMatch(pyRef, emccResult);
   const tsHuangdaoMatch = huangdaoMatch(pyRef, tsResult);
   const rustHuangdaoMatch = huangdaoMatch(pyRef, wasmResult);
   const emccHuangdaoMatch = huangdaoMatch(pyRef, emccResult);
+  const emccBaziMatch = baziMatch(pyRef, emccResult);
+  const emccLifeStagesMatch = baziLifeStagesMatch(pyRef, emccResult);
+  const emccNaYinMatch = baziNaYinMatch(pyRef, emccResult);
+  const emccStemCombosMatch = baziStemCombinationsMatch(pyRef, emccResult);
+  const emccTransformationsMatch = baziTransformationsMatch(pyRef, emccResult);
+  const emccPunishmentsMatch = baziPunishmentsMatch(pyRef, emccResult);
+  const rustBaziMatch = baziMatch(pyRef, wasmResult);
+  const rustLifeStagesMatch = baziLifeStagesMatch(pyRef, wasmResult);
+  const rustNaYinMatch = baziNaYinMatch(pyRef, wasmResult);
+  const rustStemCombosMatch = baziStemCombinationsMatch(pyRef, wasmResult);
+  const rustTransformationsMatch = baziTransformationsMatch(pyRef, wasmResult);
+  const rustPunishmentsMatch = baziPunishmentsMatch(pyRef, wasmResult);
 
-  results.push({ tsMs, date: date.toISOString(), pyRef, tsResult, wasmResult, emccResult, tsMatch, rustMatch, emccMatch, tsHuangdaoMatch, rustHuangdaoMatch, emccHuangdaoMatch });
+  results.push({
+    tsMs, date: date.toISOString(), pyRef, tsResult, wasmResult, emccResult,
+    tsMatch, rustMatch, emccMatch,
+    tsHuangdaoMatch, rustHuangdaoMatch, emccHuangdaoMatch,
+    emccBaziMatch, emccLifeStagesMatch, emccNaYinMatch,
+    emccStemCombosMatch, emccTransformationsMatch, emccPunishmentsMatch,
+    rustBaziMatch, rustLifeStagesMatch, rustNaYinMatch,
+    rustStemCombosMatch, rustTransformationsMatch, rustPunishmentsMatch,
+  });
 }
 
-// ── 10. Generate markdown report ────────────────────────────────────────────
+// ── 11. Generate markdown report ────────────────────────────────────────────
 
 const tsMatchCount = results.filter((r) => r.tsMatch).length;
 const rustMatchCount = results.filter((r) => r.rustMatch).length;
@@ -310,13 +654,25 @@ const emccMatchCount = results.filter((r) => r.emccMatch).length;
 const tsHuangdaoMatchCount = results.filter((r) => r.tsHuangdaoMatch).length;
 const rustHuangdaoMatchCount = results.filter((r) => r.rustHuangdaoMatch).length;
 const emccHuangdaoMatchCount = results.filter((r) => r.emccHuangdaoMatch).length;
+const emccBaziMatchCount = results.filter((r) => r.emccBaziMatch).length;
+const emccLifeStagesMatchCount = results.filter((r) => r.emccLifeStagesMatch).length;
+const emccNaYinMatchCount = results.filter((r) => r.emccNaYinMatch).length;
+const emccStemCombosMatchCount = results.filter((r) => r.emccStemCombosMatch).length;
+const emccTransformationsMatchCount = results.filter((r) => r.emccTransformationsMatch).length;
+const emccPunishmentsMatchCount = results.filter((r) => r.emccPunishmentsMatch).length;
+const rustBaziMatchCount = results.filter((r) => r.rustBaziMatch).length;
+const rustLifeStagesMatchCount = results.filter((r) => r.rustLifeStagesMatch).length;
+const rustNaYinMatchCount = results.filter((r) => r.rustNaYinMatch).length;
+const rustStemCombosMatchCount = results.filter((r) => r.rustStemCombosMatch).length;
+const rustTransformationsMatchCount = results.filter((r) => r.rustTransformationsMatch).length;
+const rustPunishmentsMatchCount = results.filter((r) => r.rustPunishmentsMatch).length;
 const errorCount = results.filter(
   (r) => r.pyRef?.error || r.wasmResult?.error || r.emccResult?.error || r.tsResult?.error,
 ).length;
 
 let md = `# Lunisolar Accuracy — Python Reference (DE440s) vs JS/WASM Implementations\n\n`;
 md += `**Date**: ${new Date().toISOString()}\n\n`;
-md += `**Reference**: Python \`lunisolar_v2.py\` + \`huangdao_systems_v2.py\` with JPL DE440s ephemeris (ground truth).\n`;
+md += `**Reference**: Python \`lunisolar_v2.py\` + \`bazi.py\` + \`huangdao_systems_v2.py\` with JPL DE440s ephemeris (ground truth).\n`;
 md += `All three implementations are compared against this reference.\n\n`;
 
 // Summary
@@ -336,7 +692,17 @@ md += `| TypeScript pkg | ${tsHuangdaoMatchCount}/${results.length} |\n`;
 md += `| Rust WASM (wasm-pack) | ${rustHuangdaoMatchCount}/${results.length} |\n`;
 md += `| Emscripten WASM (emcc) | ${emccHuangdaoMatchCount}/${results.length} |\n\n`;
 
-// Comparison table: Python reference values with match status for all three implementations
+md += `### Bazi (Four Pillars Analysis)\n\n`;
+md += `| Test | Rust vs Python | Emcc vs Python |\n`;
+md += `|------|---------------:|---------------:|\n`;
+md += `| Ten Gods (十神) | ${rustBaziMatchCount}/${results.length} | ${emccBaziMatchCount}/${results.length} |\n`;
+md += `| Life Stages (十二长生) | ${rustLifeStagesMatchCount}/${results.length} | ${emccLifeStagesMatchCount}/${results.length} |\n`;
+md += `| Na Yin (納音) | ${rustNaYinMatchCount}/${results.length} | ${emccNaYinMatchCount}/${results.length} |\n`;
+md += `| Stem Combinations (天干合) | ${rustStemCombosMatchCount}/${results.length} | ${emccStemCombosMatchCount}/${results.length} |\n`;
+md += `| Transformations (合化) | ${rustTransformationsMatchCount}/${results.length} | ${emccTransformationsMatchCount}/${results.length} |\n`;
+md += `| Punishments (刑害) | ${rustPunishmentsMatchCount}/${results.length} | ${emccPunishmentsMatchCount}/${results.length} |\n\n`;
+
+// Ganzhi Comparison Table
 md += `## Ganzhi Comparison Table (50 Random Timestamps)\n\n`;
 md += `Reference values are from Python \`lunisolar_v2.py\` (DE440s).\n`;
 md += `Match columns show whether each implementation agrees with the Python reference.\n\n`;
@@ -347,7 +713,6 @@ for (let i = 0; i < results.length; i++) {
   const r = results[i];
   const py = r.pyRef;
 
-  // CST date (UTC+8)
   const cstDate = new Date(r.tsMs + CST_OFFSET_SEC * 1000);
   const cstStr = cstDate.toISOString().slice(0, 19).replace('T', ' ');
 
@@ -369,7 +734,7 @@ for (let i = 0; i < results.length; i++) {
   md += `| ${i + 1} | ${r.date.slice(0, 19)} | ${cstStr} | ${lunarDate} | ${yearG} | ${monthG} | ${dayG} | ${hourG} | ${tsIcon} | ${rustIcon} | ${emccIcon} |\n`;
 }
 
-// Huangdao comparison table
+// Huangdao Comparison Table
 md += `\n## Huangdao Comparison Table (50 Random Timestamps)\n\n`;
 md += `| # | UTC Date | Lunar Month | Day Branch | Star (Python) | Spirit (Python) | Path | TS | Rust | Emcc |\n`;
 md += `|---|----------|-------------|------------|---------------|-----------------|------|----|------|------|\n`;
@@ -391,8 +756,34 @@ for (let i = 0; i < results.length; i++) {
   md += `| ${i + 1} | ${r.date.slice(0, 19)} | ${lm} | ${db} | ${star} | ${spirit} | ${path} | ${tsIcon} | ${rustIcon} | ${emccIcon} |\n`;
 }
 
+// Bazi Comparison Table
+md += `\n## Bazi Comparison Table (50 Random Timestamps)\n\n`;
+md += `| # | Day Master | Element | Ten Gods (Y/M/H) | Life Stages (Y/M/D/H) | Na Yin Match |\n`;
+md += `|---|------------|---------|-----------------|------------------------|-------------|\n`;
+
+for (let i = 0; i < results.length; i++) {
+  const r = results[i];
+  const py = r.pyRef;
+  const pyB = py?.bazi;
+
+  if (!pyB) {
+    md += `| ${i + 1} | - | - | - | - | - |\n`;
+    continue;
+  }
+
+  const dm = pyB.dayMasterStem || '-';
+  const elem = pyB.dayMasterElement || '-';
+  const tg = pyB.tenGods || {};
+  const tgStr = `${tg.year || '-'}/${tg.month || '-'}/${tg.hour || '-'}`;
+  const ls = pyB.lifeStages || {};
+  const lsStr = `${ls.year?.chinese || '-'}/${ls.month?.chinese || '-'}/${ls.day?.chinese || '-'}/${ls.hour?.chinese || '-'}`;
+  const nayinIcon = r.emccNaYinMatch ? '✅' : '❌';
+
+  md += `| ${i + 1} | ${dm} | ${elem} | ${tgStr} | ${lsStr} | ${nayinIcon} |\n`;
+}
+
 md += `\n## Notes\n\n`;
-md += `- **Reference**: Python \`lunisolar_v2.py\` + \`huangdao_systems_v2.py\` with JPL DE440s ephemeris.\n`;
+md += `- **Reference**: Python \`lunisolar_v2.py\` + \`bazi.py\` + \`huangdao_systems_v2.py\` with JPL DE440s ephemeris.\n`;
 md += `- **Timezone offset** is computed dynamically per timestamp via \`Intl.DateTimeFormat\` (handles China DST 1986–1991).\n`;
 md += `- **Day ganzhi** uses local wall-clock date for day counting (day boundary at local midnight).\n`;
 md += `- **Hour ganzhi** uses local wall time from the dynamic timezone offset for the hour branch/stem.\n`;
@@ -400,6 +791,7 @@ md += `- **Construction Stars** use base calculation (lunar month building branc
 md += `- **Great Yellow Path** uses Azure Dragon monthly start position + day branch offset.\n`;
 md += `- All four ganzhi (year, month, day, hour) with cycle indices are compared field-by-field.\n`;
 md += `- Huangdao fields (construction star, GYP spirit, path type) are compared across all implementations.\n`;
+md += `- **Bazi**: Ten Gods, Life Stages (十二长生), Na Yin (納音), Stem Combinations (天干合), Transformations (合化), and Punishments (刑害) are compared for both Rust WASM and Emcc vs Python.\n`;
 
 // Write report
 const reportPath = resolve(__dirname, 'compare-report.md');
@@ -407,3 +799,10 @@ writeFileSync(reportPath, md);
 console.log(`\nReport written to ${reportPath}`);
 console.log(`\nGanzhi match vs Python (DE440s): TS=${tsMatchCount}/${results.length}, Rust=${rustMatchCount}/${results.length}, Emcc=${emccMatchCount}/${results.length}`);
 console.log(`Huangdao match vs Python (DE440s): TS=${tsHuangdaoMatchCount}/${results.length}, Rust=${rustHuangdaoMatchCount}/${results.length}, Emcc=${emccHuangdaoMatchCount}/${results.length}`);
+console.log(`Bazi match vs Python (DE440s):`);
+console.log(`  Ten Gods: Rust=${rustBaziMatchCount}/${results.length}, Emcc=${emccBaziMatchCount}/${results.length}`);
+console.log(`  Life Stages: Rust=${rustLifeStagesMatchCount}/${results.length}, Emcc=${emccLifeStagesMatchCount}/${results.length}`);
+console.log(`  Na Yin: Rust=${rustNaYinMatchCount}/${results.length}, Emcc=${emccNaYinMatchCount}/${results.length}`);
+console.log(`  Stem Combinations: Rust=${rustStemCombosMatchCount}/${results.length}, Emcc=${emccStemCombosMatchCount}/${results.length}`);
+console.log(`  Transformations: Rust=${rustTransformationsMatchCount}/${results.length}, Emcc=${emccTransformationsMatchCount}/${results.length}`);
+console.log(`  Punishments: Rust=${rustPunishmentsMatchCount}/${results.length}, Emcc=${emccPunishmentsMatchCount}/${results.length}`);

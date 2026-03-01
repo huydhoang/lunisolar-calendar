@@ -15,7 +15,7 @@ import os
 from datetime import date, timedelta
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
-sys.path.insert(0, os.path.join(REPO_ROOT, 'lunisolar-python'))
+sys.path.insert(0, os.path.join(REPO_ROOT, 'lunisolar-py'))
 
 import config
 config.EPHEMERIS_FILE = os.path.join(REPO_ROOT, 'nasa', 'de440s.bsp')
