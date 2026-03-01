@@ -71,6 +71,12 @@ def detect_transformations(chart: Dict) -> List[Dict]:
     pillar_names = ["year", "month", "day", "hour"]
     adjacent_set = {(a, b) for a, b in ADJACENT_PAIRS}
 
+    # Count stem occurrences for jealous combination detection (争合)
+    _stem_counts: Dict[str, int] = {}
+    for pn in pillar_names:
+        s = chart["pillars"][pn]["stem"]
+        _stem_counts[s] = _stem_counts.get(s, 0) + 1
+
     for i, p1 in enumerate(pillar_names):
         for j in range(i + 1, len(pillar_names)):
             p2 = pillar_names[j]
@@ -142,6 +148,13 @@ def detect_transformations(chart: Dict) -> List[Dict]:
             if status == "Hóa (successful)" and severely_clashed:
                 status = "Hóa (suppressed by clash)"
                 confidence = max(confidence - 30, 20)
+
+            # Jealous combination penalty (争合): when either stem appears
+            # in multiple pillars, the contest prevents transformation
+            if _stem_counts.get(s1, 1) > 1 or _stem_counts.get(s2, 1) > 1:
+                if status.startswith("Hóa"):
+                    status = "Hợp (bound — jealous)"
+                    confidence = min(confidence, 30)
 
             results.append({
                 "pair": (p1, p2),

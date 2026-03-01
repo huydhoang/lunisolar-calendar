@@ -3,7 +3,7 @@ Narrative Interpretation Generator
 ===================================
 """
 
-from typing import Dict
+from typing import Dict, List, Optional
 
 
 def generate_narrative(
@@ -11,6 +11,9 @@ def generate_narrative(
     strength: str,
     structure: Dict,
     interactions: Dict[str, list],
+    *,
+    missing_elements: Optional[List[Dict]] = None,
+    competing_frames: Optional[List[Dict]] = None,
 ) -> str:
     """Generate a human-readable interpretation of the natal chart."""
     dm = chart["day_master"]["stem"]
@@ -74,6 +77,47 @@ def generate_narrative(
         lines.append(
             "Self-punishment pattern detected — watch for self-sabotage tendencies."
         )
+
+    # Missing elements analysis
+    if missing_elements:
+        lines.append("")
+        for me in missing_elements:
+            elem_name = me["element"]
+            tg_cat = me["ten_god_category"]
+            rel = me["relation"]
+            lines.append(f"Missing element: {elem_name} ({tg_cat}).")
+            if rel == "ke":
+                lines.append(
+                    "  → Missing Officer/Power (官殺) signifies freedom-loving nature, "
+                    "rejection of strict hierarchy and authority. "
+                    "For males, may indicate challenges with children; "
+                    "career may favor self-employment or creative fields."
+                )
+            elif rel == "wo_ke":
+                lines.append(
+                    "  → Missing Wealth (財星) suggests difficulty accumulating material "
+                    "resources; may need extra effort in financial management."
+                )
+            elif rel == "sheng":
+                lines.append(
+                    "  → Missing Resource/Seal (印星) indicates lack of formal support "
+                    "systems; self-reliant but may feel isolated under pressure."
+                )
+
+    # Competing frames analysis
+    if competing_frames:
+        lines.append("")
+        for cf in competing_frames:
+            conflict = cf["conflict_type"]
+            branch = cf["branch"]
+            lines.append(f"⚠ Branch {branch} conflict: {conflict}.")
+            if "群比争财" in conflict:
+                lines.append(
+                    "  → WARNING: Companions/siblings contest with you for wealth. "
+                    "High risk in partnerships, joint ventures, and lending. "
+                    "For males, may also indicate marital stress "
+                    "(spouse under pressure from rivals)."
+                )
 
     lines.append(
         "Overall chart shows dynamic interaction between "

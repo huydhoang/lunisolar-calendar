@@ -24,24 +24,17 @@ from .glossary import (
 
 
 def detect_month_pillar_structure(chart: Dict) -> Optional[str]:
-    """Detect structure based on month pillar Ten-God using Protrusion (透出)."""
+    """Detect structure based on month branch Main Qi (Nguyệt Lệnh).
+
+    Traditional Zi Ping (Tử Bình): the Month Branch Main Qi is the
+    primary determinant of the Eight Regular Structures.  Protrusion
+    of non-main hidden stems no longer overrides the main qi.
+    """
     month_hidden = chart["pillars"]["month"]["hidden"]
     if not month_hidden:
         return None
 
     dm_idx = HEAVENLY_STEMS.index(chart["day_master"]["stem"])
-
-    protruding_stems = [
-        chart["pillars"]["year"]["stem"],
-        chart["pillars"]["month"]["stem"],
-        chart["pillars"]["hour"]["stem"],
-    ]
-
-    for _role, hidden_stem in month_hidden:
-        if hidden_stem in protruding_stems:
-            hidden_idx = HEAVENLY_STEMS.index(hidden_stem)
-            return ten_god(dm_idx, hidden_idx)
-
     main_hidden_stem = month_hidden[0][1]
     main_hidden_idx = HEAVENLY_STEMS.index(main_hidden_stem)
     return ten_god(dm_idx, main_hidden_idx)
@@ -423,15 +416,23 @@ def classify_structure(
     extreme = detect_extreme_prosperous(chart, strength, rooting)
 
     # Tier 3: Eight Regular Structures
+    # Traditional Zi Ping (Tử Bình): Month Branch Main Qi (Nguyệt Lệnh) is
+    # the primary determinant of structure for the Eight Regular Structures.
+    # Only fall back to the dominant Ten-God when the month qi yields a peer
+    # (比肩/劫財) — those cases are handled by Tier 2 (建禄格/羊刃格).
     month_tg = detect_month_pillar_structure(chart)
     dominant_tg = max(dist, key=lambda k: dist[k])
     dominance_score = dist[dominant_tg]
 
-    month_score = dist.get(month_tg, 0) if month_tg else 0
-    if month_tg and month_score >= dominance_score * 0.7:
+    if month_tg and month_tg not in ("比肩", "劫财"):
         primary_tg = month_tg
+        notes_source = "month branch qi (Nguyệt Lệnh)"
     else:
         primary_tg = dominant_tg
+        notes_source = "dominance"
+
+    # Update dominance_score to reflect the chosen primary
+    dominance_score = dist.get(primary_tg, dominance_score)
 
     # Check for composite structures
     composite = detect_composite_structures(chart, strength, dist)
@@ -456,7 +457,7 @@ def classify_structure(
         chart, primary_tg, strength, dist, interactions, transformations
     )
 
-    notes = f"Based on {primary_tg} dominance"
+    notes = f"Based on {primary_tg} {notes_source}"
     if composite:
         notes += f"; composite: {composite}"
 

@@ -45,6 +45,8 @@ def score_day_master(
     """
     dm_stem = chart["day_master"]["stem"]
     dm_elem = chart["day_master"]["element"]
+    inverse_gen = {v: k for k, v in GEN_MAP.items()}
+    resource_elem = inverse_gen[dm_elem]
     month_branch = chart["pillars"]["month"]["branch"]
     month_elem = BRANCH_ELEMENT[month_branch]
 
@@ -71,11 +73,26 @@ def score_day_master(
                     elif role == "residual":
                         score += 0.5 * w
 
-    # 3) Visible stem support
+    # 2b) Resource element support (印星 — element that generates DM)
     for pname, p in chart["pillars"].items():
         w = PILLAR_WEIGHTS.get(pname, 1.0)
-        if STEM_ELEMENT[p["stem"]] == dm_elem:
+        for role, stem in p["hidden"]:
+            if STEM_ELEMENT[stem] == resource_elem:
+                if role == "main":
+                    score += 1.2 * w
+                elif role == "middle":
+                    score += 0.6 * w
+                elif role == "residual":
+                    score += 0.3 * w
+
+    # 3) Visible stem support (peers + resource)
+    for pname, p in chart["pillars"].items():
+        w = PILLAR_WEIGHTS.get(pname, 1.0)
+        s_elem = STEM_ELEMENT[p["stem"]]
+        if s_elem == dm_elem:
             score += 1 * w
+        elif s_elem == resource_elem:
+            score += 0.6 * w
 
     # 4) Interaction adjustments (if provided)
     if interactions:
@@ -93,6 +110,8 @@ def score_day_master(
                 target = SAN_HUI_ELEMENT.get(entry)
                 if target == dm_elem:
                     score += 3.0
+                elif target == resource_elem:
+                    score += 1.5
 
         # 六冲 on month branch → weakens seasonal support
         for clash in interactions.get("六冲", []):
@@ -189,10 +208,60 @@ def rate_chart(chart: Dict) -> int:
     return min(total, 100)
 
 
+def _assess_chart_temperature(
+    chart: Dict, interactions: Optional[Dict] = None,
+) -> str:
+    """Assess chart temperature (Điều Hầu): 'hot', 'cold', or 'neutral'.
+
+    Examines elemental composition and branch frames to determine whether
+    the chart is overheated (Fire/Wood dominant) or overcooled (Water/Metal).
+    """
+    hot_score = 0.0
+    cold_score = 0.0
+    role_weights = {"main": 1.0, "middle": 0.6, "residual": 0.3}
+
+    for p in chart.get("pillars", {}).values():
+        s_elem = STEM_ELEMENT.get(p.get("stem", ""), "")
+        if s_elem in ("Fire", "Wood"):
+            hot_score += 1
+        elif s_elem in ("Water", "Metal"):
+            cold_score += 1
+        for role, stem in p.get("hidden", []):
+            h_elem = STEM_ELEMENT.get(stem, "")
+            w = role_weights.get(role, 0.3)
+            if h_elem in ("Fire", "Wood"):
+                hot_score += w
+            elif h_elem in ("Water", "Metal"):
+                cold_score += w
+
+    if interactions:
+        from .constants import SAN_HUI_ELEMENT as _SHE
+        for entry in interactions.get("三会", []):
+            if isinstance(entry, frozenset):
+                target = _SHE.get(entry)
+                if target == "Fire":
+                    hot_score += 3
+                elif target == "Water":
+                    cold_score += 3
+        for entry in interactions.get("三合", []):
+            target = entry.get("target_element") if isinstance(entry, dict) else None
+            if target == "Fire":
+                hot_score += 2
+            elif target == "Water":
+                cold_score += 2
+
+    if hot_score >= cold_score + 3:
+        return "hot"
+    elif cold_score >= hot_score + 3:
+        return "cold"
+    return "neutral"
+
+
 def recommend_useful_god(
-    chart: Dict, strength: str, structure: Dict = None
+    chart: Dict, strength: str, structure: Dict = None,
+    interactions: Optional[Dict] = None,
 ) -> Dict[str, Union[List[str], str]]:
-    """Structure-aware Useful God recommendation."""
+    """Structure-aware Useful God recommendation with temperature balancing."""
     dm_elem = chart["day_master"]["element"]
     inverse_gen = {v: k for k, v in GEN_MAP.items()}
 
@@ -269,7 +338,24 @@ def recommend_useful_god(
             "useful_god": f"{resource} — support weak DM",
             "joyful_god": f"{dm_elem} — peer support",
         }
-    # Balanced: favor moderate drainage + support
+    # Balanced: assess chart temperature (Điều Hầu) for proper recommendation
+    temperature = _assess_chart_temperature(chart, interactions)
+
+    if temperature == "hot":
+        return {
+            "favorable": [officer, output],
+            "avoid": [resource, dm_elem],
+            "useful_god": f"{officer} — cool overheated chart",
+            "joyful_god": f"{output} — vent excess energy",
+        }
+    elif temperature == "cold":
+        return {
+            "favorable": [resource, dm_elem],
+            "avoid": [officer, wealth],
+            "useful_god": f"{resource} — warm cold chart",
+            "joyful_god": f"{dm_elem} — peer support for warmth",
+        }
+    # Neutral balanced: favor moderate drainage + support
     return {
         "favorable": [output, resource],
         "avoid": [],

@@ -9,6 +9,7 @@ from .constants import (
     HEAVENLY_STEMS, EARTHLY_BRANCHES, STEM_ELEMENT, STEM_POLARITY,
     BRANCH_ELEMENT, GEN_MAP, CONTROL_MAP,
     LIU_CHONG, LIU_HE, LIU_HAI, STEM_TRANSFORMATIONS,
+    SAN_HUI_ELEMENT,
 )
 from .core import ganzhi_from_cycle
 from .ten_gods import ten_god, _element_relation
@@ -171,6 +172,113 @@ def analyze_time_range(
     return result
 
 
+def detect_missing_elements(chart: Dict) -> List[Dict]:
+    """Detect elements completely absent from stems and main/middle hidden stems.
+
+    Missing elements reveal structural gaps in a chart — particularly significant
+    when the missing element corresponds to Officer/Power (官殺) or Wealth (財星).
+    """
+    ALL_ELEMENTS = {"Wood", "Fire", "Earth", "Metal", "Water"}
+    present = set()
+
+    for p in chart["pillars"].values():
+        present.add(STEM_ELEMENT[p["stem"]])
+        for role, stem in p["hidden"]:
+            if role in ("main", "middle"):
+                present.add(STEM_ELEMENT[stem])
+
+    missing = ALL_ELEMENTS - present
+    if not missing:
+        return []
+
+    dm_elem = chart["day_master"]["element"]
+    result = []
+    for elem in sorted(missing):
+        rel = _element_relation(dm_elem, elem)
+        tg_category = {
+            "same": "比劫 (Peers)",
+            "sheng": "印星 (Resource/Seal)",
+            "wo_sheng": "食伤 (Output)",
+            "wo_ke": "财星 (Wealth)",
+            "ke": "官杀 (Officer/Power)",
+        }.get(rel, "Unknown")
+
+        result.append({
+            "element": elem,
+            "ten_god_category": tg_category,
+            "relation": rel,
+        })
+
+    return result
+
+
+def detect_competing_frames(chart: Dict, interactions: Dict) -> List[Dict]:
+    """Detect branches torn between competing combination frames.
+
+    Identifies scenarios like '群比争财' (Companions fighting for Wealth)
+    where a branch participates in both a peer frame (Bi-Jie) and a
+    wealth combination simultaneously.
+    """
+    dm_elem = chart["day_master"]["element"]
+
+    # Collect all frame affiliations per branch
+    branch_frames: Dict[str, List[Dict]] = {}
+
+    for entry in interactions.get("三合", []):
+        if isinstance(entry, dict):
+            trio = entry.get("trio", frozenset())
+            target = entry.get("target_element")
+            for b in trio:
+                branch_frames.setdefault(b, []).append({
+                    "type": "三合", "target": target, "branches": trio,
+                })
+
+    for entry in interactions.get("三会", []):
+        if isinstance(entry, frozenset):
+            target = SAN_HUI_ELEMENT.get(entry)
+            for b in entry:
+                branch_frames.setdefault(b, []).append({
+                    "type": "三会", "target": target, "branches": entry,
+                })
+
+    for entry in interactions.get("半三合", []):
+        if isinstance(entry, dict):
+            pair = entry.get("pair", frozenset())
+            target = entry.get("target_element")
+            for b in pair:
+                branch_frames.setdefault(b, []).append({
+                    "type": "半三合", "target": target, "branches": pair,
+                })
+
+    results = []
+    for branch, frames in branch_frames.items():
+        if len(frames) < 2:
+            continue
+
+        targets = {f["target"] for f in frames if f["target"]}
+        if len(targets) < 2:
+            continue
+
+        # Check for peer-vs-wealth conflict (群比争财)
+        has_peer_frame = any(t == dm_elem for t in targets)
+        wealth_elem = CONTROL_MAP.get(dm_elem)
+        has_wealth_frame = any(t == wealth_elem for t in targets)
+
+        if has_peer_frame and has_wealth_frame:
+            conflict_type = "群比争财 (Companions fighting for Wealth)"
+        else:
+            conflict_type = "多局争支 (Competing frames on branch)"
+
+        results.append({
+            "branch": branch,
+            "frames": frames,
+            "targets": list(targets),
+            "conflict_type": conflict_type,
+        })
+
+    return results
+
+
 def comprehensive_analysis(chart: Dict) -> Dict:
     """Produce a comprehensive interaction and transformation analysis.
 
@@ -237,6 +345,17 @@ def comprehensive_analysis(chart: Dict) -> Dict:
             if tomb["dm_enters_tomb"]:
                 summary_parts.append(f"DM enters tomb at {tomb['branch']} ({tomb['pillar']}).")
 
+    # Missing elements and competing frames
+    missing_elements = detect_missing_elements(chart)
+    competing_frames = detect_competing_frames(chart, interactions)
+
+    if missing_elements:
+        missing_names = [f"{m['element']} ({m['ten_god_category']})" for m in missing_elements]
+        summary_parts.append(f"Missing elements: {', '.join(missing_names)}.")
+    if competing_frames:
+        for cf in competing_frames:
+            summary_parts.append(f"Branch conflict: {cf['branch']} — {cf['conflict_type']}.")
+
     return {
         "day_master": {
             "stem": dm_stem,
@@ -272,5 +391,7 @@ def comprehensive_analysis(chart: Dict) -> Dict:
         "punishments": punishments,
         "life_stages": life_stages,
         "nayin_analysis": nayin_analysis,
+        "missing_elements": missing_elements,
+        "competing_frames": competing_frames,
         "summary": " ".join(summary_parts),
     }

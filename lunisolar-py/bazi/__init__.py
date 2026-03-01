@@ -191,6 +191,8 @@ from .projections import (
 from .analysis import (
     analyze_time_range,
     comprehensive_analysis,
+    detect_missing_elements,
+    detect_competing_frames,
 )
 
 # ── Narrative ────────────────────────────────────────────

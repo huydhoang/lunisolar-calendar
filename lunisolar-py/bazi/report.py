@@ -231,6 +231,41 @@ def generate_report_markdown(
         _a(f"- *{notes}*")
     _a("")
 
+    # ── Missing Elements (khuyết hành) ─────────────────────
+    # Placed before Useful God: missing elements provide important context
+    # for arriving at the recommendation.
+    missing_elements = comp.get("missing_elements", [])
+    if missing_elements:
+        _a("## Missing Elements (五行缺失)\n")
+        _a("| Element | Ten-God Category | Significance |")
+        _a("|---------|-----------------|--------------|")
+        _SIGNIFICANCE = {
+            "ke": "Officer/Power absent — freedom-loving, resists hierarchy",
+            "wo_ke": "Wealth absent — extra effort needed for finances",
+            "sheng": "Resource absent — self-reliant, may lack formal support",
+            "wo_sheng": "Output absent — expressiveness may be limited",
+            "same": "Peers absent — independent, few allies",
+        }
+        for me in missing_elements:
+            sig = _SIGNIFICANCE.get(me["relation"], "—")
+            _a(f"| {me['element']} | {me['ten_god_category']} | {sig} |")
+        _a("")
+
+    # ── Competing Frames (争局) ────────────────────────────
+    competing_frames = comp.get("competing_frames", [])
+    if competing_frames:
+        _a("## Branch Conflicts (支局冲突)\n")
+        for cf in competing_frames:
+            branch = format_term(cf["branch"])
+            conflict = cf["conflict_type"]
+            targets = ", ".join(cf["targets"])
+            _a(f"- **{branch}**: {conflict}")
+            _a(f"  - Pulled between: {targets}")
+            if "群比争财" in conflict:
+                _a("  - ⚠ **HIGH RISK**: Partnerships, joint ventures, lending")
+                _a("  - For males: potential marital stress (spouse pressured by rivals)")
+        _a("")
+
     # ── Useful God (用神) ───────────────────────────────────
     _a("## Useful God Recommendation (用神)\n")
     useful_str = ", ".join(useful.get("favorable", [])) or "None"

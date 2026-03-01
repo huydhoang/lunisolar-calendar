@@ -31,6 +31,7 @@ from .luck_pillars import (
     _luck_direction, find_governing_jie_term, generate_luck_pillars,
 )
 from .analysis import comprehensive_analysis
+from .analysis import detect_missing_elements, detect_competing_frames
 from .narrative import generate_narrative
 from .projections import generate_year_projections, generate_month_projections, generate_day_projections
 from .report import generate_report_markdown
@@ -71,9 +72,15 @@ def main() -> None:
     score, strength = score_day_master(chart)
     interactions = detect_branch_interactions(chart)
     structure_dict = classify_structure(chart, strength)
-    useful = recommend_useful_god(chart, strength, structure_dict)
+    useful = recommend_useful_god(chart, strength, structure_dict, interactions=interactions)
     rating = rate_chart(chart)
-    narrative = generate_narrative(chart, strength, structure_dict, interactions)
+    missing_elements = detect_missing_elements(chart)
+    competing_frames = detect_competing_frames(chart, interactions)
+    narrative = generate_narrative(
+        chart, strength, structure_dict, interactions,
+        missing_elements=missing_elements,
+        competing_frames=competing_frames,
+    )
     lmap = longevity_map(chart)
     tg_dist = weighted_ten_god_distribution(chart)
     comprehensive = comprehensive_analysis(chart)
